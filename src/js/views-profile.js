@@ -19,7 +19,7 @@
     const status = t.ultra ? `${Campaign.NAMES.ultraZh} ${Campaign.NAMES.ultra}! День зачтён за два` : t.done ? `${Campaign.NAMES.cap} зачтён ✓ · набрано ${pt(t.points)} из ${Campaign.ULTRA}` : `Набрано ${pt(t.points)} очк. · до перехода ${pt(t.toCap)}, до марш-броска ${pt(t.toUltra)}`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      <div class="tbar-labels"><span>${left}</span><span class="r">${right}</span></div>
+      ${compact ? `<div class="tbar-line">${left} · ${right}</div>` : `<div class="tbar-labels"><span>${left}</span><span class="r">${right}</span></div>`}
       ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {

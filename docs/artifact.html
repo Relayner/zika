@@ -455,6 +455,7 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .reveal-card.big { max-width: 260px; margin: 0 auto; padding: 12px; font-size: 13px; opacity: 1; animation: none; }
 .reveal-card.big .inv-n { font-size: 24px; }
 @keyframes reveal { from { opacity: 0; transform: translateY(16px) scale(.8); } to { opacity: 1; transform: none; } }
+.tbar-line { margin-top: 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 </style>
 <div id="app">
@@ -2032,7 +2033,7 @@ window.Vault = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260823-0027';
+  const VERSION = '20260823-0645';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2885,7 +2886,7 @@ window.App = (() => {
     const status = t.ultra ? `${Campaign.NAMES.ultraZh} ${Campaign.NAMES.ultra}! День зачтён за два` : t.done ? `${Campaign.NAMES.cap} зачтён ✓ · набрано ${pt(t.points)} из ${Campaign.ULTRA}` : `Набрано ${pt(t.points)} очк. · до перехода ${pt(t.toCap)}, до марш-броска ${pt(t.toUltra)}`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      <div class="tbar-labels"><span>${left}</span><span class="r">${right}</span></div>
+      ${compact ? `<div class="tbar-line">${left} · ${right}</div>` : `<div class="tbar-labels"><span>${left}</span><span class="r">${right}</span></div>`}
       ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {
