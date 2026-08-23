@@ -4,3 +4,4 @@ tools/gen/raw/
 tools/gen/*.jpg
 tools/gen/*.png
 *.zip
+push-server/.dev.vars

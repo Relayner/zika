@@ -1,0 +1,13 @@
+name = "zika-push"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+[triggers]
+crons = ["*/30 * * * *"]
+
+[vars]
+VAPID_PUBLIC = "BNlUK3R6LYQzrryHsvr6D8YZ2XAVvfsvsBJzyRK1ANnE54aPT2YjCOv7qoxVWhZoZOgX9NHB-AnycRFCbc4MasI"
+
+[[kv_namespaces]]
+binding = "SUBS"
+id = "KV_PLACEHOLDER"

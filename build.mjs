@@ -6,9 +6,11 @@ const src = p => path.join(root, 'src', p), dist = p => path.join(root, 'docs', 
 const read = p => fs.readFileSync(p, 'utf8');
 const now = new Date();
 const VERSION = now.toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/(\d{8})(\d{4})/, '$1-$2');
-const JS_ORDER = ['hsk.js', 'freq.js', 'sentences.js', 'pinyin.js', 'store.js', 'audio.js', 'speech.js', 'quiz.js', 'stats.js', 'cats.js', 'treasures.js', 'campaign.js', 'dragon.js', 'vault.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-profile.js', 'views-stats.js'];
+const JS_ORDER = ['hsk.js', 'freq.js', 'sentences.js', 'pinyin.js', 'store.js', 'audio.js', 'speech.js', 'quiz.js', 'stats.js', 'cats.js', 'treasures.js', 'campaign.js', 'dragon.js', 'hsk1exam.js', 'hskreal.js', 'vault.js', 'push.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-hskexam.js', 'views-profile.js', 'views-stats.js'];
 const css = read(src('css/style.css'));
-const js = (JS_ORDER.map(f => read(src('js/' + f))).join('\n;\n') + '\n;App.boot();\n').replace(/__VERSION__/g, VERSION);
+const pushConf = JSON.parse(read(src('pushconf.json')));
+const picsAvail = (fs.existsSync(src('img')) ? fs.readdirSync(src('img')) : []).filter(f => /^pic-p\d+\.webp$/.test(f)).map(f => f.replace('.webp', '').replace('pic-', ''));
+const js = ('window.PUSH_CONF = ' + JSON.stringify(pushConf) + ';\nwindow.PICS_AVAILABLE = ' + JSON.stringify(picsAvail) + ';\n' + JS_ORDER.map(f => read(src('js/' + f))).join('\n;\n') + '\n;App.boot();\n').replace(/__VERSION__/g, VERSION);
 const body = read(src('body.html'));
 fs.mkdirSync(dist(''), { recursive: true });
 const html = read(src('index.html'))

@@ -493,6 +493,20 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .dragon.m-3 .dragon-img { border-color: var(--vermilion); box-shadow: 0 0 12px rgba(196, 55, 31, .5); animation: pulse 1.6s infinite alternate; }
 .dragon-big { width: 60%; max-width: 220px; border-radius: 50%; border: 3px solid var(--vermilion); box-shadow: 0 0 20px rgba(196, 55, 31, .4); margin: 0 auto 10px; display: block; }
 
+/* ── настоящий экзамен HSK ── */
+.ex-pic { display: block; width: 62%; max-width: 220px; margin: 10px auto 0; border-radius: 14px; border: 2px solid var(--line-2); }
+.ex-pics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ex-picbtn { position: relative; border: 2px solid var(--line-2); border-radius: 12px; background: var(--card); padding: 4px; }
+.ex-picbtn img { width: 100%; border-radius: 9px; display: block; }
+.ex-picbtn:active { transform: scale(.96); }
+.ex-letter { position: absolute; left: 6px; top: 6px; z-index: 2; background: var(--bordeaux); color: #fff3e0; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 1px 7px; }
+.opt .ex-letter { position: static; margin-right: 8px; }
+.ex-audio { text-align: center; padding: 8px 0; }
+.say-ico { font-size: 52px; display: inline-block; }
+.say-ico.talking { animation: pulse .5s infinite alternate; }
+.ex-word { text-align: center; }
+.ex-opt { font-size: 19px; }
+
 </style>
 </head>
 <body>
@@ -512,6 +526,8 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 </div>
 
 <script>
+window.PUSH_CONF = {"url":"","key":"BNlUK3R6LYQzrryHsvr6D8YZ2XAVvfsvsBJzyRK1ANnE54aPT2YjCOv7qoxVWhZoZOgX9NHB-AnycRFCbc4MasI"};
+window.PICS_AVAILABLE = ["p01","p02","p03","p04","p05","p06","p07","p08","p09","p10","p11","p12","p13","p14","p15","p16","p17","p18","p19","p20","p21","p22","p23","p24","p25","p26","p27","p28","p29"];
 /* Словари HSK (стандарт HSK 2.0): уровень 1 — 150 слов, уровень 2 — 150, уровень 3 — 300.
    Формат: [иероглифы, пиньинь, русский перевод]. Переводы — краткие, основное значение первым. */
 window.HSK = {
@@ -2098,7 +2114,25 @@ window.Speech = (() => {
       return true;
     } catch (e) { return false; }
   }
-  return { say, available, zhVoice };
+  /* Проговорить и дождаться конца (для экзамена): resolve по onend, страховка по таймауту */
+  function speak(text, rate = 0.78) {
+    return new Promise(res => {
+      if (!ok) return res(false);
+      try {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(String(text));
+        const v = zhVoice();
+        if (v) u.voice = v;
+        u.lang = 'zh-CN'; u.rate = rate;
+        let done = false;
+        const fin = () => { if (!done) { done = true; res(true); } };
+        u.onend = fin; u.onerror = fin;
+        setTimeout(fin, 1500 + String(text).length * 450);
+        speechSynthesis.speak(u);
+      } catch (e) { res(false); }
+    });
+  }
+  return { say, speak, available, zhVoice };
 })();
 
 ;
@@ -2845,6 +2879,218 @@ window.Dragon = (() => {
 })();
 
 ;
+/* Банки заданий настоящего экзамена HSK 1 (структура реального экзамена, лексика HSK 1).
+   Экзамен собирается случайной выборкой из банков — от попытки к попытке не повторяется. */
+window.HSK1EXAM = {
+  /* Картинки: id → слово (webp с таким id может отсутствовать — движок фильтрует по window.PICS_AVAILABLE) */
+  PICS: [
+    { id: 'p01', h: '苹果', py: 'píngguǒ' }, { id: 'p02', h: '茶', py: 'chá' }, { id: 'p03', h: '米饭', py: 'mǐfàn' },
+    { id: 'p04', h: '水', py: 'shuǐ' }, { id: 'p05', h: '杯子', py: 'bēizi' }, { id: 'p06', h: '桌子', py: 'zhuōzi' },
+    { id: 'p07', h: '椅子', py: 'yǐzi' }, { id: 'p08', h: '书', py: 'shū' }, { id: 'p09', h: '电脑', py: 'diànnǎo' },
+    { id: 'p10', h: '电视', py: 'diànshì' }, { id: 'p11', h: '飞机', py: 'fēijī' }, { id: 'p12', h: '出租车', py: 'chūzūchē' },
+    { id: 'p13', h: '钱', py: 'qián' }, { id: 'p14', h: '衣服', py: 'yīfu' }, { id: 'p15', h: '狗', py: 'gǒu' },
+    { id: 'p16', h: '猫', py: 'māo' }, { id: 'p17', h: '医院', py: 'yīyuàn' }, { id: 'p18', h: '学校', py: 'xuéxiào' },
+    { id: 'p19', h: '商店', py: 'shāngdiàn' }, { id: 'p20', h: '家', py: 'jiā' }, { id: 'p21', h: '医生', py: 'yīshēng' },
+    { id: 'p22', h: '老师', py: 'lǎoshī' }, { id: 'p23', h: '学生', py: 'xuésheng' }, { id: 'p24', h: '水果', py: 'shuǐguǒ' },
+    { id: 'p25', h: '吃饭', py: 'chī fàn' }, { id: 'p26', h: '喝茶', py: 'hē chá' }, { id: 'p27', h: '看书', py: 'kàn shū' },
+    { id: 'p28', h: '写字', py: 'xiě zì' }, { id: 'p29', h: '睡觉', py: 'shuìjiào' }, { id: 'p30', h: '打电话', py: 'dǎ diànhuà' },
+    { id: 'p31', h: '看电视', py: 'kàn diànshì' }, { id: 'p32', h: '学习', py: 'xuéxí' }, { id: 'p33', h: '工作', py: 'gōngzuò' },
+    { id: 'p34', h: '买东西', py: 'mǎi dōngxi' }, { id: 'p35', h: '开车', py: 'kāi chē' }, { id: 'p36', h: '下雨', py: 'xiàyǔ' },
+    { id: 'p37', h: '做饭', py: 'zuò fàn' }, { id: 'p38', h: '爸爸', py: 'bàba' }, { id: 'p39', h: '妈妈', py: 'māma' },
+    { id: 'p40', h: '朋友', py: 'péngyou' },
+  ],
+  /* Аудирование ч.2 и чтение ч.2: предложение ↔ картинка */
+  SENT: [
+    { say: '我喜欢吃苹果。', pic: 'p01' }, { say: '请喝茶。', pic: 'p02' }, { say: '我想吃米饭。', pic: 'p03' },
+    { say: '我要喝水。', pic: 'p04' }, { say: '桌子上有一个杯子。', pic: 'p05' }, { say: '这是桌子。', pic: 'p06' },
+    { say: '那是椅子。', pic: 'p07' }, { say: '这本书很好。', pic: 'p08' }, { say: '我有一个电脑。', pic: 'p09' },
+    { say: '家里有电视。', pic: 'p10' }, { say: '我坐飞机去北京。', pic: 'p11' }, { say: '他坐出租车回家。', pic: 'p12' },
+    { say: '这是钱。', pic: 'p13' }, { say: '妈妈买了很多衣服。', pic: 'p14' }, { say: '我家有小狗。', pic: 'p15' },
+    { say: '那是我的猫。', pic: 'p16' }, { say: '他在医院工作。', pic: 'p17' }, { say: '我们的学校很大。', pic: 'p18' },
+    { say: '她去商店买东西。', pic: 'p19' }, { say: '这是我的家。', pic: 'p20' }, { say: '他是医生。', pic: 'p21' },
+    { say: '她是我们的老师。', pic: 'p22' }, { say: '他是学生。', pic: 'p23' }, { say: '我爱吃水果。', pic: 'p24' },
+    { say: '他在吃饭。', pic: 'p25' }, { say: '爸爸在喝茶。', pic: 'p26' }, { say: '她在看书。', pic: 'p27' },
+    { say: '他在写字。', pic: 'p28' }, { say: '他在睡觉。', pic: 'p29' }, { say: '妈妈在打电话。', pic: 'p30' },
+    { say: '他们在看电视。', pic: 'p31' }, { say: '她在学习汉语。', pic: 'p32' }, { say: '爸爸在工作。', pic: 'p33' },
+    { say: '她买了很多东西。', pic: 'p34' }, { say: '他会开车。', pic: 'p35' }, { say: '今天下雨了。', pic: 'p36' },
+    { say: '妈妈在做饭。', pic: 'p37' }, { say: '这是我爸爸。', pic: 'p38' }, { say: '这是我妈妈。', pic: 'p39' },
+    { say: '他们是好朋友。', pic: 'p40' },
+  ],
+  /* Аудирование ч.3: мини-диалог ↔ картинка */
+  DLG: [
+    { a: '你去哪儿？', b: '我去学校。', pic: 'p18' }, { a: '你想喝什么？', b: '我想喝茶。', pic: 'p02' },
+    { a: '你在做什么？', b: '我在看书。', pic: 'p27' }, { a: '这是谁？', b: '是我妈妈。', pic: 'p39' },
+    { a: '你爸爸做什么工作？', b: '他是医生。', pic: 'p21' }, { a: '你想吃什么？', b: '我想吃米饭。', pic: 'p03' },
+    { a: '明天天气怎么样？', b: '明天下雨。', pic: 'p36' }, { a: '谁在打电话？', b: '我妈妈。', pic: 'p30' },
+    { a: '你怎么去北京？', b: '我坐飞机去。', pic: 'p11' }, { a: '你的猫呢？', b: '猫在睡觉。', pic: 'p29' },
+    { a: '她是老师吗？', b: '是，她是我们的老师。', pic: 'p22' }, { a: '你在哪儿工作？', b: '我在医院工作。', pic: 'p17' },
+    { a: '你有狗吗？', b: '有，我家有小狗。', pic: 'p15' }, { a: '他在做什么？', b: '他在写字。', pic: 'p28' },
+    { a: '你买什么了？', b: '我买了衣服。', pic: 'p14' }, { a: '我们看电视，好吗？', b: '好的。', pic: 'p31' },
+    { a: '谁会开车？', b: '我爸爸会开车。', pic: 'p35' }, { a: '你去商店吗？', b: '对，我去买东西。', pic: 'p19' },
+    { a: '你喜欢什么水果？', b: '我喜欢苹果。', pic: 'p01' }, { a: '现在谁在做饭？', b: '妈妈在做饭。', pic: 'p37' },
+    { a: '你的电脑呢？', b: '在桌子上。', pic: 'p09' }, { a: '他是你朋友吗？', b: '是，我们是好朋友。', pic: 'p40' },
+    { a: '你在学习什么？', b: '我在学习汉语。', pic: 'p32' }, { a: '请坐，喝水。', b: '谢谢。', pic: 'p04' },
+  ],
+  /* Аудирование ч.4: услышанный вопрос → выбрать ответ (первый вариант — правильный, движок перемешивает) */
+  QA4: [
+    { say: '你好吗？', opts: ['我很好。', '他是老师。', '三个。'] },
+    { say: '你叫什么名字？', opts: ['我叫小明。', '我八岁。', '在学校。'] },
+    { say: '你是哪国人？', opts: ['我是中国人。', '我很高兴。', '明天。'] },
+    { say: '现在几点？', opts: ['三点。', '三块钱。', '三个人。'] },
+    { say: '你几岁？', opts: ['我七岁。', '七点。', '七个。'] },
+    { say: '你有几个朋友？', opts: ['五个。', '五点。', '五号。'] },
+    { say: '这个多少钱？', opts: ['十块钱。', '十岁。', '十点。'] },
+    { say: '你什么时候回家？', opts: ['下午。', '学校。', '米饭。'] },
+    { say: '你在哪儿？', opts: ['我在家。', '我很好。', '我九岁。'] },
+    { say: '谁是你的老师？', opts: ['李老师。', '我的朋友很多。', '昨天。'] },
+    { say: '你想吃什么？', opts: ['米饭。', '昨天。', '学校。'] },
+    { say: '你会说汉语吗？', opts: ['会一点儿。', '明天见。', '两块。'] },
+    { say: '今天几号？', opts: ['五号。', '五岁。', '五个。'] },
+    { say: '你去学校吗？', opts: ['去。', '谢谢。', '很大。'] },
+    { say: '你妈妈是老师吗？', opts: ['不是，她是医生。', '好的。', '再见。'] },
+    { say: '明天你做什么？', opts: ['我去买东西。', '我叫小美。', '不客气。'] },
+    { say: '你爱喝茶吗？', opts: ['爱喝。', '在商店。', '六点。'] },
+    { say: '那是什么？', opts: ['是我的书。', '是我朋友。', '明天去。'] },
+    { say: '你看见我的猫了吗？', opts: ['看见了，在椅子下。', '十二点。', '是老师的。'] },
+    { say: '我们什么时候吃饭？', opts: ['中午十二点。', '在医院。', '三本书。'] },
+    { say: '谁在睡觉？', opts: ['我儿子。', '后面。', '昨天。'] },
+    { say: '你坐什么去商店？', opts: ['坐出租车。', '喝茶。', '写字。'] },
+    { say: '你的电脑在哪儿？', opts: ['在桌子上。', '九块钱。', '明天买。'] },
+    { say: '下午你想做什么？', opts: ['我想看电影。', '我是学生。', '不谢。'] },
+  ],
+  /* Чтение ч.3: сопоставить вопрос и ответ */
+  QA3: [
+    { q: '你喝什么？', a: '我喝水。' }, { q: '他是谁？', a: '他是我爸爸。' }, { q: '你的书在哪儿？', a: '在桌子上。' },
+    { q: '今天星期几？', a: '星期三。' }, { q: '你有几个苹果？', a: '三个。' }, { q: '她是你妈妈吗？', a: '是的。' },
+    { q: '你什么时候睡觉？', a: '十一点。' }, { q: '你们在哪儿吃饭？', a: '在饭店。' }, { q: '这些字你会写吗？', a: '会写。' },
+    { q: '你的狗大吗？', a: '不大，很小。' }, { q: '谁会做饭？', a: '我妈妈会。' }, { q: '你去哪儿买水果？', a: '去商店。' },
+    { q: '明天下雨吗？', a: '不下雨。' }, { q: '你认识她吗？', a: '认识，她是我同学。' }, { q: '你现在能来吗？', a: '能来。' },
+    { q: '你爱看电视吗？', a: '不爱看。' }, { q: '谁是你的好朋友？', a: '小明。' }, { q: '你几点坐飞机？', a: '上午十点。' },
+    { q: '你想喝茶吗？', a: '想喝，谢谢。' }, { q: '你家在哪儿？', a: '在北京。' }, { q: '猫在哪儿睡觉？', a: '在椅子上。' },
+    { q: '这个杯子是谁的？', a: '是老师的。' }, { q: '你有多少钱？', a: '二十块。' }, { q: '医生在哪儿？', a: '在医院。' },
+    { q: '你女儿几岁了？', a: '六岁了。' }, { q: '我们去看电影，好吗？', a: '好的。' }, { q: '你是学生吗？', a: '不是，我工作了。' },
+    { q: '谁在打电话？', a: '我儿子。' }, { q: '你喜欢这个电影吗？', a: '很喜欢。' }, { q: '昨天你做什么了？', a: '我在家看书。' },
+  ],
+  /* Чтение ч.4: пропуск в предложении (t — текст с ＿＿, ans — слово) */
+  FILL: [
+    { t: '我＿＿去北京。', ans: '想' }, { t: '你＿＿老师吗？', ans: '是' }, { t: '我＿＿一个电脑。', ans: '有' },
+    { t: '他＿＿学校学习。', ans: '在' }, { t: '你＿＿什么名字？', ans: '叫' }, { t: '我们明天＿＿电影。', ans: '看' },
+    { t: '请＿＿茶。', ans: '喝' }, { t: '他中午＿＿米饭。', ans: '吃' }, { t: '你＿＿说汉语吗？', ans: '会' },
+    { t: '这本书＿＿好。', ans: '很' }, { t: '我爸爸＿＿妈妈都是医生。', ans: '和' }, { t: '你要＿＿个苹果？', ans: '几' },
+    { t: '这是＿＿的书？', ans: '谁' }, { t: '我＿＿喜欢下雨。', ans: '不' }, { t: '你去＿＿？', ans: '哪儿' },
+    { t: '现在是三＿＿。', ans: '点' }, { t: '我买了五＿＿书。', ans: '本' }, { t: '你好＿＿？', ans: '吗' },
+    { t: '天气＿＿热了。', ans: '太' }, { t: '我女儿今年八＿＿。', ans: '岁' }, { t: '这个杯子十＿＿钱。', ans: '块' },
+    { t: '我们＿＿是学生。', ans: '都' }, { t: '我＿＿看见你的狗。', ans: '没有' }, { t: '这＿＿椅子很小。', ans: '个' },
+    { t: '你＿＿时候回家？', ans: '什么' }, { t: 'A：谢谢你！ B：＿＿。', ans: '不客气' }, { t: 'A：对不起。 B：＿＿。', ans: '没关系' },
+    { t: '我是老师，＿＿是学生。', ans: '他们' }, { t: '桌子＿＿有一个杯子。', ans: '上' }, { t: '＿＿见！明天见！', ans: '再' },
+  ],
+};
+
+;
+/* Движок настоящего экзамена HSK: собирает случайный вариант из банков по структуре реального экзамена. */
+window.HskReal = (() => {
+  const rnd = n => Math.floor(Math.random() * n);
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const PASS = 0.6;
+
+  const availPics = () => {
+    const av = new Set(window.PICS_AVAILABLE || []);
+    return window.HSK1EXAM.PICS.filter(p => av.has(p.id));
+  };
+  const picById = id => window.HSK1EXAM.PICS.find(p => p.id === id);
+
+  /* Экзамен HSK 1: 听力 4×5 + 阅读 4×5. Вопросы без мгновенной проверки — разбор в конце, как на настоящем. */
+  function buildExam1() {
+    const B = window.HSK1EXAM;
+    const pics = shuffle(availPics());
+    if (pics.length < 16) throw new Error('Мало картинок для экзамена');
+    const avail = new Set(pics.map(p => p.id));
+    const sentPool = shuffle(B.SENT.filter(s => avail.has(s.pic)));
+    const dlgPool = shuffle(B.DLG.filter(d => avail.has(d.pic)));
+    let picCursor = 0;
+    const takePics = n => pics.slice(picCursor, picCursor += n);
+    const qs = [];
+    /* Слушание ч.1: слово + картинка → 对/错 */
+    for (const p of takePics(5)) {
+      const truth = Math.random() < 0.5;
+      const other = pics[picCursor + rnd(pics.length - picCursor - 1)] || pics[0];
+      qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? p.h : other.h, pic: p.id, correct: truth ? 0 : 1 });
+    }
+    /* Слушание ч.2: предложение → выбрать картинку из 3 */
+    const l2 = sentPool.slice(0, 5);
+    for (const it of l2) {
+      const wrong = shuffle(pics.filter(p => p.id !== it.pic)).slice(0, 2);
+      const opts = shuffle([it.pic, ...wrong.map(w => w.id)]);
+      qs.push({ sec: 'listening', part: 2, type: 'pickpic', say: it.say, pics: opts, correct: opts.indexOf(it.pic) });
+    }
+    /* Слушание ч.3: диалог → картинка */
+    for (const it of dlgPool.slice(0, 5)) {
+      const wrong = shuffle(pics.filter(p => p.id !== it.pic)).slice(0, 2);
+      const opts = shuffle([it.pic, ...wrong.map(w => w.id)]);
+      qs.push({ sec: 'listening', part: 3, type: 'pickpic', say: [it.a, it.b], pics: opts, correct: opts.indexOf(it.pic) });
+    }
+    /* Слушание ч.4: вопрос → выбрать ответ (текст) */
+    for (const it of shuffle(B.QA4).slice(0, 5)) {
+      const order = shuffle([0, 1, 2]);
+      qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: order.map(i => it.opts[i]), correct: order.indexOf(0) });
+    }
+    /* Чтение ч.1: картинка + слово → 对/错 */
+    for (const p of takePics(5)) {
+      const truth = Math.random() < 0.5;
+      const other = pics[rnd(picCursor - 5)] || pics[0];
+      const w = truth ? p : (other.id === p.id ? pics[(pics.indexOf(p) + 1) % pics.length] : other);
+      qs.push({ sec: 'reading', part: 1, type: 'tf', text: w.h, textPy: w.py, pic: p.id, correct: truth ? 0 : 1 });
+    }
+    /* Чтение ч.2: предложение (текстом) → картинка */
+    const r2 = sentPool.slice(5, 10);
+    for (const it of r2) {
+      const wrong = shuffle(pics.filter(p => p.id !== it.pic)).slice(0, 2);
+      const opts = shuffle([it.pic, ...wrong.map(w => w.id)]);
+      qs.push({ sec: 'reading', part: 2, type: 'pickpic', text: it.say, pics: opts, correct: opts.indexOf(it.pic) });
+    }
+    /* Чтение ч.3: вопрос ↔ ответ, общий пул из 6 */
+    const qa = shuffle(B.QA3).slice(0, 6);
+    const pool3 = shuffle(qa.map(x => x.a));
+    qa.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 3, type: 'pool', text: it.q, pool: pool3, answer: it.a }));
+    /* Чтение ч.4: пропуск ↔ слово, общий пул из 6 */
+    const fills = shuffle(B.FILL).slice(0, 6);
+    const pool4 = shuffle(fills.map(x => x.ans));
+    fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', text: it.t, pool: pool4, answer: it.ans }));
+    return qs;
+  }
+
+  const SPEC1 = {
+    level: 1, max: 200, pass: 120, readingSec: 17 * 60, answerSec: 12,
+    sections: { listening: { zh: '听力', ru: 'Аудирование', total: 20 }, reading: { zh: '阅读', ru: 'Чтение', total: 20 } },
+    partRules: {
+      'listening-1': 'Вы услышите слово. Верна ли картинка? Аудио прозвучит два раза.',
+      'listening-2': 'Вы услышите предложение. Выберите картинку, которая ему соответствует.',
+      'listening-3': 'Вы услышите диалог. Выберите подходящую картинку.',
+      'listening-4': 'Вы услышите вопрос. Выберите правильный ответ.',
+      'reading-1': 'Соответствует ли слово картинке? Выберите 对 (верно) или 错 (неверно).',
+      'reading-2': 'Прочитайте предложение и выберите картинку.',
+      'reading-3': 'Подберите ответ к вопросу из общего списка.',
+      'reading-4': 'Выберите слово, которое подходит в пропуск.',
+    },
+  };
+  /* Подсчёт: каждая секция из 100, итог из 200 */
+  function score(questions) {
+    const out = { sections: {}, score: 0 };
+    for (const sec of ['listening', 'reading']) {
+      const qs = questions.filter(q => q.sec === sec);
+      const correct = qs.filter(q => q.ok).length;
+      const pts = qs.length ? Math.round(correct / qs.length * 100) : 0;
+      out.sections[sec] = { correct, total: qs.length, points: pts };
+      out.score += pts;
+    }
+    out.passed = out.score >= SPEC1.pass;
+    return out;
+  }
+  const checkTF = (q, idx) => idx === q.correct;
+  return { buildExam1, SPEC1, score, availPics, picById, shuffle };
+})();
+
+;
 /* Хранилище-сейф: версия схемы данных, резервная копия перед миграцией, миграции только вперёд и без удаления.
    Правило: обновление приложения никогда не стирает прогресс; неизвестные поля сохраняются как есть. */
 window.Vault = (() => {
@@ -2906,9 +3152,58 @@ window.Vault = (() => {
 })();
 
 ;
+/* Пуши Наставника Луна: подписка, отчёт о дневных очках на сервер. Всё анонимно — только подписка и числа. */
+window.Push = (() => {
+  const CONF = window.PUSH_CONF || { url: '', key: '' };
+  const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const standalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  function b64ToU8(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : '';
+    const bin = atob(s + pad);
+    return new Uint8Array([...bin].map(c => c.charCodeAt(0)));
+  }
+  async function getSub() {
+    try { const reg = await navigator.serviceWorker.getRegistration(); return reg ? await reg.pushManager.getSubscription() : null; } catch (e) { return null; }
+  }
+  async function status() {
+    if (!CONF.url) return 'unconfigured';
+    if (!supported()) return 'unsupported';
+    if (Notification.permission === 'denied') return 'denied';
+    return (await getSub()) ? 'on' : 'off';
+  }
+  async function enable() {
+    const reg = await navigator.serviceWorker.ready;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('разрешение не дано');
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(CONF.key) });
+    const r = await fetch(CONF.url + '/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sub: sub.toJSON(), tz: -new Date().getTimezoneOffset() }) });
+    if (!r.ok) throw new Error('сервер не принял подписку');
+    return true;
+  }
+  async function disable() {
+    const sub = await getSub();
+    if (sub) {
+      try { await fetch(CONF.url + '/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) }); } catch (e) { /* ignore */ }
+      await sub.unsubscribe();
+    }
+  }
+  /* Отчёт: сколько очков сегодня — чтобы сервер знал, ругаться ли и как сильно */
+  async function report(t) {
+    try {
+      if (!CONF.url) return;
+      const sub = await getSub();
+      if (!sub) return;
+      fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+  return { CONF, supported, standalone, status, enable, disable, report };
+})();
+
+;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260823-2121';
+  const VERSION = '20260823-2301';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2994,6 +3289,7 @@ window.App = (() => {
     const chests = Campaign.grantChests(c, state.attempts);
     await persistNow();
     updateBadge();
+    Push.report(after);
     return { cap: !before.done && after.done, ultra: !before.ultra && after.ultra, rankUp: ra > rb, rank: ra, points: a.points, chest: chests > 0 };
   }
 
@@ -3249,6 +3545,12 @@ window.App = (() => {
         <input type="file" id="import-file" accept="application/json,.json" style="display:none">
       </div>
       <div class="panel">
+        <div class="flabel">Уведомления Наставника Луна</div>
+        <div class="hint" id="push-box" style="margin-top:0">Проверяю…</div>
+        <div class="btns mt0" id="push-btns"></div>
+        <div class="hint">Пуши приходят с полудня, пока не набран Переход, и мрачнеют к вечеру (не чаще 4 в день, до 23:00). Работают только у приложения с экрана «Домой», iOS 16.4+. На сервер уходят только анонимная подписка и число очков за день.</div>
+      </div>
+      <div class="panel">
         <div class="flabel">Опасная зона</div>
         <div class="btns mt0"><button class="btn btn-danger btn-block" data-action="clear-stats">Очистить всю статистику</button><button class="btn btn-danger btn-block" data-action="clear-decks">Удалить все свои колоды</button></div>
       </div>
@@ -3261,6 +3563,14 @@ window.App = (() => {
       </div>`;
     },
     mount() {
+      (async () => {
+        const box = $('#push-box'), btns = $('#push-btns');
+        if (!box) return;
+        const st = await Push.status();
+        const msg = { unconfigured: 'Сервер уведомлений готовится — кнопка появится после его запуска.', unsupported: Push.standalone() ? 'Это устройство не поддерживает веб-пуши.' : 'Откройте приложение с иконки на экране «Домой» — в Safari пуши не работают.', denied: 'Уведомления запрещены. Разрешите их: Настройки iPhone → 字卡 → Уведомления.', off: 'Выключены.', on: 'Включены ✓ — Лун напомнит о переходе.' }[st];
+        box.textContent = msg;
+        btns.innerHTML = st === 'off' ? '<button class="btn btn-primary btn-block" data-action="push-on">Включить напоминания</button>' : st === 'on' ? '<button class="btn btn-secondary btn-block" data-action="push-off">Выключить</button>' : '';
+      })();
       Vault.listBackups().then(list => { const el = $('#backup-info'); if (el) el.textContent = list.length ? 'Резервные копии в хранилище: ' + list.map(b => (b.key === 'backup:auto' ? 'ежедневная' : 'перед обновлением схемы ' + b.schema) + ' (' + fmt.date(b.at) + ', попыток ' + b.attempts + ')').join('; ') + '. Обновления приложения прогресс не трогают.' : 'Резервные копии появятся после первого дня использования. Обновления приложения прогресс не трогают.'; });
       const inp = $('#import-file');
       if (inp) inp.addEventListener('change', async () => {
@@ -3281,6 +3591,12 @@ window.App = (() => {
   actions['set-theme'] = el => { state.settings.theme = el.dataset.val; applyTheme(); persist(); render(); };
   actions['export-all'] = async () => { const ok = await shareJSON(exportData(), 'zika-backup-' + Stats.dayKey(Date.now()) + '.json'); if (ok) toast('Копия подготовлена'); };
   actions['import-all'] = () => { const i = $('#import-file'); if (i) i.click(); };
+  actions['push-on'] = async el => {
+    el.disabled = true;
+    try { await Push.enable(); toast('Напоминания включены — Лун на связи'); } catch (e) { toast('Не получилось: ' + e.message, 3500); }
+    render();
+  };
+  actions['push-off'] = async () => { await Push.disable(); toast('Напоминания выключены'); render(); };
   actions['clear-stats'] = async () => {
     if (!await confirm('Удалить все ' + fmt.plural(state.attempts.length, 'попытку', 'попытки', 'попыток') + ' и статистику по карточкам? Это необратимо.', { ok: 'Удалить', danger: true, title: 'Очистить статистику' })) return;
     await Store.clearAttempts(); state.attempts = []; state.cardStats = {}; toast('Статистика очищена'); render();
@@ -3336,6 +3652,7 @@ window.App = (() => {
     render();
     updateBadge();
     setTimeout(maybeNag, 1200);
+    Push.report(Campaign.todayState(state.campaign, state.attempts));
     registerSW();
     const sp = $('#splash'); if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 400); }
     if (state.storeMode === 'mem') toast('Режим превью: данные не сохраняются между запусками', 4000);
@@ -3882,8 +4199,9 @@ window.App = (() => {
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>
-      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button><button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button></div>
-      <button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>`;
+      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level === 1 ? `<button class="btn btn-primary" data-action="hsk-real-info">Экзамен HSK 1</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
+      ${d.level === 1 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="1">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
+      ${d.level === 1 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
   }
   views.hsk = {
     render() {
@@ -3898,6 +4216,15 @@ window.App = (() => {
     quiz = { cfg: { deckIds: ['hsk' + level], mode: 'quiz', show: 'exam', guess: [], difficulty: 'exam', count: spec.count, order: 'random', timer: spec.timer }, kind: 'hsk', level, deckIds: ['hsk' + level], questions, i: 0, startedAt: Date.now(), qStart: Date.now(), answered: false, flipped: false, timerId: null, timeLeft: 0 };
     nav('quiz');
   }
+  actions['hsk-real-info'] = () => {
+    const spec = HskReal.SPEC1;
+    sheet(`<h3 class="sh-t">Экзамен HSK 1 · настоящий формат</h3><div class="install-note">
+      <p><b>听力 Аудирование</b> — 20 вопросов, 4 части: слово и картинка (对/错), предложение → картинка, диалог → картинка, вопрос → ответ. Каждое аудио звучит два раза, на ответ ${spec.answerSec} с.</p>
+      <p><b>阅读 Чтение</b> — 20 вопросов, 4 части: слово и картинка, предложение → картинка, подбор ответов, слово в пропуск. Время секции — ${Math.round(spec.readingSec / 60)} минут.</p>
+      <p>Проверка только в конце. Секции по 100 баллов, сдано от ${spec.pass} из ${spec.max}. Вариант каждый раз собирается заново.</p>
+      <p class="muted">У уровней 2 и 3 настоящий формат появится следом; пока там словарный тест.</p></div>
+      <button class="btn btn-primary btn-block mt" data-action="hsk-real-1">Начать экзамен</button>`);
+  };
   actions['hsk-test'] = el => {
     const level = +el.dataset.level, spec = Quiz.EXAM[level];
     const parts = [`${spec.count - spec.write} ${spec.write ? 'вопросов на чтение' : 'вопросов'}: иероглиф${spec.pinyin ? ' с пиньинем' : ' без пиньиня'} → перевод и перевод → иероглиф, выбор из 4${spec.similar ? ' похожих' : ''}`];
@@ -3906,6 +4233,178 @@ window.App = (() => {
     sheet(`<h3 class="sh-t">Экзамен HSK ${level}</h3><div class="install-note">${parts.map(t => `<p>${esc(t)}.</p>`).join('')}<p class="muted">Формат фиксированный, как на экзамене. Потренироваться с выбором сложности — кнопка «Учить».</p></div><button class="btn btn-primary btn-block mt" id="hgo">Начать экзамен</button>`, s => {
       $('#hgo', s).onclick = () => { closeSheet(); startExam(level); };
     });
+  };
+})();
+
+;
+/* Плеер настоящего экзамена HSK: секции, автопроигрывание аудио дважды, таймеры, разбор в конце. */
+(() => {
+  const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, LABELS, fmt, saveAttempt, render } = App;
+  let ex = null; /* { qs, i, phase: 'intro'|'part'|'q'|'done', level, spec, startedAt, secDeadline, answerTimer, audioRun } */
+
+  const picImg = id => `<img class="ex-pic" src="${IMG_URL('pic-' + id)}" alt="" draggable="false">`;
+
+  function startExam1() {
+    if (!Speech.available()) return toast('Для секции 听力 нужен китайский голос: Настройки iPhone → Универсальный доступ → Устный контент → Голоса', 5000);
+    let qs;
+    try { qs = HskReal.buildExam1(); } catch (e) { return toast(e.message, 4000); }
+    ex = { qs, i: -1, phase: 'intro', level: 1, spec: HskReal.SPEC1, startedAt: Date.now(), qStart: 0, secDeadline: 0, answerTimer: null, audioRun: 0 };
+    nav('exam');
+  }
+  actions['hsk-real-1'] = startExam1;
+
+  function stopTimers() { if (ex && ex.answerTimer) { clearInterval(ex.answerTimer); ex.answerTimer = null; } try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+  function partKey(q) { return q.sec + '-' + q.part; }
+
+  views.exam = {
+    render() {
+      if (!ex) return '<div class="empty">Экзамен не запущен.</div><div class="btns"><button class="btn btn-primary btn-block" data-go="hsk" data-replace>К HSK</button></div>';
+      const spec = ex.spec;
+      if (ex.phase === 'intro') {
+        return `<div class="vh"><button class="icon-btn" data-action="exam-quit">✕</button><div class="grow"><h1 class="title">Экзамен HSK ${ex.level}</h1><div class="sub">настоящий формат</div></div></div>
+        <div class="panel ornate"><div class="flabel">Структура</div><div class="install-note">
+        <p><b>听力 Аудирование</b> — ${spec.sections.listening.total} вопросов, 4 части. Каждое аудио звучит <b>два раза</b>, на ответ ${spec.answerSec} секунд, назад вернуться нельзя.</p>
+        <p><b>阅读 Чтение</b> — ${spec.sections.reading.total} вопросов, 4 части, общее время ${Math.round(spec.readingSec / 60)} минут.</p>
+        <p>Проверка — только в конце, как на настоящем экзамене. Каждая секция даёт до 100 баллов; сдано от ${spec.pass} из ${spec.max}.</p>
+        <p>Вариант собирается заново из банка заданий — повторы от попытки к попытке маловероятны.</p></div></div>
+        <button class="btn btn-primary btn-block btn-lg" data-action="exam-next" data-nosound>开始 · Начать</button>`;
+      }
+      if (ex.phase === 'part') {
+        const q = ex.qs[ex.i + 1];
+        const sec = spec.sections[q.sec];
+        return `<div class="vh"><button class="icon-btn" data-action="exam-quit">✕</button><div class="grow"><h1 class="title">${sec.zh} · часть ${q.part}</h1><div class="sub">${sec.ru}</div></div></div>
+        <div class="panel ornate"><div class="install-note"><p>${spec.partRules[partKey(q)]}</p></div></div>
+        ${q.sec === 'reading' && ex.qs[ex.i] && ex.qs[ex.i].sec === 'listening' ? `<div class="hint" style="text-align:center;margin-bottom:10px">Секция 听力 закончена. На чтение — ${Math.round(spec.readingSec / 60)} минут, таймер пойдёт сейчас.</div>` : ''}
+        <button class="btn btn-primary btn-block btn-lg" data-action="exam-next" data-nosound>继续 · Дальше</button>`;
+      }
+      if (ex.phase === 'q') {
+        const q = ex.qs[ex.i];
+        const n = ex.i + 1, total = ex.qs.length;
+        const isL = q.sec === 'listening';
+        const head = `<div class="qbar"><button class="icon-btn" data-action="exam-quit">✕</button><div class="progress"><i style="width:${ex.i / total * 100}%"></i></div><div class="qcount">${n}/${total}</div><div class="qtimer" id="extimer">·</div></div>`;
+        let prompt = '';
+        if (isL) prompt = `<div class="ex-audio"><span class="say-ico" id="say-ico">🔊</span><div class="hint">${q.part === 3 ? 'Диалог' : 'Аудио'} прозвучит два раза</div></div>`;
+        else if (q.type === 'tf') prompt = `<div class="ex-word"><span class="hanzi" style="font-size:44px">${esc(q.text)}</span><div class="pinyin">${esc(q.textPy || '')}</div></div>`;
+        else prompt = `<div class="hanzi sent-q" style="font-size:26px">${esc(q.text)}</div>`;
+        let answerUi = '';
+        if (q.type === 'tf') answerUi = `${picImg(q.pic)}<div class="btns row2 mt"><button class="btn btn-jade ex-opt" data-action="exam-answer" data-idx="0" data-nosound>对 · верно</button><button class="btn btn-danger ex-opt" data-action="exam-answer" data-idx="1" data-nosound>错 · неверно</button></div>`;
+        else if (q.type === 'pickpic') answerUi = `<div class="ex-pics">${q.pics.map((p, i) => `<button class="ex-picbtn" data-action="exam-answer" data-idx="${i}" data-nosound><span class="ex-letter">${'ABC'[i]}</span>${picImg(p)}</button>`).join('')}</div>`;
+        else if (q.type === 'opts') answerUi = `<div class="opts">${q.opts.map((o, i) => `<button class="opt opt-txt" data-action="exam-answer" data-idx="${i}" data-nosound><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>`;
+        else if (q.type === 'pool') {
+          const used = new Set(ex.qs.filter(x => x !== q && x.type === 'pool' && x.pool === q.pool && x.given != null).map(x => x.given));
+          answerUi = `<div class="opts">${q.pool.map((o, i) => `<button class="opt opt-txt" data-action="exam-answer" data-idx="${i}" ${used.has(o) ? 'disabled' : ''} data-nosound><span class="ex-letter">${'ABCDEF'[i]}</span><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>`;
+        }
+        return head + `<div class="panel ornate qcard" style="min-height:auto">${prompt}</div>` + answerUi;
+      }
+      return '';
+    },
+    mount() {
+      if (!ex) return;
+      if (ex.phase === 'q') runQuestion();
+    },
+  };
+
+  async function playAudio(q, run) {
+    const texts = Array.isArray(q.say) ? q.say : [q.say];
+    for (let r = 0; r < 2; r++) {
+      if (!ex || ex.qs[ex.i] !== q || ex.audioRun !== run) return;
+      const ico = $('#say-ico'); if (ico) ico.classList.add('talking');
+      for (const t of texts) {
+        if (!ex || ex.audioRun !== run) return;
+        await Speech.speak(t);
+        await new Promise(rs => setTimeout(rs, 500));
+      }
+      if (ico) ico.classList.remove('talking');
+      if (r === 0) await new Promise(rs => setTimeout(rs, 1400));
+    }
+  }
+  function runQuestion() {
+    const q = ex.qs[ex.i];
+    ex.qStart = Date.now();
+    const el = $('#extimer');
+    if (q.sec === 'listening') {
+      ex.audioRun++;
+      const run = ex.audioRun;
+      const deadline = Date.now() + 1000 * (ex.spec.answerSec + (Array.isArray(q.say) ? 14 : 8));
+      playAudio(q, run);
+      ex.answerTimer = setInterval(() => {
+        const left = Math.ceil((deadline - Date.now()) / 1000);
+        if (el) el.textContent = left;
+        if (left <= 0) { answer(q, -1, true); }
+      }, 250);
+    } else {
+      ex.answerTimer = setInterval(() => {
+        const left = Math.ceil((ex.secDeadline - Date.now()) / 1000);
+        if (el) el.textContent = left > 60 ? Math.ceil(left / 60) + ' мин' : left;
+        if (left <= 0) { finishExam(true); }
+      }, 250);
+    }
+  }
+  function answer(q, idx, timeout) {
+    if (!ex || q.given != null || q.ok != null) return;
+    stopTimers();
+    if (q.type === 'tf' || q.type === 'pickpic' || q.type === 'opts') { q.givenIdx = idx; q.ok = idx === q.correct; q.given = idx < 0 ? null : String(idx); }
+    else { const val = idx < 0 ? null : q.pool[idx]; q.given = val; q.ok = val === q.answer; }
+    q.ms = Date.now() - ex.qStart;
+    if (timeout) toast('Время вышло');
+    Sound.click();
+    advance();
+  }
+  actions['exam-answer'] = el => { if (ex && ex.phase === 'q') answer(ex.qs[ex.i], +el.dataset.idx, false); };
+  actions['exam-next'] = () => { if (ex) advance(); };
+  function advance() {
+    stopTimers();
+    const prev = ex.i >= 0 ? ex.qs[ex.i] : null;
+    const next = ex.qs[ex.i + 1];
+    if (!next) return finishExam(false);
+    if (ex.phase === 'intro' || ex.phase === 'q') {
+      const newPart = !prev || prev.sec !== next.sec || prev.part !== next.part;
+      if (ex.phase === 'q' && !newPart) { ex.i++; render(); return; }
+      if (ex.phase === 'intro' || newPart) { ex.phase = 'part'; render(); return; }
+    }
+    if (ex.phase === 'part') {
+      if (next.sec === 'reading' && (!prev || prev.sec === 'listening') && !ex.secDeadline) ex.secDeadline = Date.now() + ex.spec.readingSec * 1000;
+      ex.i++; ex.phase = 'q'; render(); return;
+    }
+  }
+  actions['exam-quit'] = () => {
+    if (!ex) return;
+    stopTimers();
+    sheet(`<h3 class="sh-t">Прервать экзамен?</h3><p style="color:var(--ink-2)">Результат не будет сохранён — на настоящем экзамене выйти и вернуться нельзя.</p><div class="btns"><button class="btn btn-danger btn-block" id="eq">Прервать</button><button class="btn btn-secondary btn-block" id="ec">Продолжить</button></div>`, s => {
+      $('#eq', s).onclick = () => { closeSheet(); ex = null; nav('hsk', {}, { replace: true }); };
+      $('#ec', s).onclick = () => { closeSheet(); if (ex.phase === 'q') { App.render(); } };
+    });
+  };
+  function finishExam(timeUp) {
+    stopTimers();
+    for (const q of ex.qs) if (q.ok == null) { q.ok = false; q.given = null; }
+    const res = HskReal.score(ex.qs);
+    const spec = ex.spec;
+    const a = {
+      id: uid(), ts: ex.startedAt, endedAt: Date.now(), durationMs: Date.now() - ex.startedAt,
+      mode: 'hsk', format: 'real', level: ex.level, difficulty: 'exam',
+      deckIds: ['hsk' + ex.level], deckName: 'Экзамен HSK ' + ex.level, show: 'exam', guess: ['all'], order: 'random', timer: 0,
+      total: ex.qs.length, planned: ex.qs.length, aborted: false,
+      correct: ex.qs.filter(q => q.ok).length, partial: 0, wrong: ex.qs.filter(q => !q.ok).length,
+      percent: Math.round(ex.qs.filter(q => q.ok).length / ex.qs.length * 100),
+      score: res.score, examMax: spec.max, passed: res.passed, sections: res.sections,
+      questions: ex.qs.map(q => ({ cardId: 'ex1:' + q.sec + q.part, hanzi: q.type === 'tf' ? (q.say || q.text) : (Array.isArray(q.say) ? q.say.join(' ') : (q.say || q.text)), pinyin: '', ru: LABELS.part.answer + ': ' + (q.type === 'pool' ? q.answer : q.type === 'opts' ? q.opts[q.correct] : q.correct === 0 ? '对' : '错'), show: q.sec, guess: [String(q.part)], answer: { given: q.given }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0 })),
+    };
+    a.points = Campaign.attemptPoints(a);
+    const finished = ex; ex = null;
+    saveAttempt(a).then(() => { Sound.finish(a.passed); nav('exam-result', { id: a.id }, { replace: true }); });
+  }
+  views['exam-result'] = {
+    render(p) {
+      const a = state.attempts.find(x => x.id === p.id);
+      if (!a || !a.sections) return '<div class="empty">Результат не найден</div>';
+      const stamp = `<div class="stamp ${a.passed ? 'pass' : 'fail'}">${a.passed ? '合格' : '不合格'}<small>${a.passed ? 'сдан' : 'не сдан'}</small></div>`;
+      const secRow = (id, zh, ru) => { const s = a.sections[id]; return `<div class="fb-row"><span class="fb-p" style="min-width:110px">${zh} ${ru}</span><span class="fb-a">${s.correct} из ${s.total}</span><span class="fb-v"><b>${s.points}</b> / 100</span></div>`; };
+      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">Экзамен HSK ${a.level}</h1><div class="sub">настоящий формат · ${fmt.dur(a.durationMs)}</div></div></div>
+      <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${secRow('listening', '听力', 'Аудирование')}${secRow('reading', '阅读', 'Чтение')}</div>${stamp}</div>
+      ${App.Profile.resultPanel(a, null)}
+      <div class="btns"><button class="btn btn-primary btn-block" data-action="hsk-real-1">Ещё вариант</button><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор ответов</button><button class="btn btn-secondary btn-block" data-go="hsk">К HSK</button></div>`;
+    },
   };
 })();
 

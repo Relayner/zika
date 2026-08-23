@@ -284,3 +284,35 @@ t('dragon moods', () => {
   Dragon.PHRASES.forEach(l => assert.ok(l.length >= 6));
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'new modes groups passed');
+
+/* ── настоящий экзамен HSK 1 ── */
+global.window.PICS_AVAILABLE = ['p01','p02','p03','p04','p05','p06','p07','p08','p09','p10','p11','p12','p13','p14','p15','p16','p17','p18','p19','p20','p21','p22','p23','p24','p25','p26','p27','p28','p29'];
+for (const f of ['hsk1exam', 'hskreal']) require('../src/js/' + f + '.js');
+const { HskReal, HSK1EXAM } = global;
+t('real exam build', () => {
+  for (let iter = 0; iter < 5; iter++) {
+    const qs = HskReal.buildExam1();
+    assert.equal(qs.length, 40);
+    assert.equal(qs.filter(q => q.sec === 'listening').length, 20);
+    assert.equal(qs.filter(q => q.sec === 'reading').length, 20);
+    for (let part = 1; part <= 4; part++) {
+      assert.equal(qs.filter(q => q.sec === 'listening' && q.part === part).length, 5);
+      assert.equal(qs.filter(q => q.sec === 'reading' && q.part === part).length, 5);
+    }
+    const avail = new Set(global.window.PICS_AVAILABLE);
+    for (const q of qs) {
+      if (q.pic) assert.ok(avail.has(q.pic), 'pic available ' + q.pic);
+      if (q.pics) { assert.equal(q.pics.length, 3); q.pics.forEach(p => assert.ok(avail.has(p))); assert.ok(q.correct >= 0 && q.correct < 3); }
+      if (q.type === 'opts') { assert.equal(q.opts.length, 3); assert.ok(q.correct >= 0 && q.correct < 3); }
+      if (q.type === 'pool') { assert.equal(q.pool.length, 6); assert.ok(q.pool.includes(q.answer)); }
+    }
+    const l2pics = qs.filter(q => q.sec === 'listening' && q.part === 2).map(q => q.pics[q.correct]);
+    const r2pics = qs.filter(q => q.sec === 'reading' && q.part === 2).map(q => q.pics[q.correct]);
+    assert.ok(!l2pics.some(p => r2pics.includes(p)), 'L2 и R2 не пересекаются');
+    const tf1 = qs.filter(q => q.type === 'tf');
+    for (const q of tf1) if (q.correct === 1) { const pic = HSK1EXAM.PICS.find(p => p.id === q.pic); assert.notEqual(q.say || q.text, pic.h, 'ложное — слово не совпадает с картинкой'); }
+  }
+  const sc = HskReal.score([{ sec: 'listening', ok: true }, { sec: 'listening', ok: false }, { sec: 'reading', ok: true }]);
+  assert.equal(sc.sections.listening.points, 50); assert.equal(sc.sections.reading.points, 100); assert.equal(sc.score, 150); assert.equal(sc.passed, true);
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'real exam group passed');

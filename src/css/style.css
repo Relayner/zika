@@ -475,3 +475,17 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .dragon.m-3 { border-color: var(--vermilion); background: linear-gradient(160deg, var(--card), rgba(90, 20, 20, .18)); box-shadow: 0 0 16px rgba(196, 55, 31, .25); }
 .dragon.m-3 .dragon-img { border-color: var(--vermilion); box-shadow: 0 0 12px rgba(196, 55, 31, .5); animation: pulse 1.6s infinite alternate; }
 .dragon-big { width: 60%; max-width: 220px; border-radius: 50%; border: 3px solid var(--vermilion); box-shadow: 0 0 20px rgba(196, 55, 31, .4); margin: 0 auto 10px; display: block; }
+
+/* ── настоящий экзамен HSK ── */
+.ex-pic { display: block; width: 62%; max-width: 220px; margin: 10px auto 0; border-radius: 14px; border: 2px solid var(--line-2); }
+.ex-pics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ex-picbtn { position: relative; border: 2px solid var(--line-2); border-radius: 12px; background: var(--card); padding: 4px; }
+.ex-picbtn img { width: 100%; border-radius: 9px; display: block; }
+.ex-picbtn:active { transform: scale(.96); }
+.ex-letter { position: absolute; left: 6px; top: 6px; z-index: 2; background: var(--bordeaux); color: #fff3e0; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 1px 7px; }
+.opt .ex-letter { position: static; margin-right: 8px; }
+.ex-audio { text-align: center; padding: 8px 0; }
+.say-ico { font-size: 52px; display: inline-block; }
+.say-ico.talking { animation: pulse .5s infinite alternate; }
+.ex-word { text-align: center; }
+.ex-opt { font-size: 19px; }

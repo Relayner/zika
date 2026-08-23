@@ -20,5 +20,23 @@ window.Speech = (() => {
       return true;
     } catch (e) { return false; }
   }
-  return { say, available, zhVoice };
+  /* Проговорить и дождаться конца (для экзамена): resolve по onend, страховка по таймауту */
+  function speak(text, rate = 0.78) {
+    return new Promise(res => {
+      if (!ok) return res(false);
+      try {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(String(text));
+        const v = zhVoice();
+        if (v) u.voice = v;
+        u.lang = 'zh-CN'; u.rate = rate;
+        let done = false;
+        const fin = () => { if (!done) { done = true; res(true); } };
+        u.onend = fin; u.onerror = fin;
+        setTimeout(fin, 1500 + String(text).length * 450);
+        speechSynthesis.speak(u);
+      } catch (e) { res(false); }
+    });
+  }
+  return { say, speak, available, zhVoice };
 })();

@@ -59,6 +59,51 @@ DRAGONS = {
     'dragon-3': DRAGON + 'Stern angry expression, brows knitted, arms crossed, small puffs of smoke from the nostrils.',
     'dragon-4': DRAGON + 'Ominous menacing look, narrowed glowing eyes, looming pose with raised claws, dark storm cloud and a small lightning bolt behind, twilight mood.',
 }
+PIC = 'Simple flat illustration for a language exam card: '
+PIC_STYLE = ' Single clear subject, centered, large in frame, no decorative frame, no ornament, no text. Stylized flat poster style, limited palette of vermilion red, burgundy, antique gold, jade green, warm beige; plain solid warm beige background.'
+CAT_PIC = 'the same chubby orange tabby cat character with cream muzzle, '
+PICS = {
+    'pic-p01': 'a red apple',
+    'pic-p02': 'a cup of hot tea with steam',
+    'pic-p03': 'a bowl of white rice with chopsticks',
+    'pic-p04': 'a clear glass of water',
+    'pic-p05': 'an empty ceramic cup',
+    'pic-p06': 'a wooden table',
+    'pic-p07': 'a wooden chair',
+    'pic-p08': 'a closed book',
+    'pic-p09': 'an open laptop computer',
+    'pic-p10': 'a television set',
+    'pic-p11': 'a passenger airplane in the sky',
+    'pic-p12': 'a taxi car, side view',
+    'pic-p13': 'chinese yuan banknotes and coins',
+    'pic-p14': 'a folded shirt and trousers, clothes',
+    'pic-p15': 'a happy dog sitting',
+    'pic-p16': 'a grey cat sitting, side view',
+    'pic-p17': 'a hospital building with a red cross',
+    'pic-p18': 'a school building with a flag',
+    'pic-p19': 'a small shop storefront',
+    'pic-p20': 'a cozy house',
+    'pic-p21': CAT_PIC + 'as a doctor in a white coat with a stethoscope',
+    'pic-p22': CAT_PIC + 'as a teacher pointing at a blackboard',
+    'pic-p23': CAT_PIC + 'as a student with a backpack and books',
+    'pic-p24': 'a basket of fruits: apples, bananas, grapes',
+    'pic-p25': CAT_PIC + 'eating a bowl of rice with chopsticks',
+    'pic-p26': CAT_PIC + 'drinking tea from a cup',
+    'pic-p27': CAT_PIC + 'reading an open book',
+    'pic-p28': CAT_PIC + 'writing with a brush at a desk',
+    'pic-p29': CAT_PIC + 'sleeping in a bed with a blanket',
+    'pic-p30': CAT_PIC + 'talking on a mobile phone',
+    'pic-p31': CAT_PIC + 'watching television on a sofa',
+    'pic-p32': CAT_PIC + 'studying at a desk with books and a lamp',
+    'pic-p33': CAT_PIC + 'working on a laptop at a desk',
+    'pic-p34': CAT_PIC + 'carrying shopping bags',
+    'pic-p35': CAT_PIC + 'driving a car, visible through the car window',
+    'pic-p36': 'rainy weather: dark cloud, falling rain and an umbrella',
+    'pic-p37': CAT_PIC + 'cooking in a wok at a stove',
+    'pic-p38': CAT_PIC + 'as a father cat in a vest reading a newspaper',
+    'pic-p39': CAT_PIC + 'as a mother cat in an apron holding a teapot',
+    'pic-p40': 'two happy cats standing together as friends',
+}
 CHESTS = {
     'chest-closed': 'An ancient Chinese lacquered wooden treasure chest with bronze fittings and a big bronze lock, closed, centered, slightly from above.',
     'chest-open': 'An ancient Chinese lacquered wooden treasure chest with bronze fittings, lid open, golden light and glowing treasures spilling out, centered, slightly from above.',
@@ -69,6 +114,7 @@ def jobs():
     for k, d in TREASURES.items(): out.append((f'treasure-{k}', ITEM + d + '. ' + STYLE))
     for k, d in CHESTS.items(): out.append((k, d + ' ' + STYLE))
     for k, d in DRAGONS.items(): out.append((k, d + ' ' + STYLE))
+    for k, d in PICS.items(): out.append((k, PIC + d + '.' + PIC_STYLE))
     return out
 
 def ensure_style():

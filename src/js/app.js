@@ -86,6 +86,7 @@ window.App = (() => {
     const chests = Campaign.grantChests(c, state.attempts);
     await persistNow();
     updateBadge();
+    Push.report(after);
     return { cap: !before.done && after.done, ultra: !before.ultra && after.ultra, rankUp: ra > rb, rank: ra, points: a.points, chest: chests > 0 };
   }
 
@@ -341,6 +342,12 @@ window.App = (() => {
         <input type="file" id="import-file" accept="application/json,.json" style="display:none">
       </div>
       <div class="panel">
+        <div class="flabel">Уведомления Наставника Луна</div>
+        <div class="hint" id="push-box" style="margin-top:0">Проверяю…</div>
+        <div class="btns mt0" id="push-btns"></div>
+        <div class="hint">Пуши приходят с полудня, пока не набран Переход, и мрачнеют к вечеру (не чаще 4 в день, до 23:00). Работают только у приложения с экрана «Домой», iOS 16.4+. На сервер уходят только анонимная подписка и число очков за день.</div>
+      </div>
+      <div class="panel">
         <div class="flabel">Опасная зона</div>
         <div class="btns mt0"><button class="btn btn-danger btn-block" data-action="clear-stats">Очистить всю статистику</button><button class="btn btn-danger btn-block" data-action="clear-decks">Удалить все свои колоды</button></div>
       </div>
@@ -353,6 +360,14 @@ window.App = (() => {
       </div>`;
     },
     mount() {
+      (async () => {
+        const box = $('#push-box'), btns = $('#push-btns');
+        if (!box) return;
+        const st = await Push.status();
+        const msg = { unconfigured: 'Сервер уведомлений готовится — кнопка появится после его запуска.', unsupported: Push.standalone() ? 'Это устройство не поддерживает веб-пуши.' : 'Откройте приложение с иконки на экране «Домой» — в Safari пуши не работают.', denied: 'Уведомления запрещены. Разрешите их: Настройки iPhone → 字卡 → Уведомления.', off: 'Выключены.', on: 'Включены ✓ — Лун напомнит о переходе.' }[st];
+        box.textContent = msg;
+        btns.innerHTML = st === 'off' ? '<button class="btn btn-primary btn-block" data-action="push-on">Включить напоминания</button>' : st === 'on' ? '<button class="btn btn-secondary btn-block" data-action="push-off">Выключить</button>' : '';
+      })();
       Vault.listBackups().then(list => { const el = $('#backup-info'); if (el) el.textContent = list.length ? 'Резервные копии в хранилище: ' + list.map(b => (b.key === 'backup:auto' ? 'ежедневная' : 'перед обновлением схемы ' + b.schema) + ' (' + fmt.date(b.at) + ', попыток ' + b.attempts + ')').join('; ') + '. Обновления приложения прогресс не трогают.' : 'Резервные копии появятся после первого дня использования. Обновления приложения прогресс не трогают.'; });
       const inp = $('#import-file');
       if (inp) inp.addEventListener('change', async () => {
@@ -373,6 +388,12 @@ window.App = (() => {
   actions['set-theme'] = el => { state.settings.theme = el.dataset.val; applyTheme(); persist(); render(); };
   actions['export-all'] = async () => { const ok = await shareJSON(exportData(), 'zika-backup-' + Stats.dayKey(Date.now()) + '.json'); if (ok) toast('Копия подготовлена'); };
   actions['import-all'] = () => { const i = $('#import-file'); if (i) i.click(); };
+  actions['push-on'] = async el => {
+    el.disabled = true;
+    try { await Push.enable(); toast('Напоминания включены — Лун на связи'); } catch (e) { toast('Не получилось: ' + e.message, 3500); }
+    render();
+  };
+  actions['push-off'] = async () => { await Push.disable(); toast('Напоминания выключены'); render(); };
   actions['clear-stats'] = async () => {
     if (!await confirm('Удалить все ' + fmt.plural(state.attempts.length, 'попытку', 'попытки', 'попыток') + ' и статистику по карточкам? Это необратимо.', { ok: 'Удалить', danger: true, title: 'Очистить статистику' })) return;
     await Store.clearAttempts(); state.attempts = []; state.cardStats = {}; toast('Статистика очищена'); render();
@@ -428,6 +449,7 @@ window.App = (() => {
     render();
     updateBadge();
     setTimeout(maybeNag, 1200);
+    Push.report(Campaign.todayState(state.campaign, state.attempts));
     registerSW();
     const sp = $('#splash'); if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 400); }
     if (state.storeMode === 'mem') toast('Режим превью: данные не сохраняются между запусками', 4000);
