@@ -10,17 +10,16 @@
     const rp = Campaign.rankProgress(days);
     return { c, today, days, rp, rank: R()[rp.idx], idx: rp.idx, peak: Math.max(c.rankPeak || 0, rp.idx) };
   }
-  /* Полоса дня: линейная шкала 0…Марш-бросок, отметка Перехода на своём месте (1/5) */
+  /* Полоса дня: линейная шкала 0…Марш-бросок; подписи стоят под своими рисками, остаток — отдельной строкой */
   function todayBar(t, compact) {
     const capPos = Campaign.CAP / Campaign.ULTRA * 100;
     const w = Math.min(100, t.points / Campaign.ULTRA * 100);
-    const left = t.done ? `${Campaign.NAMES.cap} ✓` : `До перехода ${pt(t.toCap)}`;
-    const right = t.ultra ? `${Campaign.NAMES.ultraZh} ${Campaign.NAMES.ultra} ✓` : `До марш-броска ${pt(t.toUltra)}`;
-    const status = t.ultra ? `${Campaign.NAMES.ultraZh} ${Campaign.NAMES.ultra}! День зачтён за два` : t.done ? `${Campaign.NAMES.cap} зачтён ✓ · набрано ${pt(t.points)} из ${Campaign.ULTRA}` : `Набрано ${pt(t.points)} очк. · до перехода ${pt(t.toCap)}, до марш-броска ${pt(t.toUltra)}`;
+    const zh = Campaign.NAMES.ultraZh;
+    const status = t.ultra ? `${zh} Марш-бросок! День зачтён за два` : t.done ? `Переход зачтён ✓ · до марш-броска ещё ${pt(t.toUltra)}` : `Ещё ${pt(t.toCap)} до перехода · ${pt(t.toUltra)} до марш-броска`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      ${compact ? `<div class="tbar-line">${left} · ${right}</div>` : `<div class="tbar-labels"><span>${left}</span><span class="r">${right}</span></div>`}
-      ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
+      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${Campaign.CAP} · переход${t.done ? ' ✓' : ''}</span><span class="end">${Campaign.ULTRA} · ${zh}${t.ultra ? ' ✓' : ''}</span></div>
+      <div class="tbar-status ${compact ? 'small' : ''}">${status}</div></div>`;
   }
   function dayBar(days, idx) {
     const n = Campaign.TOTAL_DAYS, per = Campaign.DAYS_PER_RANK;

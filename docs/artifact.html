@@ -372,11 +372,12 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .tbar.ultra .tbar-track i { background: linear-gradient(90deg, var(--gold), var(--gold-2)); box-shadow: 0 0 10px rgba(227,193,112,.7); }
 .tbar-mark { position: absolute; top: -4px; width: 3px; height: 20px; border-radius: 2px; background: var(--jade); transform: translateX(-50%); }
 .tbar-mark.end { left: 100%; background: var(--gold); }
-.tbar-labels { position: relative; height: 16px; margin-top: 6px; font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
-.tbar-labels span { position: absolute; left: 0; top: 0; white-space: nowrap; }
-.tbar-labels .mid { left: 50%; transform: translateX(-50%); }
-.tbar-labels .r { left: auto; right: 0; }
-.tbar-status { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.tbar-ticks { position: relative; height: 15px; margin-top: 5px; font-size: 10.5px; color: var(--ink-3); font-weight: 600; letter-spacing: .01em; }
+.tbar-ticks span { position: absolute; top: 0; white-space: nowrap; }
+.tbar-ticks .cap { transform: translateX(-2px); }
+.tbar-ticks .end { right: 0; }
+.tbar-status { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.3; }
+.tbar-status.small { font-size: 11.5px; }
 .tbar.done .tbar-status { color: var(--jade); font-weight: 600; }
 .tbar.ultra .tbar-status { color: var(--gold); font-weight: 700; }
 .step { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
@@ -455,7 +456,6 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .reveal-card.big { max-width: 260px; margin: 0 auto; padding: 12px; font-size: 13px; opacity: 1; animation: none; }
 .reveal-card.big .inv-n { font-size: 24px; }
 @keyframes reveal { from { opacity: 0; transform: translateY(16px) scale(.8); } to { opacity: 1; transform: none; } }
-.tbar-line { margin-top: 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 </style>
 <div id="app">
@@ -2033,7 +2033,7 @@ window.Vault = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260823-0658';
+  const VERSION = '20260823-0918';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2878,17 +2878,16 @@ window.App = (() => {
     const rp = Campaign.rankProgress(days);
     return { c, today, days, rp, rank: R()[rp.idx], idx: rp.idx, peak: Math.max(c.rankPeak || 0, rp.idx) };
   }
-  /* Полоса дня: линейная шкала 0…Марш-бросок, отметка Перехода на своём месте (1/5) */
+  /* Полоса дня: линейная шкала 0…Марш-бросок; подписи стоят под своими рисками, остаток — отдельной строкой */
   function todayBar(t, compact) {
     const capPos = Campaign.CAP / Campaign.ULTRA * 100;
     const w = Math.min(100, t.points / Campaign.ULTRA * 100);
-    const left = t.done ? `${Campaign.NAMES.cap} ✓` : `До перехода ${pt(t.toCap)}`;
-    const right = t.ultra ? `${Campaign.NAMES.ultraZh} ${Campaign.NAMES.ultra} ✓` : `До марш-броска ${pt(t.toUltra)}`;
-    const status = t.ultra ? `${Campaign.NAMES.ultraZh} ${Campaign.NAMES.ultra}! День зачтён за два` : t.done ? `${Campaign.NAMES.cap} зачтён ✓ · набрано ${pt(t.points)} из ${Campaign.ULTRA}` : `Набрано ${pt(t.points)} очк. · до перехода ${pt(t.toCap)}, до марш-броска ${pt(t.toUltra)}`;
+    const zh = Campaign.NAMES.ultraZh;
+    const status = t.ultra ? `${zh} Марш-бросок! День зачтён за два` : t.done ? `Переход зачтён ✓ · до марш-броска ещё ${pt(t.toUltra)}` : `Ещё ${pt(t.toCap)} до перехода · ${pt(t.toUltra)} до марш-броска`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      ${compact ? `<div class="tbar-line">${left} · ${right}</div>` : `<div class="tbar-labels"><span>${left}</span><span class="r">${right}</span></div>`}
-      ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
+      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${Campaign.CAP} · переход${t.done ? ' ✓' : ''}</span><span class="end">${Campaign.ULTRA} · ${zh}${t.ultra ? ' ✓' : ''}</span></div>
+      <div class="tbar-status ${compact ? 'small' : ''}">${status}</div></div>`;
   }
   function dayBar(days, idx) {
     const n = Campaign.TOTAL_DAYS, per = Campaign.DAYS_PER_RANK;
