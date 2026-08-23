@@ -14,22 +14,26 @@ window.App = (() => {
   };
   const views = {}, actions = {};
   const LABELS = {
-    part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', all: 'Всё остальное' },
+    part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Карточки', exam: 'Экзамен' },
-    mode: { quiz: 'Тест', flip: 'Карточки', write: 'Письмо', hsk: 'HSK-тест' },
+    mode: { quiz: 'Тест', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'HSK-тест' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
   const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
+  builtinDecks.push({ id: 'freq1', name: 'Частотные слова', builtin: true, level: null, desc: 'сверх HSK 1–3' });
   const hskCards = [];
-  [1, 2, 3].forEach(l => window.HSK[l].forEach((e, i) => hskCards.push({ id: 'hsk' + l + ':' + e[0], hanzi: e[0], pinyin: e[1], ru: e[2], note: '', deckId: 'hsk' + l, builtin: true })));
+  [1, 2, 3].forEach(l => window.HSK[l].forEach(e => hskCards.push({ id: 'hsk' + l + ':' + e[0], hanzi: e[0], pinyin: e[1], ru: e[2], note: '', deckId: 'hsk' + l, builtin: true })));
+  const freqCards = window.FREQ.map(e => ({ id: 'freq1:' + e[0], hanzi: e[0], pinyin: e[1], ru: e[2], note: '', deckId: 'freq1', builtin: true }));
+  const builtinCards = [...hskCards, ...freqCards];
+  const sentCards = window.Sentences.ITEMS.map(it => ({ id: 'sent:' + it.id, hanzi: it.q, pinyin: it.a[0], ru: it.ru, note: '', deckId: null, builtin: true }));
   const cardIndex = {};
-  function reindex() { for (const k in cardIndex) delete cardIndex[k]; hskCards.forEach(c => { cardIndex[c.id] = c; }); state.cards.forEach(c => { cardIndex[c.id] = c; }); }
+  function reindex() { for (const k in cardIndex) delete cardIndex[k]; builtinCards.forEach(c => { cardIndex[c.id] = c; }); sentCards.forEach(c => { cardIndex[c.id] = c; }); state.cards.forEach(c => { cardIndex[c.id] = c; }); }
   const allDecks = () => [...state.decks, ...builtinDecks];
   const deckById = id => allDecks().find(d => d.id === id);
-  const cardsOfDeck = id => (String(id).startsWith('hsk') ? hskCards : state.cards).filter(c => c.deckId === id);
+  const cardsOfDeck = id => (String(id).startsWith('hsk') || String(id).startsWith('freq') ? builtinCards : state.cards).filter(c => c.deckId === id);
   const cardsOfDecks = ids => ids.flatMap(cardsOfDeck);
   function deckAccuracy(cards) {
     let asked = 0, correct = 0;
@@ -40,12 +44,31 @@ window.App = (() => {
 
   /* ── сохранение ── */
   let saveTimer = null;
-  function persist() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      try { await Store.set('settings', state.settings); await Store.set('decks', state.decks); await Store.set('cards', state.cards); if (state.campaign) await Store.set('campaign', state.campaign); if (state.meta) await Store.set('meta', state.meta); }
-      catch (e) { toast('Не удалось сохранить: ' + e.message); }
-    }, 120);
+  async function persistNow() {
+    clearTimeout(saveTimer); saveTimer = null;
+    try { await Store.set('settings', state.settings); await Store.set('decks', state.decks); await Store.set('cards', state.cards); if (state.campaign) await Store.set('campaign', state.campaign); if (state.meta) await Store.set('meta', state.meta); }
+    catch (e) { toast('Не удалось сохранить: ' + e.message); }
+  }
+  function persist() { clearTimeout(saveTimer); saveTimer = setTimeout(persistNow, 120); }
+  /* При сворачивании или закрытии — записать немедленно, не дожидаясь дебаунса */
+  window.addEventListener('pagehide', () => { persistNow(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistNow(); });
+  const PENDING_KEY = 'zika:pendingAttempts';
+  function stashPending(a) {
+    try { const l = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); l.push(a); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); } catch (e) { /* ignore */ }
+  }
+  async function flushPending() {
+    let l = [];
+    try { l = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) { return; }
+    if (!l.length) return;
+    try {
+      await Store.putAttempts(l);
+      const have = new Set(state.attempts.map(a => a.id));
+      for (const a of l) if (!have.has(a.id)) state.attempts.push(a);
+      state.attempts.sort((x, y) => x.ts - y.ts);
+      localStorage.removeItem(PENDING_KEY);
+      toast('Восстановлено несохранённых попыток: ' + l.length, 3000);
+    } catch (e) { /* останутся до следующего запуска */ }
   }
   async function saveAttempt(a) {
     if (a.points == null) a.points = Campaign.attemptPoints(a);
@@ -54,12 +77,15 @@ window.App = (() => {
     const before = Campaign.todayState(c, state.attempts), rb = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));
     state.attempts.push(a);
     state.cardStats = Stats.cardStats(state.attempts);
-    try { await Store.putAttempt(a); } catch (e) { toast('Попытка не сохранена: ' + e.message); }
+    try { await Store.putAttempt(a); } catch (e) {
+      try { await Store.putAttempt(a); } catch (e2) { stashPending(a); toast('Попытка сохранена в резервную очередь — запишется при следующем запуске', 3500); }
+    }
     Campaign.process(c, state.attempts);
     const after = Campaign.todayState(c, state.attempts), ra = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));
     c.rankPeak = Math.max(c.rankPeak || 0, ra);
     const chests = Campaign.grantChests(c, state.attempts);
-    persist();
+    await persistNow();
+    updateBadge();
     return { cap: !before.done && after.done, ultra: !before.ultra && after.ultra, rankUp: ra > rb, rank: ra, points: a.points, chest: chests > 0 };
   }
 
@@ -217,6 +243,31 @@ window.App = (() => {
     return { decks: decks.length, cards: cards.length, attempts: attempts.length };
   }
 
+  /* Бейдж на иконке: после полудня, пока переход не набран */
+  function updateBadge() {
+    try {
+      if (!('setAppBadge' in navigator)) return;
+      const t = Campaign.todayState(state.campaign || Campaign.create(), state.attempts);
+      if (!t.done && new Date().getHours() >= 12 && state.campaign && state.campaign.startedAt) navigator.setAppBadge(1);
+      else navigator.clearAppBadge && navigator.clearAppBadge();
+    } catch (e) { /* ignore */ }
+  }
+  /* Панель Наставника Луна на главной */
+  function dragonPanel() {
+    const ds = Dragon.state(state.campaign, state.attempts);
+    if (!ds) return '';
+    return `<div class="panel dragon m-${ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div><button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button></div></div>`;
+  }
+  function maybeNag() {
+    const ds = Dragon.state(state.campaign, state.attempts);
+    if (!ds || ds.mood < 2) return;
+    const today = Stats.dayKey(Date.now());
+    if (state.settings.dragonDay === today) return;
+    state.settings.dragonDay = today; persist();
+    Sound.fail();
+    sheet(`<div class="rankup-card"><img class="dragon-big" src="${IMG_URL(ds.img)}" alt=""><div class="rank-ru">${esc(ds.title)}</div><div class="bio" style="font-size:15px;margin-top:8px">${esc(ds.text)}</div></div><div class="btns"><button class="btn btn-primary btn-block" data-go="setup">Тренироваться</button><button class="btn btn-secondary btn-block" data-close>Позже</button></div>`);
+  }
+
   /* ── главная ── */
   const PROVERBS = [
     ['学而时习之，不亦说乎', 'xué ér shí xí zhī, bú yì yuè hū', 'Учиться и вовремя повторять — разве это не радость?'],
@@ -249,6 +300,7 @@ window.App = (() => {
       return `
       <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Карточки китайского · HSK 1–3</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
       ${App.Profile.homePanel()}
+      ${dragonPanel()}
       <div class="panel ornate hero">
         <div class="hero-greet">${greet}</div>
         <div class="hero-row">
@@ -370,8 +422,12 @@ window.App = (() => {
     state.cardStats = Stats.cardStats(state.attempts);
     applyTheme(); Sound.setEnabled(state.settings.sound !== false); Sound.install();
     try { history.replaceState({ view: 'home', params: {} }, ''); } catch (e) { /* ignore */ }
+    await flushPending();
+    state.cardStats = Stats.cardStats(state.attempts);
     state.ready = true;
     render();
+    updateBadge();
+    setTimeout(maybeNag, 1200);
     registerSW();
     const sp = $('#splash'); if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 400); }
     if (state.storeMode === 'mem') toast('Режим превью: данные не сохраняются между запусками', 4000);
@@ -382,6 +438,6 @@ window.App = (() => {
     VERSION, state, views, actions, LABELS, fmt, esc, attr, uid, $, $$,
     builtinDecks, hskCards, cardIndex, reindex, allDecks, deckById, cardsOfDeck, cardsOfDecks, deckAccuracy, accClass,
     persist, saveAttempt, nav, back, render, toast, flash, sheet, closeSheet, confirm, renderPart, attemptRow, questionRow, answerText,
-    exportData, importData, shareJSON, downloadText, boot,
+    exportData, importData, shareJSON, downloadText, boot, updateBadge, persistNow,
   };
 })();

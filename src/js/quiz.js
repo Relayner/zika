@@ -1,7 +1,7 @@
 /* Движок тестов: отбор карточек, генерация вопросов и вариантов, проверка ответов, подсчёт. */
 window.Quiz = (() => {
   const PARTS = ['hanzi', 'pinyin', 'ru'];
-  const MULT = { easy: 1, medium: 1.5, hard: 2, flip: 1 };
+  const MULT = { easy: 1, medium: 1.5, hard: 2.5, flip: 1 };
   const OPTIONS = { easy: 4, medium: 8 };
   const rnd = n => Math.floor(Math.random() * n);
   function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -93,6 +93,55 @@ window.Quiz = (() => {
     return { options, answerIdx: options.findIndex(o => o.cardId === card.id) };
   }
 
+  /* ── аудирование ── */
+  function buildListen(cards, cfg, cardStats) {
+    const picked = pickCards(cards, cfg, cardStats || {});
+    return picked.map(card => {
+      const q = { cardId: card.id, show: 'audio', guess: ['answer'], kind: 'listen', card };
+      if (cfg.difficulty === 'easy') { Object.assign(q, makeOptions(card, cards, ['pinyin'], 4, false)); q.optionParts = ['hanzi', 'pinyin', 'ru']; }
+      else if (cfg.difficulty === 'medium') { Object.assign(q, makeOptions(card, cards, ['pinyin'], 8, true)); q.optionParts = ['hanzi']; }
+      return q;
+    });
+  }
+  function checkListen(q, input) {
+    const v = String(input || '').trim();
+    if (!v) return { parts: { answer: 'wrong' }, fraction: 0, ok: false };
+    if (hanziMatch(q.card.hanzi, v)) return { parts: { answer: 'exact' }, fraction: 1, ok: true };
+    const r = Pinyin.compare(q.card.pinyin, v);
+    if (r === 'exact') return { parts: { answer: 'exact' }, fraction: 1, ok: true };
+    if (r === 'tones') return { parts: { answer: 'tones' }, fraction: 0.5, ok: false };
+    return { parts: { answer: 'wrong' }, fraction: 0, ok: false };
+  }
+
+  /* ── фразы ── */
+  const normZh = s2 => String(s2 || '').replace(/[\s。，、？！?!.,:;·…“”"'’‘（）()]/g, '');
+  function makeTextOptions(correct, poolTexts, n, similar) {
+    const seen = new Set([correct]), uniq = [];
+    for (const t of poolTexts) { if (seen.has(t)) continue; seen.add(t); uniq.push(t); }
+    let chosen;
+    if (similar) chosen = uniq.map(t => [-Math.abs(t.length - correct.length) + ([...t].some(ch => correct.includes(ch)) ? 1.5 : 0) + Math.random(), t]).sort((a, b) => b[0] - a[0]).slice(0, n - 1).map(x => x[1]);
+    else chosen = shuffle(uniq.slice()).slice(0, n - 1);
+    const options = shuffle([correct, ...chosen]).map(t => ({ text: t }));
+    return { options, answerIdx: options.findIndex(o => o.text === correct) };
+  }
+  function buildSentence(items, cfg, cardStats) {
+    const wrapped = items.map(it => ({ id: 'sent:' + it.id, it }));
+    const picked = pickCards(wrapped, cfg, cardStats || {});
+    const poolTexts = items.map(it => it.a[0]);
+    return picked.map(w => {
+      const it = w.it;
+      const q = { cardId: w.id, show: 'sentence', guess: ['answer'], kind: 'sentence', sent: it, card: { hanzi: it.q, pinyin: it.a[0], ru: it.ru } };
+      if (cfg.difficulty === 'easy') Object.assign(q, makeTextOptions(it.a[0], poolTexts, 4, false));
+      else if (cfg.difficulty === 'medium') Object.assign(q, makeTextOptions(it.a[0], poolTexts, 8, true));
+      return q;
+    });
+  }
+  function checkSentence(q, input) {
+    const inp = normZh(input);
+    const ok = !!inp && q.sent.a.some(v => normZh(v) === inp);
+    return { parts: { answer: ok ? 'exact' : 'wrong' }, fraction: ok ? 1 : 0, ok };
+  }
+
   /* Экзаменационный формат HSK — фиксированный, по духу HSK 2.0:
      1–2: пиньинь подписан, выбор из 4; 3: без пиньиня + часть «написание иероглифов». Порог 60 %. */
   const EXAM = {
@@ -175,5 +224,5 @@ window.Quiz = (() => {
     };
   }
 
-  return { PARTS, MULT, OPTIONS, EXAM, buildQuestions, buildExam, checkChoice, checkInput, scoreAttempt, ruMatch, hanziMatch, shuffle, similarity };
+  return { PARTS, MULT, OPTIONS, EXAM, buildQuestions, buildExam, buildListen, buildSentence, checkListen, checkSentence, normZh, checkChoice, checkInput, scoreAttempt, ruMatch, hanziMatch, shuffle, similarity };
 })();

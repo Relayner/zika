@@ -1,8 +1,28 @@
-/* Тренировка: настройка, тест (варианты / ввод / переворот), таймер, результат, HSK-тесты. */
+/* Тренировка: пять режимов с раздельными настройками (тест, карточки, письмо, аудирование, фразы),
+   экраны вопросов, результат, HSK-экзамены фиксированного формата. */
 (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, confirm, persist, LABELS, fmt, renderPart, cardsOfDeck, cardsOfDecks, allDecks, deckById, hskCards, cardIndex, saveAttempt, flash, questionRow, render, builtinDecks } = App;
-  const DEF = { deckIds: ['hsk1'], mode: 'quiz', show: 'hanzi', guess: ['pinyin', 'ru'], difficulty: 'easy', count: 20, order: 'random', timer: 0 };
-  const DIFF_HINT = { easy: '4 варианта ответа.', medium: '8 вариантов, и они похожи на правильный: те же тоны, слоги, близкие переводы.', hard: 'Ввод с клавиатуры. Пиньинь проверяется с тонами (можно цифрами: ni3 hao3), для иероглифов нужна китайская клавиатура iOS.' };
+
+  const MODES = ['quiz', 'flip', 'write', 'listen', 'sentence'];
+  const MODE_TITLES = { quiz: 'Тест', flip: 'Карточки', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
+  const MODE_HINTS = {
+    quiz: 'Вопрос — ответ: варианты или ввод, с оценкой.',
+    flip: 'Смотрите, переворачивайте, отмечайте «знал / не знал».',
+    write: 'Набираете иероглифы с китайской клавиатуры iPhone.',
+    listen: 'Слово произносится вслух — определите, что сказали.',
+    sentence: 'Вопрос по-китайски — дайте ответ иероглифами.',
+  };
+  const DEF_BY = {
+    quiz: { deckIds: ['hsk1'], show: 'hanzi', guess: ['pinyin', 'ru'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
+    flip: { deckIds: ['hsk1'], show: 'hanzi', count: 20, order: 'random', timer: 0 },
+    write: { deckIds: ['hsk1'], difficulty: 'easy', count: 10, order: 'random', timer: 0 },
+    listen: { deckIds: ['hsk1', 'hsk2', 'hsk3', 'freq1'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
+    sentence: { difficulty: 'easy', count: 10, order: 'random', timer: 0 },
+  };
+  const DIFF_HINT = { easy: '4 варианта ответа.', medium: '8 вариантов, похожих на правильный.', hard: 'Ввод с клавиатуры: пиньинь с тонами (можно цифрами), для иероглифов — китайская клавиатура.' };
+  const WRITE_HINT = { easy: 'Показываем перевод и пиньинь — вы набираете иероглифы.', medium: 'Только пиньинь — нужно вспомнить, какие иероглифы так читаются.', hard: 'Только перевод — нужно вспомнить и чтение, и написание.' };
+  const LISTEN_HINT = { easy: 'Выбор из 4: иероглиф, пиньинь и перевод.', medium: '8 похожих по звучанию, только иероглифы.', hard: 'Ввод: иероглифы или пиньинь с тонами.' };
+  const SENT_HINT = { easy: 'Вопрос с пиньинем и переводом, выбор из 4 ответов.', medium: 'Только вопрос по-китайски, 8 похожих ответов.', hard: 'Ответ набирается иероглифами.' };
   const EXAM_FORMAT = {
     1: '20 вопросов · выбор из 4 · пиньинь подписан · 20 с на вопрос · порог 120 из 200',
     2: '30 вопросов · выбор из 4 похожих · пиньинь подписан · 20 с на вопрос · порог 120 из 200',
@@ -10,36 +30,70 @@
   };
   let setup = null, quiz = null, lastEvents = null;
 
+  /* ── настройки: свой блок на каждый режим ── */
+  function migrateFlat(ls) { const m = {}; for (const k of ['deckIds', 'show', 'guess', 'difficulty', 'count', 'order', 'timer']) if (ls[k] != null) m[k] = ls[k]; return m; }
   function getSetup() {
-    if (!setup) setup = Object.assign({}, DEF, state.settings.lastSetup || {});
-    setup.deckIds = (setup.deckIds || []).filter(id => deckById(id));
-    if (!setup.deckIds.length) setup.deckIds = ['hsk1'];
-    if (!Array.isArray(setup.guess) || !setup.guess.length) setup.guess = ['pinyin', 'ru'];
+    if (!setup) {
+      const ls = state.settings.lastSetup || {};
+      const by = ls.byMode || {};
+      setup = { mode: MODES.includes(ls.mode) ? ls.mode : 'quiz', byMode: {} };
+      for (const m of MODES) setup.byMode[m] = Object.assign({}, DEF_BY[m], by[m] || (!ls.byMode && (ls.mode === m || (m === 'quiz' && !MODES.includes(ls.mode))) ? migrateFlat(ls) : {}));
+    }
+    for (const m of MODES) {
+      const c = setup.byMode[m];
+      if (c.deckIds) { c.deckIds = c.deckIds.filter(id => deckById(id)); if (!c.deckIds.length) c.deckIds = DEF_BY[m].deckIds.slice(); }
+      if (c.guess) { c.guess = c.guess.filter(p => Quiz.PARTS.includes(p)); if (!c.guess.length) c.guess = ['pinyin', 'ru']; }
+    }
     return setup;
   }
-  const seg = (s, key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${String(s[key]) === String(v) ? 'on' : ''}" data-action="setup-set" data-key="${key}" data-val="${v}">${l}</button>`).join('')}</div>`;
-  const chip = (on, label, act, arg) => `<button class="chip ${on ? 'on' : ''}" data-action="${act}" data-arg="${esc(arg)}">${label}</button>`;
+  const cur = () => getSetup().byMode[getSetup().mode];
+  function saveSetup() { state.settings.lastSetup = JSON.parse(JSON.stringify(getSetup())); persist(); }
 
-  const WRITE_HINT = { easy: 'Показываем перевод и пиньинь — вы набираете иероглифы.', medium: 'Только пиньинь — нужно вспомнить, какие иероглифы так читаются.', hard: 'Только перевод — нужно вспомнить и чтение, и написание.' };
+  const seg = (c, key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${String(c[key]) === String(v) ? 'on' : ''}" data-action="setup-set" data-key="${key}" data-val="${v}">${l}</button>`).join('')}</div>`;
+  const chip = (on, label, act, arg) => `<button class="chip ${on ? 'on' : ''}" data-action="${act}" data-arg="${esc(arg)}">${label}</button>`;
+  function pointsLine(mode, diff) {
+    const b = Campaign.BASE;
+    const v = mode === 'flip' ? b.flip : (b[mode] || b.quiz)[diff];
+    return `Очки похода: ×${v} за верный ответ.`;
+  }
   views.setup = {
     render() {
-      const s = getSetup(), n = cardsOfDecks(s.deckIds).length, isQuiz = s.mode === 'quiz', isWrite = s.mode === 'write';
-      const planned = s.count === 'all' ? n : Math.min(n, +s.count);
-      const modeHint = isQuiz ? 'Вопрос — ответ: варианты или ввод с клавиатуры, с оценкой.' : isWrite ? 'Набираете иероглифы с китайской клавиатуры iPhone — по переводу и/или пиньиню.' : 'Смотрите, переворачивайте, отмечайте «знал / не знал».';
-      return `<div class="vh"><div class="seal">练</div><div class="grow"><h1 class="title">Тренировка</h1><div class="sub">Настройте и начните</div></div></div>
-      <div class="panel"><div class="flabel">Колоды <span class="muted">· карточек: ${n}</span></div><div class="chips">${allDecks().map(d => chip(s.deckIds.includes(d.id), esc(d.name) + ` <small>${cardsOfDeck(d.id).length}</small>`, 'setup-deck', d.id)).join('')}</div></div>
-      <div class="panel"><div class="flabel">Режим</div>${seg(s, 'mode', [['quiz', 'Тест'], ['flip', 'Карточки'], ['write', 'Письмо 写']])}<div class="hint">${modeHint}</div>${isWrite ? '<button class="btn btn-secondary btn-sm btn-block mt" data-action="kbd-tip">Как включить китайскую клавиатуру</button>' : ''}</div>
-      ${isWrite ? '' : `<div class="panel"><div class="flabel">Показывать</div>${seg(s, 'show', [['hanzi', 'Иероглиф'], ['pinyin', 'Пиньинь'], ['ru', 'Перевод'], ['mixed', 'Смешанно']])}
-        ${s.show !== 'mixed' ? `<div class="flabel mt">Угадывать</div><div class="chips">${Quiz.PARTS.filter(p => p !== s.show).map(p => chip(s.guess.includes(p), LABELS.part[p], 'setup-guess', p)).join('')}</div>${isQuiz && s.guess.includes('hanzi') ? '<div class="hint">Иероглифы на сложном уровне вводятся с китайской клавиатуры; на лёгком и среднем — выбор из вариантов.</div>' : ''}` : '<div class="hint">Направление меняется от вопроса к вопросу; угадываются обе остальные части.</div>'}</div>`}
-      ${isQuiz ? `<div class="panel"><div class="flabel">Сложность</div>${seg(s, 'difficulty', [['easy', 'Лёгкий'], ['medium', 'Средний'], ['hard', 'Сложный']])}<div class="hint">${DIFF_HINT[s.difficulty]} Балл: ${LABELS.diff[s.difficulty].toLowerCase()} ×${Quiz.MULT[s.difficulty]}.</div></div>` : ''}
-      ${isWrite ? `<div class="panel"><div class="flabel">Сложность</div>${seg(s, 'difficulty', [['easy', 'Лёгкий'], ['medium', 'Средний'], ['hard', 'Сложный']])}<div class="hint">${WRITE_HINT[s.difficulty]} Балл ×${Quiz.MULT[s.difficulty]}.</div></div>` : ''}
-      <div class="panel"><div class="flabel">Сколько карточек</div>${seg(s, 'count', [[10, '10'], [20, '20'], [30, '30'], [50, '50'], ['all', 'Все']])}
-        <div class="flabel mt">Порядок</div>${seg(s, 'order', [['random', 'Случайно'], ['weak', 'Сначала слабые'], ['new', 'Сначала новые']])}
-        ${isQuiz || isWrite ? `<div class="flabel mt">Таймер на вопрос</div>${seg(s, 'timer', [[0, 'Нет'], [10, '10 с'], [20, '20 с'], [30, '30 с']])}` : ''}</div>
-      <button class="btn btn-primary btn-block btn-lg" data-action="setup-start" ${n < 1 ? 'disabled' : ''}>Начать${n ? ' · ' + fmt.plural(planned, 'карточка', 'карточки', 'карточек') : ''}</button>
-      ${n < 1 ? '<div class="hint" style="text-align:center">В выбранных колодах нет карточек.</div>' : ''}`;
+      const s = getSetup(), m = s.mode, c = s.byMode[m];
+      const isQuiz = m === 'quiz', hasDecks = !!c.deckIds, hasDiff = m !== 'flip';
+      const n = m === 'sentence' ? Sentences.ITEMS.length : cardsOfDecks(c.deckIds || []).length;
+      const planned = c.count === 'all' ? n : Math.min(n, +c.count);
+      const counts = m === 'sentence' ? [[5, '5'], [10, '10'], [20, '20'], ['all', 'Все']] : [[10, '10'], [20, '20'], [30, '30'], [50, '50'], ['all', 'Все']];
+      const diffHint = m === 'write' ? WRITE_HINT[c.difficulty] : m === 'listen' ? LISTEN_HINT[c.difficulty] : m === 'sentence' ? SENT_HINT[c.difficulty] : DIFF_HINT[c.difficulty];
+      return `<div class="vh"><div class="seal">练</div><div class="grow"><h1 class="title">Тренировка</h1><div class="sub">У каждого режима — свои настройки</div></div></div>
+      <div class="panel"><div class="flabel">Режим</div><div class="chips">${MODES.map(x => chip(x === m, MODE_TITLES[x], 'setup-mode', x)).join('')}</div><div class="hint">${MODE_HINTS[m]}</div>
+        ${m === 'write' ? '<button class="btn btn-secondary btn-sm btn-block mt" data-action="kbd-tip">Как включить китайскую клавиатуру</button>' : ''}
+        ${m === 'listen' && !Speech.available() ? '<div class="warn mt">Китайский голос не найден. iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Китайский, затем перезапустите приложение.</div>' : ''}
+        ${m === 'sentence' ? `<div class="hint">В банке ${Sentences.ITEMS.length} фраз — вопросы с однозначным ответом.</div>` : ''}</div>
+      ${hasDecks ? `<div class="panel"><div class="flabel">Колоды <span class="muted">· карточек: ${n}</span></div><div class="chips">${allDecks().map(d => chip(c.deckIds.includes(d.id), esc(d.name) + ` <small>${cardsOfDeck(d.id).length}</small>`, 'setup-deck', d.id)).join('')}</div></div>` : ''}
+      ${isQuiz ? `<div class="panel"><div class="flabel">Показывать</div>${seg(c, 'show', [['hanzi', 'Иероглиф'], ['pinyin', 'Пиньинь'], ['ru', 'Перевод'], ['mixed', 'Смешанно']])}
+        ${c.show !== 'mixed' ? `<div class="flabel mt">Угадывать</div><div class="chips">${Quiz.PARTS.filter(p => p !== c.show).map(p => chip(c.guess.includes(p), LABELS.part[p], 'setup-guess', p)).join('')}</div>` : '<div class="hint">Направление меняется от вопроса к вопросу.</div>'}</div>` : ''}
+      ${m === 'flip' ? `<div class="panel"><div class="flabel">Показывать сначала</div>${seg(c, 'show', [['hanzi', 'Иероглиф'], ['pinyin', 'Пиньинь'], ['ru', 'Перевод']])}</div>` : ''}
+      ${hasDiff ? `<div class="panel"><div class="flabel">Сложность</div>${seg(c, 'difficulty', [['easy', 'Лёгкий'], ['medium', 'Средний'], ['hard', 'Сложный']])}<div class="hint">${diffHint} ${pointsLine(m, c.difficulty)}</div></div>` : ''}
+      <div class="panel"><div class="flabel">Сколько за подход</div>${seg(c, 'count', counts)}
+        <div class="flabel mt">Порядок</div>${seg(c, 'order', [['random', 'Случайно'], ['weak', 'Сначала слабые'], ['new', 'Сначала новые']])}
+        ${m !== 'flip' ? `<div class="flabel mt">Таймер на вопрос</div>${seg(c, 'timer', [[0, 'Нет'], [10, '10 с'], [20, '20 с'], [30, '30 с']])}` : ''}</div>
+      <button class="btn btn-primary btn-block btn-lg" data-action="setup-start" ${n < 1 ? 'disabled' : ''}>Начать${n ? ' · ' + fmt.plural(planned, m === 'sentence' ? 'фраза' : 'карточка', m === 'sentence' ? 'фразы' : 'карточки', m === 'sentence' ? 'фраз' : 'карточек') : ''}</button>
+      <div class="hint" style="text-align:center">Экзамены HSK эти настройки не трогают — у них фиксированный формат.</div>`;
     },
   };
+  actions['setup-mode'] = el => { getSetup().mode = el.dataset.arg; saveSetup(); render(); };
+  actions['setup-deck'] = el => { const c = cur(), id = el.dataset.arg; if (!c.deckIds) return; if (c.deckIds.includes(id)) { if (c.deckIds.length > 1) c.deckIds = c.deckIds.filter(x => x !== id); } else c.deckIds.push(id); saveSetup(); render(); };
+  actions['setup-guess'] = el => { const c = cur(), p = el.dataset.arg; if (!c.guess) return; if (c.guess.includes(p)) { if (c.guess.length > 1) c.guess = c.guess.filter(x => x !== p); } else c.guess.push(p); saveSetup(); render(); };
+  actions['setup-set'] = el => {
+    const c = cur(), k = el.dataset.key;
+    let v = el.dataset.val;
+    if ((k === 'count' && v !== 'all') || k === 'timer') v = +v;
+    c[k] = v;
+    if (k === 'show' && getSetup().mode === 'quiz' && v !== 'mixed') { c.guess = (c.guess || []).filter(p => p !== v); if (!c.guess.length) c.guess = Quiz.PARTS.filter(p => p !== v); }
+    saveSetup(); render();
+  };
+  actions['setup-start'] = () => { const s = getSetup(); startSession(s.mode, JSON.parse(JSON.stringify(s.byMode[s.mode]))); };
+  actions['learn-deck'] = el => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [el.dataset.id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
     <div class="install-note">
@@ -50,18 +104,31 @@
     </div>
     <button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
   };
-  actions['setup-deck'] = el => { const s = getSetup(), id = el.dataset.arg; if (s.deckIds.includes(id)) { if (s.deckIds.length > 1) s.deckIds = s.deckIds.filter(x => x !== id); } else s.deckIds.push(id); render(); };
-  actions['setup-guess'] = el => { const s = getSetup(), p = el.dataset.arg; if (s.guess.includes(p)) { if (s.guess.length > 1) s.guess = s.guess.filter(x => x !== p); } else s.guess.push(p); render(); };
-  actions['setup-set'] = el => { const s = getSetup(), k = el.dataset.key; let v = el.dataset.val; if ((k === 'count' && v !== 'all') || k === 'timer') v = +v; s[k] = v; if (k === 'show' && v !== 'mixed') s.guess = s.guess.filter(p => p !== v); if (!s.guess.length) s.guess = Quiz.PARTS.filter(p => p !== s.show); render(); };
-  actions['setup-start'] = () => { const s = getSetup(); state.settings.lastSetup = { ...s }; persist(); startQuiz({ ...s }, { kind: s.mode }); };
-  actions['learn-deck'] = el => { const s = getSetup(); s.deckIds = [el.dataset.id]; closeSheet(); nav('setup'); };
 
-  function startQuiz(cfg, extra = {}) {
-    const cards = extra.cards || cardsOfDecks(cfg.deckIds);
-    if (!cards.length) return toast('Нет карточек для тренировки');
-    const pool = cards.length >= 12 ? cards : [...cards, ...hskCards];
-    const questions = Quiz.buildQuestions(cards, pool, cfg, state.cardStats);
-    quiz = { cfg: { ...cfg }, kind: extra.kind || cfg.mode, level: extra.level || null, deckIds: cfg.deckIds.slice(), questions, i: 0, startedAt: Date.now(), qStart: Date.now(), answered: false, flipped: false, timerId: null, timeLeft: 0 };
+  /* ── запуск ── */
+  function startSession(mode, cfg, extra = {}) {
+    cfg = cfg || {};
+    cfg.mode = mode;
+    if (mode === 'listen') { cfg.show = 'audio'; cfg.guess = ['answer']; }
+    if (mode === 'sentence') { cfg.show = 'sentence'; cfg.guess = ['answer']; }
+    if (mode === 'write') { cfg.guess = ['hanzi']; if (!cfg.show) cfg.show = 'write'; }
+    if (mode === 'quiz') { if (!cfg.show) cfg.show = 'mixed'; if (!cfg.guess) cfg.guess = []; }
+    let questions;
+    if (mode === 'sentence') {
+      questions = Quiz.buildSentence(extra.items || Sentences.ITEMS, cfg, state.cardStats);
+      if (!questions.length) return toast('Нет фраз для тренировки');
+    } else {
+      const cards = extra.cards || cardsOfDecks(cfg.deckIds || []);
+      if (!cards.length) return toast('Нет карточек для тренировки');
+      if (mode === 'listen') {
+        if (!Speech.available()) return toast('Нет китайского голоса — включите его в настройках iPhone и перезапустите', 4000);
+        questions = Quiz.buildListen(cards, cfg, state.cardStats);
+      } else {
+        const pool = cards.length >= 12 ? cards : [...cards, ...hskCards];
+        questions = Quiz.buildQuestions(cards, pool, cfg, state.cardStats);
+      }
+    }
+    quiz = { cfg, kind: extra.kind || mode, level: extra.level || null, deckIds: (cfg.deckIds || []).slice(), questions, i: 0, startedAt: Date.now(), qStart: Date.now(), answered: false, flipped: false, timerId: null, timeLeft: 0 };
     nav('quiz');
   }
 
@@ -72,25 +139,42 @@
       const q = quiz.questions[quiz.i], total = quiz.questions.length, card = q.card, isFlip = quiz.cfg.mode === 'flip';
       const head = `<div class="qbar"><button class="icon-btn" data-action="quiz-quit" aria-label="Выйти">✕</button><div class="progress"><i style="width:${quiz.i / total * 100}%"></i></div><div class="qcount">${quiz.i + 1}/${total}</div>${quiz.cfg.timer && !isFlip ? `<div class="qtimer" id="qtimer">${quiz.cfg.timer}</div>` : ''}</div>`;
       if (isFlip) return head + renderFlip(q);
-      const promptBody = q.show === 'both' ? renderPart(card, 'pinyin', 'big') + renderPart(card, 'ru', '') : q.show === 'hp' ? renderPart(card, 'hanzi', 'big') + renderPart(card, 'pinyin', '') : renderPart(card, q.show, 'big');
-      const prompt = `<div class="panel ornate qcard"><div class="qlabel">${LABELS.part[q.show]} → ${q.guess.map(p => LABELS.part[p]).join(' + ')}</div>${promptBody}</div>`;
+      let promptBody;
+      if (q.show === 'audio') promptBody = `<button class="say-btn" data-action="say" data-nosound aria-label="Прослушать">🔊</button><div class="hint" style="text-align:center;margin-top:10px">Нажмите, чтобы прослушать ещё раз</div>`;
+      else if (q.show === 'sentence') promptBody = `<div class="hanzi sent-q">${esc(q.sent.q)}</div>${quiz.cfg.difficulty === 'easy' ? `<div class="pinyin" style="font-size:16px">${esc(q.sent.py)}</div><div class="ru" style="font-size:15px">${esc(q.sent.ru)}</div>` : ''}`;
+      else if (q.show === 'both') promptBody = renderPart(card, 'pinyin', 'big') + renderPart(card, 'ru', '');
+      else if (q.show === 'hp') promptBody = renderPart(card, 'hanzi', 'big') + renderPart(card, 'pinyin', '');
+      else promptBody = renderPart(card, q.show, 'big');
+      const dirLabel = `${LABELS.part[q.show] || ''} → ${q.guess.map(p => LABELS.part[p] || p).join(' + ')}`;
+      const prompt = `<div class="panel ornate qcard"><div class="qlabel">${dirLabel}</div>${promptBody}</div>`;
       let answer;
-      if (q.options) answer = `<div class="opts" id="opts">${q.options.map((o, i) => `<button class="opt" data-action="answer" data-idx="${i}" data-nosound>${(q.optionParts || q.guess).map(p => `<span class="opt-${p}">${esc(o[p])}</span>`).join('<span class="opt-sep">·</span>')}</button>`).join('')}</div>`;
-      else answer = `<form id="inputs" class="inputs" autocomplete="off">${q.guess.map(p => `<div class="field"><label>${LABELS.part[p]}${p === 'pinyin' ? ' <span class="muted">· тоны цифрами, ü = v</span>' : p === 'hanzi' ? ' <span class="muted">· клавиатура 中文 через 🌐</span>' : ''}</label><input class="inp" name="${p}" ${p === 'hanzi' ? 'lang="zh-CN"' : ''} autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${p === 'pinyin' ? 'ni3 hao3' : p === 'ru' ? 'перевод' : '汉字'}">${p === 'pinyin' ? '<div class="pv" id="pv"></div>' : ''}</div>`).join('')}<button class="btn btn-primary btn-block" type="submit">Проверить</button></form>`;
+      if (q.options) {
+        answer = `<div class="opts" id="opts">${q.options.map((o, i) => `<button class="opt ${o.text != null ? 'opt-txt' : ''}" data-action="answer" data-idx="${i}" data-nosound>${o.text != null ? `<span class="opt-hanzi">${esc(o.text)}</span>` : (q.optionParts || q.guess).map(p => `<span class="opt-${p}">${esc(o[p])}</span>`).join('<span class="opt-sep">·</span>')}</button>`).join('')}</div>`;
+      } else {
+        const fields = q.kind === 'listen' ? [['answer', 'Ответ <span class="muted">· иероглифы или пиньинь с тонами</span>', '汉字 / pinyin']]
+          : q.kind === 'sentence' ? [['answer', 'Ответ иероглифами <span class="muted">· клавиатура 中文 через 🌐</span>', '汉字']]
+          : q.guess.map(p => [p, LABELS.part[p] + (p === 'pinyin' ? ' <span class="muted">· тоны цифрами, ü = v</span>' : p === 'hanzi' ? ' <span class="muted">· клавиатура 中文 через 🌐</span>' : ''), p === 'pinyin' ? 'ni3 hao3' : p === 'ru' ? 'перевод' : '汉字']);
+        answer = `<form id="inputs" class="inputs" autocomplete="off">${fields.map(([nm, lbl, ph]) => `<div class="field"><label>${lbl}</label><input class="inp" name="${nm}" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${ph}">${nm === 'pinyin' ? '<div class="pv" id="pv"></div>' : ''}</div>`).join('')}<button class="btn btn-primary btn-block" type="submit">Проверить</button></form>`;
+      }
       return head + prompt + answer + '<div id="feedback"></div>';
     },
     mount() {
       if (!quiz) return;
       startTimer();
+      const q = quiz.questions[quiz.i];
+      if (q && q.show === 'audio' && !quiz.answered) setTimeout(() => Speech.say(q.card.hanzi), 250);
       const f = $('#inputs');
       if (f) {
         f.addEventListener('submit', e => { e.preventDefault(); submitInput(); });
         const pin = f.querySelector('input[name=pinyin]');
         if (pin) pin.addEventListener('input', () => { $('#pv').textContent = Pinyin.toMarks(pin.value); });
-        const first = f.querySelector('input'); if (first) setTimeout(() => first.focus(), 80);
+        const first = f.querySelector('input');
+        if (first && q.show !== 'audio') setTimeout(() => first.focus(), 80);
       }
     },
   };
+  actions.say = () => { const q = quiz && quiz.questions[quiz.i]; if (q && q.card) { Sound.click(); Speech.say(q.card.hanzi); } };
+
   function renderFlip(q) {
     const c = q.card;
     const back = `<div class="hanzi mid ${c.hanzi.replace(/[…\s]/g, '').length >= 5 ? 'len5' : ''}">${esc(c.hanzi)}</div><div class="pinyin">${esc(c.pinyin)}</div><div class="ru">${esc(c.ru)}</div>${c.note ? `<div class="note">${esc(c.note)}</div>` : ''}`;
@@ -106,17 +190,25 @@
     if (ok) { Sound.ok(); flash('ok'); } else { Sound.fail(); flash('bad'); }
     setTimeout(next, 220);
   };
-  actions.answer = el => { if (!quiz || quiz.answered) return; const q = quiz.questions[quiz.i]; const idx = +el.dataset.idx; finishQuestion(q, Quiz.checkChoice(q, idx), { choice: idx, choiceText: q.guess.map(p => q.options[idx][p]).join(' · ') }); };
+  actions.answer = el => {
+    if (!quiz || quiz.answered) return;
+    const q = quiz.questions[quiz.i], idx = +el.dataset.idx;
+    const txt = q.options[idx] ? (q.options[idx].text != null ? q.options[idx].text : q.guess.map(p => q.options[idx][p]).join(' · ')) : '';
+    finishQuestion(q, Quiz.checkChoice(q, idx), { choice: idx, choiceText: txt });
+  };
   function submitInput(timeout) {
     if (!quiz || quiz.answered) return;
     const q = quiz.questions[quiz.i], f = $('#inputs'), answers = {};
-    q.guess.forEach(p => { answers[p] = f && f.elements[p] ? f.elements[p].value : ''; });
+    const names = q.kind === 'listen' || q.kind === 'sentence' ? ['answer'] : q.guess;
+    names.forEach(nm => { answers[nm] = f && f.elements[nm] ? f.elements[nm].value : ''; });
     if (!timeout && !Object.values(answers).some(v => v.trim())) { toast('Введите ответ'); return; }
-    finishQuestion(q, Quiz.checkInput(q, answers), { input: answers, timeout: !!timeout });
+    const res = q.kind === 'listen' ? Quiz.checkListen(q, answers.answer) : q.kind === 'sentence' ? Quiz.checkSentence(q, answers.answer) : Quiz.checkInput(q, answers);
+    finishQuestion(q, res, { input: answers, timeout: !!timeout });
   }
   function finishQuestion(q, result, answer) {
     stopTimer(); quiz.answered = true;
     const tm = $('#qtimer'); if (tm) tm.classList.add('hidden');
+    if (q.show === 'audio') { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
     q.result = result; q.answer = answer; q.ms = Date.now() - quiz.qStart;
     if (result.ok) { Sound.ok(); flash('ok'); } else { Sound.fail(); flash('bad'); }
     const opts = $('#opts');
@@ -129,13 +221,20 @@
   function feedbackHtml(q, result, answer) {
     const c = q.card, last = quiz.i === quiz.questions.length - 1;
     const verdict = result.ok ? '<div class="verdict ok">Верно · 对</div>' : result.fraction > 0 ? '<div class="verdict half">Частично</div>' : `<div class="verdict bad">${answer.timeout ? 'Время вышло' : 'Неверно · 错'}</div>`;
-    const rows = result.ok ? '' : q.guess.map(p => {
-      const r = result.parts[p], lbl = r === 'exact' ? 'верно' : r === 'tones' ? 'буквы верны, тоны нет' : 'неверно';
-      let given = answer.input ? answer.input[p] : (answer.choice >= 0 ? q.options[answer.choice][p] : '');
+    const nextBtn = `<button class="btn btn-primary btn-block" data-action="quiz-next">${last ? 'Результат' : 'Дальше'}</button>`;
+    const givenRows = result.ok ? '' : (q.guess || []).map(p => {
+      const r = result.parts[p];
+      if (!r) return '';
+      const lbl = r === 'exact' ? 'верно' : r === 'tones' ? 'буквы верны, тоны нет' : 'неверно';
+      let given = answer.input ? answer.input[p] : (answer.choice >= 0 && q.options && q.options[answer.choice] ? (q.options[answer.choice].text != null ? q.options[answer.choice].text : (q.options[answer.choice][p] != null ? q.options[answer.choice][p] : answer.choiceText)) : '');
       if (p === 'pinyin' && given) given = Pinyin.toMarks(given);
-      return `<div class="fb-row"><span class="fb-p">${LABELS.part[p]}</span><span class="fb-a ${r}">${esc(given) || '—'}</span><span class="fb-v">${lbl}</span></div>`;
+      return `<div class="fb-row"><span class="fb-p">${LABELS.part[p] || p}</span><span class="fb-a ${r}">${esc(given) || '—'}</span><span class="fb-v">${lbl}</span></div>`;
     }).join('');
-    return `<div class="panel fb">${verdict}<div class="fb-card"><div class="hanzi mid ${c.hanzi.replace(/[…\s]/g, '').length >= 5 ? 'len5' : ''}">${esc(c.hanzi)}</div><div class="pinyin">${esc(c.pinyin)}</div><div class="ru">${esc(c.ru)}</div>${c.note ? `<div class="note">${esc(c.note)}</div>` : ''}</div>${rows}<button class="btn btn-primary btn-block" data-action="quiz-next">${last ? 'Результат' : 'Дальше'}</button></div>`;
+    if (q.kind === 'sentence') {
+      const it = q.sent;
+      return `<div class="panel fb">${verdict}<div class="fb-card"><div class="hint" style="margin:0 0 6px">${esc(it.q)}</div><div class="hanzi mid">${esc(it.a[0])}</div><div class="pinyin" style="font-size:15px">${esc(it.py)}</div><div class="ru">${esc(it.ru)}</div>${it.a.length > 1 ? `<div class="note">Также верно: ${it.a.slice(1).map(esc).join('、')}</div>` : ''}</div>${givenRows}${nextBtn}</div>`;
+    }
+    return `<div class="panel fb">${verdict}<div class="fb-card"><div class="hanzi mid ${c.hanzi.replace(/[…\s]/g, '').length >= 5 ? 'len5' : ''}">${esc(c.hanzi)}</div><div class="pinyin">${esc(c.pinyin)}</div><div class="ru">${esc(c.ru)}</div>${c.note ? `<div class="note">${esc(c.note)}</div>` : ''}</div>${givenRows}${nextBtn}</div>`;
   }
   function next() {
     if (!quiz || !quiz.answered) return;
@@ -155,8 +254,7 @@
     }, 1000);
   }
   function stopTimer() { if (quiz && quiz.timerId) { clearInterval(quiz.timerId); quiz.timerId = null; } }
-
-  actions['quiz-quit'] = async () => {
+  actions['quiz-quit'] = () => {
     if (!quiz) return;
     const done = quiz.questions.filter(q => q.result).length;
     stopTimer();
@@ -176,18 +274,17 @@
     if (spec) sc.score = Math.round(sc.percent / 100 * spec.max);
     const a = {
       id: uid(), ts: quiz.startedAt, endedAt: Date.now(), durationMs: Date.now() - quiz.startedAt,
-      mode: quiz.kind === 'hsk' ? 'hsk' : quiz.cfg.mode, level: quiz.level, difficulty: diff,
-      deckIds: quiz.deckIds, deckName: quiz.deckIds.map(id => (deckById(id) || {}).name || id).join(', '),
-      show: quiz.cfg.show, guess: quiz.cfg.show === 'mixed' ? ['all'] : quiz.cfg.guess, order: quiz.cfg.order, timer: quiz.cfg.timer || 0,
+      mode: quiz.kind === 'hsk' ? 'hsk' : quiz.cfg.mode, level: quiz.level, difficulty: quiz.kind === 'hsk' ? 'exam' : diff,
+      deckIds: quiz.deckIds, deckName: quiz.cfg.mode === 'sentence' ? 'Фразы' : quiz.deckIds.map(id => (deckById(id) || {}).name || id).join(', '),
+      show: quiz.kind === 'hsk' ? 'exam' : quiz.cfg.show, guess: quiz.cfg.show === 'mixed' ? ['all'] : (quiz.cfg.guess || []), order: quiz.cfg.order, timer: quiz.cfg.timer || 0,
       total: qs.length, planned: quiz.questions.length, aborted: !!aborted,
       correct: sc.correct, partial: sc.partial, wrong: qs.length - sc.correct - sc.partial, percent: sc.percent, score: sc.score,
       passed: quiz.kind === 'hsk' ? sc.percent >= 60 : null, examMax: spec ? spec.max : null,
       questions: qs.map(q => ({ cardId: q.cardId, hanzi: q.card.hanzi, pinyin: q.card.pinyin, ru: q.card.ru, show: q.show, guess: q.guess, answer: q.answer, parts: q.result.parts, fraction: q.result.fraction, ok: q.result.ok, ms: q.ms })),
     };
     a.points = Campaign.attemptPoints(a);
-    const finished = quiz; quiz = null;
+    quiz = null;
     saveAttempt(a).then(ev => { lastEvents = { id: a.id, ...ev }; Sound.finish(a.percent >= 60); nav('result', { id: a.id }, { replace: true }); });
-    return finished;
   }
 
   /* ── результат ── */
@@ -219,21 +316,37 @@
       else if (ev.cap) toast(Campaign.NAMES.cap + ' зачтён — +1 день похода', 3000);
     },
   };
-  function cfgFromAttempt(a) { return { deckIds: a.deckIds, mode: a.mode === 'hsk' ? 'quiz' : a.mode, show: a.show === 'exam' ? 'mixed' : a.show, guess: a.guess && a.guess[0] !== 'all' ? a.guess : [], difficulty: ['easy', 'medium', 'hard'].includes(a.difficulty) ? a.difficulty : a.difficulty === 'exam' ? 'medium' : 'easy', count: 'all', order: 'random', timer: a.timer || 0 }; }
+  function cfgFromAttempt(a) {
+    const special = ['exam', 'write', 'audio', 'sentence'];
+    return {
+      deckIds: (a.deckIds || []).slice(),
+      show: special.includes(a.show) ? undefined : a.show,
+      guess: a.guess && a.guess.length && a.guess[0] !== 'all' && a.guess[0] !== 'answer' && a.guess[0] !== 'hanzi' ? a.guess.slice() : undefined,
+      difficulty: ['easy', 'medium', 'hard'].includes(a.difficulty) ? a.difficulty : a.difficulty === 'exam' ? 'medium' : 'easy',
+      count: 'all', order: 'random', timer: a.timer || 0,
+    };
+  }
   actions['retry-mistakes'] = el => {
     const a = state.attempts.find(x => x.id === el.dataset.id); if (!a) return;
-    const cards = a.questions.filter(q => !q.ok).map(q => cardIndex[q.cardId]).filter(Boolean);
+    const wrongQ = a.questions.filter(q => !q.ok);
+    if (a.mode === 'sentence') {
+      const ids = new Set(wrongQ.map(q => q.cardId));
+      const items = Sentences.ITEMS.filter(it => ids.has('sent:' + it.id));
+      if (!items.length) return toast('Фразы не найдены');
+      return startSession('sentence', cfgFromAttempt(a), { items });
+    }
+    const cards = wrongQ.map(q => cardIndex[q.cardId]).filter(Boolean);
     if (!cards.length) return toast('Карточки не найдены');
-    startQuiz(cfgFromAttempt(a), { cards, kind: a.mode === 'hsk' ? 'quiz' : a.mode });
+    startSession(a.mode === 'hsk' ? 'quiz' : a.mode, cfgFromAttempt(a), { cards });
   };
   actions['retry-same'] = el => {
     const a = state.attempts.find(x => x.id === el.dataset.id); if (!a) return;
     if (a.mode === 'hsk') return startExam(a.level);
     const cfg = cfgFromAttempt(a); cfg.count = a.planned || a.total;
-    startQuiz(cfg, { kind: a.mode, level: a.level });
+    startSession(a.mode, cfg);
   };
 
-  /* ── HSK ── */
+  /* ── HSK: фиксированные экзамены ── */
   function levelCard(d) {
     const cards = cardsOfDeck(d.id), cs = state.cardStats;
     const seen = cards.filter(c => cs[c.id] && cs[c.id].asked).length, mastered = cards.filter(c => cs[c.id] && cs[c.id].mastered).length;
@@ -249,9 +362,9 @@
   }
   views.hsk = {
     render() {
-      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–3</h1><div class="sub">Встроенные словари и тесты · стандарт HSK 2.0</div></div></div>
-      ${builtinDecks.map(levelCard).join('')}
-      <div class="panel"><div class="hint" style="margin:0">Порог сдачи — 60%, как на реальном экзамене. Тест смешивает направления: иероглиф → пиньинь + перевод, пиньинь → иероглиф + перевод, перевод → иероглиф + пиньинь. «Освоено» — три верных ответа подряд.</div></div>`;
+      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–3</h1><div class="sub">Встроенные словари и экзамены · стандарт HSK 2.0</div></div></div>
+      ${builtinDecks.filter(d => d.level).map(levelCard).join('')}
+      <div class="panel"><div class="hint" style="margin:0">Формат экзаменов фиксированный и не зависит от настроек тренировки. Порог сдачи — 60 %, как на реальном экзамене. «Освоено» — три верных ответа подряд.</div></div>`;
     },
   };
   function startExam(level) {

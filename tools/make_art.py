@@ -52,6 +52,13 @@ TREASURES = {
     'seal': 'the imperial jade seal of China: a square white-green jade seal topped with a carved coiling dragon, gold corner',
     'heshibi': 'the legendary He Shi Bi: a flawless white jade disc (bi) with a round hole, glowing softly, on dark silk',
 }
+DRAGON = 'A small cute Chinese dragon mascot: long serpentine body coiled, jade-green scales, golden antler horns, vermilion mane and whiskers, little clawed paws, full body, centered, facing the viewer. '
+DRAGONS = {
+    'dragon-1': DRAGON + 'Warm friendly smile, waving one paw in greeting, holding a small scroll, kind encouraging mood.',
+    'dragon-2': DRAGON + 'Anxious worried expression, big concerned eyes, paws clasped together, glancing at a small hourglass beside him.',
+    'dragon-3': DRAGON + 'Stern angry expression, brows knitted, arms crossed, small puffs of smoke from the nostrils.',
+    'dragon-4': DRAGON + 'Ominous menacing look, narrowed glowing eyes, looming pose with raised claws, dark storm cloud and a small lightning bolt behind, twilight mood.',
+}
 CHESTS = {
     'chest-closed': 'An ancient Chinese lacquered wooden treasure chest with bronze fittings and a big bronze lock, closed, centered, slightly from above.',
     'chest-open': 'An ancient Chinese lacquered wooden treasure chest with bronze fittings, lid open, golden light and glowing treasures spilling out, centered, slightly from above.',
@@ -61,6 +68,7 @@ def jobs():
     for i, d in enumerate(CATS): out.append((f'cat-{i + 1:02d}', CAT + d + ' ' + STYLE))
     for k, d in TREASURES.items(): out.append((f'treasure-{k}', ITEM + d + '. ' + STYLE))
     for k, d in CHESTS.items(): out.append((k, d + ' ' + STYLE))
+    for k, d in DRAGONS.items(): out.append((k, d + ' ' + STYLE))
     return out
 
 def ensure_style():

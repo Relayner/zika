@@ -32,7 +32,7 @@ window.Vault = (() => {
   async function autoBackup(ctx) {
     const prev = await Store.get('backup:auto');
     if (prev && Stats.dayKey(prev.at) === Stats.dayKey(Date.now())) return false;
-    await Store.set('backup:auto', { at: Date.now(), schema: SCHEMA, settings: ctx.settings, decks: ctx.decks, cards: ctx.cards, campaign: ctx.campaign, attemptsCount: ctx.attempts.length });
+    await Store.set('backup:auto', { at: Date.now(), schema: SCHEMA, settings: ctx.settings, decks: ctx.decks, cards: ctx.cards, campaign: ctx.campaign, attempts: ctx.attempts, attemptsCount: ctx.attempts.length });
     return true;
   }
   /* ctx: { meta, settings, decks, cards, attempts, campaign } — мутируется на месте */

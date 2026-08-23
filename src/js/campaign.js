@@ -3,7 +3,7 @@
    (days + processedThrough) и продвигается только вперёд по календарю; очки каждой попытки зафиксированы в ней самой. */
 window.Campaign = (() => {
   const CAP = 400, ULTRA_MULT = 5, ULTRA = CAP * ULTRA_MULT, TOTAL_DAYS = 30, RANKS = 10, DAYS_PER_RANK = TOTAL_DAYS / RANKS;
-  const BASE = { quiz: { easy: 2, medium: 3, hard: 5 }, write: { easy: 4, medium: 5, hard: 6 }, flip: 1, hsk: 3 };
+  const BASE = { quiz: { easy: 2, medium: 4, hard: 8 }, write: { easy: 5, medium: 7, hard: 10 }, listen: { easy: 3, medium: 5, hard: 9 }, sentence: { easy: 4, medium: 7, hard: 12 }, flip: 1, hsk: 4 };
   const BONUS = { finish: 5, perfect: 10, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
 
@@ -11,7 +11,7 @@ window.Campaign = (() => {
     let base;
     if (a.mode === 'flip') base = BASE.flip;
     else if (a.mode === 'hsk') base = BASE.hsk;
-    else if (a.mode === 'write') base = BASE.write[a.difficulty] || 4;
+    else if (BASE[a.mode] && typeof BASE[a.mode] === 'object') base = BASE[a.mode][a.difficulty] || 3;
     else base = BASE.quiz[a.difficulty] || 2;
     return base * (q.fraction || 0);
   }

@@ -113,7 +113,7 @@ t('exam format', () => {
 t('score', () => {
   const qs = [{ result: { fraction: 1 } }, { result: { fraction: 0 } }, { result: { fraction: 0.5 } }, { result: null }];
   const s = Quiz.scoreAttempt(qs, 'hard');
-  assert.equal(s.percent, 38); assert.equal(s.score, 76); assert.equal(s.correct, 1); assert.equal(s.partial, 1);
+  assert.equal(s.percent, 38); assert.equal(s.score, 95); assert.equal(s.correct, 1); assert.equal(s.partial, 1);
 });
 t('stats', () => {
   const day = 864e5, now = Date.now();
@@ -143,10 +143,10 @@ const mkA = (ts, mode, difficulty, qs, extra = {}) => ({ id: 'a' + ts + Math.ran
 const qs = (n, frac = 1) => Array.from({ length: n }, (_, i) => ({ cardId: 'hsk1-' + String(i + 1).padStart(3, '0'), fraction: frac, ok: frac === 1 }));
 t('campaign points', () => {
   assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'easy', qs(10))), 10 * 2 + 5 + 10);
-  assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'hard', qs(10, 0.5))), 10 * 5 * 0.5 + 5);
+  assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'hard', qs(10, 0.5))), 10 * 8 * 0.5 + 5);
   assert.equal(Campaign.attemptPoints(mkA(0, 'flip', 'flip', qs(5))), 5);
-  assert.equal(Campaign.attemptPoints(mkA(0, 'hsk', 'exam', qs(20), { passed: true })), 20 * 3 + 5 + 10 + 30);
-  assert.equal(Campaign.attemptPoints(mkA(0, 'write', 'medium', qs(3))), 15);
+  assert.equal(Campaign.attemptPoints(mkA(0, 'hsk', 'exam', qs(20), { passed: true })), 20 * 4 + 5 + 10 + 30);
+  assert.equal(Campaign.attemptPoints(mkA(0, 'write', 'medium', qs(3))), 21);
 });
 t('campaign days', () => {
   const now = new Date(2026, 7, 23, 12).getTime();
@@ -217,3 +217,70 @@ t('chests', () => {
   assert.equal(c.chests.opened, 2);
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'treasures/chests passed');
+
+/* ── новые режимы, частотные слова, дракон ── */
+for (const f of ['freq', 'sentences', 'speech', 'dragon']) require('../src/js/' + f + '.js');
+const { FREQ, Sentences, Dragon } = global;
+t('freq bank', () => {
+  assert.ok(FREQ.length >= 400, 'at least 400: ' + FREQ.length);
+  const hskSet = new Set([...HSK[1], ...HSK[2], ...HSK[3]].map(e => e[0]));
+  for (const [h, p, r] of FREQ) { assert.ok(h && p && r); assert.ok(!hskSet.has(h), 'dup with HSK: ' + h); assert.equal(Pinyin.toMarks(p), p, 'marks ' + p); }
+  assert.ok(FREQ.length + 600 >= 1000, 'bank >= 1000');
+});
+t('sentences bank', () => {
+  assert.ok(Sentences.ITEMS.length >= 100, '>=100: ' + Sentences.ITEMS.length);
+  for (const it of Sentences.ITEMS) { assert.ok(it.q && it.py && it.ru && it.a.length); assert.ok(it.q.length <= 40); }
+});
+const fcards = FREQ.slice(0, 60).map((e, i) => ({ id: 'freq1:' + e[0], hanzi: e[0], pinyin: e[1], ru: e[2], deckId: 'freq1' }));
+t('listen mode', () => {
+  const easy = Quiz.buildListen(fcards, { difficulty: 'easy', count: 10, order: 'random' }, {});
+  assert.equal(easy.length, 10);
+  easy.forEach(q => { assert.equal(q.show, 'audio'); assert.equal(q.kind, 'listen'); assert.equal(q.options.length, 4); assert.deepEqual(q.optionParts, ['hanzi', 'pinyin', 'ru']); assert.equal(q.options[q.answerIdx].cardId, q.cardId); });
+  const med = Quiz.buildListen(fcards, { difficulty: 'medium', count: 5 }, {});
+  med.forEach(q => { assert.equal(q.options.length, 8); assert.deepEqual(q.optionParts, ['hanzi']); });
+  const hard = Quiz.buildListen(fcards, { difficulty: 'hard', count: 5 }, {});
+  hard.forEach(q => assert.ok(!q.options));
+  const q = hard[0];
+  assert.equal(Quiz.checkListen(q, q.card.hanzi).ok, true);
+  assert.equal(Quiz.checkListen(q, q.card.pinyin).ok, true);
+  assert.equal(Quiz.checkListen(q, Pinyin.stripTones(q.card.pinyin)).parts.answer, 'tones');
+  assert.equal(Quiz.checkListen(q, 'совсем не то').ok, false);
+});
+t('sentence mode', () => {
+  const easy = Quiz.buildSentence(Sentences.ITEMS, { difficulty: 'easy', count: 10, order: 'random' }, {});
+  assert.equal(easy.length, 10);
+  easy.forEach(q => { assert.equal(q.kind, 'sentence'); assert.equal(q.options.length, 4); assert.equal(q.options[q.answerIdx].text, q.sent.a[0]); });
+  const med = Quiz.buildSentence(Sentences.ITEMS, { difficulty: 'medium', count: 5 }, {});
+  med.forEach(q => assert.equal(q.options.length, 8));
+  const hard = Quiz.buildSentence(Sentences.ITEMS, { difficulty: 'hard', count: 5 }, {});
+  hard.forEach(q => assert.ok(!q.options));
+  const q = hard[0];
+  assert.equal(Quiz.checkSentence(q, q.sent.a[0] + '。').ok, true);
+  assert.equal(Quiz.checkSentence(q, ' ' + (q.sent.a[1] || q.sent.a[0]) + ' ').ok, true);
+  assert.equal(Quiz.checkSentence(q, '不对的').ok, false);
+});
+t('points rebalance', () => {
+  const mk = (mode, diff, n) => ({ mode, difficulty: diff, total: n, percent: 100, aborted: false, questions: Array.from({ length: n }, () => ({ fraction: 1, ok: true })) });
+  assert.equal(Campaign.attemptPoints(mk('quiz', 'hard', 5)), 40);
+  assert.equal(Campaign.attemptPoints(mk('listen', 'medium', 4)), 20);
+  assert.equal(Campaign.attemptPoints(mk('sentence', 'hard', 3)), 36);
+  assert.equal(Campaign.attemptPoints(mk('write', 'easy', 2)), 10);
+  assert.ok(Campaign.BASE.quiz.hard > Campaign.BASE.quiz.medium && Campaign.BASE.quiz.medium > Campaign.BASE.quiz.easy);
+});
+t('dragon moods', () => {
+  const t400 = { done: false, toCap: 400 };
+  assert.equal(Dragon.urgency(t400, new Date(2026, 0, 1, 9, 0)), -1, 'morning: silent');
+  assert.equal(Dragon.urgency({ done: true, toCap: 0 }, new Date(2026, 0, 1, 20, 0)), -1, 'done: silent');
+  const noon = Dragon.urgency(t400, new Date(2026, 0, 1, 12, 30));
+  const evening = Dragon.urgency(t400, new Date(2026, 0, 1, 19, 0));
+  const night = Dragon.urgency(t400, new Date(2026, 0, 1, 22, 30));
+  assert.ok(noon < evening && evening < night, 'escalates with time');
+  const nightFew = Dragon.urgency({ done: false, toCap: 50 }, new Date(2026, 0, 1, 22, 30));
+  assert.ok(nightFew < night, 'fewer remaining — softer');
+  assert.equal(Dragon.moodIdx(-1), -1);
+  assert.equal(Dragon.moodIdx(0.1), 0); assert.equal(Dragon.moodIdx(0.95), 3);
+  assert.ok(Dragon.phrase(3, t400).includes('400'));
+  assert.equal(Dragon.PHRASES.length, 4);
+  Dragon.PHRASES.forEach(l => assert.ok(l.length >= 6));
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'new modes groups passed');

@@ -461,3 +461,17 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .info-btn { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--gold); background: var(--card); color: var(--gold); font-family: var(--serif); font-style: italic; font-weight: 700; font-size: 15px; line-height: 1; display: grid; place-items: center; padding: 0; z-index: 2; }
 .info-btn:active { transform: scale(.92); }
 .camp .chev { margin-top: 14px; }
+/* ── аудирование, фразы, дракон ── */
+.say-btn { display: block; margin: 6px auto 0; width: 96px; height: 96px; border-radius: 50%; border: 3px solid var(--gold); background: var(--paper-2); font-size: 44px; line-height: 1; }
+.say-btn:active { transform: scale(.94); }
+.sent-q { font-size: 30px; text-align: center; line-height: 1.35; }
+.opt.opt-txt .opt-hanzi { font-size: 22px; }
+.dragon { display: flex; gap: 12px; align-items: flex-start; }
+.dragon-img { flex: none; width: 88px; height: 88px; border-radius: 50%; border: 2px solid var(--gold); }
+.dragon-t { font-family: var(--serif); font-weight: 700; font-size: 15px; }
+.dragon-x { font-size: 13.5px; color: var(--ink-2); font-style: italic; margin: 4px 0 10px; }
+.dragon.m-2 { border-color: var(--vermilion); }
+.dragon.m-2 .dragon-img { border-color: var(--vermilion); }
+.dragon.m-3 { border-color: var(--vermilion); background: linear-gradient(160deg, var(--card), rgba(90, 20, 20, .18)); box-shadow: 0 0 16px rgba(196, 55, 31, .25); }
+.dragon.m-3 .dragon-img { border-color: var(--vermilion); box-shadow: 0 0 12px rgba(196, 55, 31, .5); animation: pulse 1.6s infinite alternate; }
+.dragon-big { width: 60%; max-width: 220px; border-radius: 50%; border: 3px solid var(--vermilion); box-shadow: 0 0 20px rgba(196, 55, 31, .4); margin: 0 auto 10px; display: block; }

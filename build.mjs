@@ -6,7 +6,7 @@ const src = p => path.join(root, 'src', p), dist = p => path.join(root, 'docs', 
 const read = p => fs.readFileSync(p, 'utf8');
 const now = new Date();
 const VERSION = now.toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/(\d{8})(\d{4})/, '$1-$2');
-const JS_ORDER = ['hsk.js', 'pinyin.js', 'store.js', 'audio.js', 'quiz.js', 'stats.js', 'cats.js', 'treasures.js', 'campaign.js', 'vault.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-profile.js', 'views-stats.js'];
+const JS_ORDER = ['hsk.js', 'freq.js', 'sentences.js', 'pinyin.js', 'store.js', 'audio.js', 'speech.js', 'quiz.js', 'stats.js', 'cats.js', 'treasures.js', 'campaign.js', 'dragon.js', 'vault.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-profile.js', 'views-stats.js'];
 const css = read(src('css/style.css'));
 const js = (JS_ORDER.map(f => read(src('js/' + f))).join('\n;\n') + '\n;App.boot();\n').replace(/__VERSION__/g, VERSION);
 const body = read(src('body.html'));

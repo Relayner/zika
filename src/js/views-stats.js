@@ -28,7 +28,7 @@
     const problem = Object.entries(cs).filter(([id, s]) => s.asked >= 2 && s.accuracy < 0.6 && cardIndex[id]).sort((a, b) => a[1].accuracy - b[1].accuracy || b[1].asked - a[1].asked).slice(0, 8);
     const daily = Stats.daily(A, 30);
     const week = A.filter(a => Date.now() - a.ts < 7 * 864e5), wk = Stats.overview(week);
-    const dirLabel = a => a.show === 'mixed' ? 'Смешанно' : a.show === 'exam' ? 'Экзамен HSK' : LABELS.part[a.show] + ' → ' + (a.guess || []).map(p => LABELS.part[p]).join('+');
+    const dirLabel = a => a.show === 'mixed' ? 'Смешанно' : a.show === 'exam' ? 'Экзамен HSK' : (LABELS.part[a.show] || a.show) + ' → ' + (a.guess || []).map(p => LABELS.part[p] || p).join('+');
     const hskRows = [1, 2, 3].map(l => { const t = A.filter(a => a.mode === 'hsk' && a.level === l); if (!t.length) return null; const g = Stats.groupBy(t, () => l, () => 'HSK ' + l)[0]; return g; }).filter(Boolean);
     return `
     <div class="tiles">
@@ -73,8 +73,8 @@
     const mode = p.mode || 'all';
     let list = state.attempts.slice().reverse();
     if (mode !== 'all') list = list.filter(a => a.mode === mode);
-    const segBtn = (k, l) => `<button class="${mode === k ? 'on' : ''}" data-go="stats" data-params="${attr({ tab: 'log', mode: k })}" data-replace>${l}</button>`;
-    return `<div class="seg mb">${segBtn('all', 'Все')}${segBtn('quiz', 'Тесты')}${segBtn('flip', 'Карточки')}${segBtn('write', 'Письмо')}${segBtn('hsk', 'HSK')}</div>
+    const segBtn = (k, l) => `<button class="chip ${mode === k ? 'on' : ''}" data-go="stats" data-params="${attr({ tab: 'log', mode: k })}" data-replace>${l}</button>`;
+    return `<div class="chips mb">${segBtn('all', 'Все')}${segBtn('quiz', 'Тесты')}${segBtn('flip', 'Карточки')}${segBtn('write', 'Письмо')}${segBtn('listen', 'Аудио')}${segBtn('sentence', 'Фразы')}${segBtn('hsk', 'HSK')}</div>
     <div class="hint" style="margin:0 0 6px">${fmt.plural(list.length, 'попытка', 'попытки', 'попыток')} · каждая сохранена с ответами на все вопросы</div>
     ${list.length ? list.slice(0, 300).map(attemptRow).join('') : '<div class="empty">Пусто.</div>'}`;
   }
