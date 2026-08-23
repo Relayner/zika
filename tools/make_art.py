@@ -92,7 +92,7 @@ PICS = {
     'pic-p27': CAT_PIC + 'reading an open book',
     'pic-p28': CAT_PIC + 'writing with a brush at a desk',
     'pic-p29': CAT_PIC + 'sleeping in a bed with a blanket',
-    'pic-p30': CAT_PIC + 'talking on a mobile phone',
+    'pic-p30': CAT_PIC + 'holding a big mobile phone to its ear with one paw, clearly talking on the phone, speech lines near the phone',
     'pic-p31': CAT_PIC + 'watching television on a sofa',
     'pic-p32': CAT_PIC + 'studying at a desk with books and a lamp',
     'pic-p33': CAT_PIC + 'working on a laptop at a desk',

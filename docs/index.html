@@ -527,7 +527,7 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 
 <script>
 window.PUSH_CONF = {"url":"https://zika-push.relayner.workers.dev","key":"BNlUK3R6LYQzrryHsvr6D8YZ2XAVvfsvsBJzyRK1ANnE54aPT2YjCOv7qoxVWhZoZOgX9NHB-AnycRFCbc4MasI"};
-window.PICS_AVAILABLE = ["p01","p02","p03","p04","p05","p06","p07","p08","p09","p10","p11","p12","p13","p14","p15","p16","p17","p18","p19","p20","p21","p22","p23","p24","p25","p26","p27","p28","p29"];
+window.PICS_AVAILABLE = ["p01","p02","p03","p04","p05","p06","p07","p08","p09","p10","p11","p12","p13","p14","p15","p16","p17","p18","p19","p20","p21","p22","p23","p24","p25","p26","p27","p28","p29","p30","p31","p32","p33","p34","p35","p36","p37","p38","p39","p40"];
 /* Словари HSK (стандарт HSK 2.0): уровень 1 — 150 слов, уровень 2 — 150, уровень 3 — 300.
    Формат: [иероглифы, пиньинь, русский перевод]. Переводы — краткие, основное значение первым. */
 window.HSK = {
@@ -3211,7 +3211,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260823-2307';
+  const VERSION = '20260823-2337';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
