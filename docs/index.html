@@ -526,7 +526,7 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 </div>
 
 <script>
-window.PUSH_CONF = {"url":"","key":"BNlUK3R6LYQzrryHsvr6D8YZ2XAVvfsvsBJzyRK1ANnE54aPT2YjCOv7qoxVWhZoZOgX9NHB-AnycRFCbc4MasI"};
+window.PUSH_CONF = {"url":"https://zika-push.relayner.workers.dev","key":"BNlUK3R6LYQzrryHsvr6D8YZ2XAVvfsvsBJzyRK1ANnE54aPT2YjCOv7qoxVWhZoZOgX9NHB-AnycRFCbc4MasI"};
 window.PICS_AVAILABLE = ["p01","p02","p03","p04","p05","p06","p07","p08","p09","p10","p11","p12","p13","p14","p15","p16","p17","p18","p19","p20","p21","p22","p23","p24","p25","p26","p27","p28","p29"];
 /* Словари HSK (стандарт HSK 2.0): уровень 1 — 150 слов, уровень 2 — 150, уровень 3 — 300.
    Формат: [иероглифы, пиньинь, русский перевод]. Переводы — краткие, основное значение первым. */
@@ -3197,13 +3197,21 @@ window.Push = (() => {
       fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
     } catch (e) { /* ignore */ }
   }
-  return { CONF, supported, standalone, status, enable, disable, report };
+  async function test() {
+    const sub = await getSub();
+    if (!sub) throw new Error('подписки нет');
+    const r = await fetch(CONF.url + '/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error('сервер вернул статус ' + (d.status || r.status));
+    return true;
+  }
+  return { CONF, supported, standalone, status, enable, disable, report, test };
 })();
 
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260823-2301';
+  const VERSION = '20260823-2307';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3569,7 +3577,7 @@ window.App = (() => {
         const st = await Push.status();
         const msg = { unconfigured: 'Сервер уведомлений готовится — кнопка появится после его запуска.', unsupported: Push.standalone() ? 'Это устройство не поддерживает веб-пуши.' : 'Откройте приложение с иконки на экране «Домой» — в Safari пуши не работают.', denied: 'Уведомления запрещены. Разрешите их: Настройки iPhone → 字卡 → Уведомления.', off: 'Выключены.', on: 'Включены ✓ — Лун напомнит о переходе.' }[st];
         box.textContent = msg;
-        btns.innerHTML = st === 'off' ? '<button class="btn btn-primary btn-block" data-action="push-on">Включить напоминания</button>' : st === 'on' ? '<button class="btn btn-secondary btn-block" data-action="push-off">Выключить</button>' : '';
+        btns.innerHTML = st === 'off' ? '<button class="btn btn-primary btn-block" data-action="push-on">Включить напоминания</button>' : st === 'on' ? '<button class="btn btn-secondary btn-block" data-action="push-test">Проверить пуш</button><button class="btn btn-secondary btn-block" data-action="push-off">Выключить</button>' : '';
       })();
       Vault.listBackups().then(list => { const el = $('#backup-info'); if (el) el.textContent = list.length ? 'Резервные копии в хранилище: ' + list.map(b => (b.key === 'backup:auto' ? 'ежедневная' : 'перед обновлением схемы ' + b.schema) + ' (' + fmt.date(b.at) + ', попыток ' + b.attempts + ')').join('; ') + '. Обновления приложения прогресс не трогают.' : 'Резервные копии появятся после первого дня использования. Обновления приложения прогресс не трогают.'; });
       const inp = $('#import-file');
@@ -3597,6 +3605,7 @@ window.App = (() => {
     render();
   };
   actions['push-off'] = async () => { await Push.disable(); toast('Напоминания выключены'); render(); };
+  actions['push-test'] = async el => { el.disabled = true; try { await Push.test(); toast('Отправлено — пуш придёт в течение пары секунд'); } catch (e) { toast('Не получилось: ' + e.message, 3500); } el.disabled = false; };
   actions['clear-stats'] = async () => {
     if (!await confirm('Удалить все ' + fmt.plural(state.attempts.length, 'попытку', 'попытки', 'попыток') + ' и статистику по карточкам? Это необратимо.', { ok: 'Удалить', danger: true, title: 'Очистить статистику' })) return;
     await Store.clearAttempts(); state.attempts = []; state.cardStats = {}; toast('Статистика очищена'); render();

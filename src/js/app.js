@@ -366,7 +366,7 @@ window.App = (() => {
         const st = await Push.status();
         const msg = { unconfigured: 'Сервер уведомлений готовится — кнопка появится после его запуска.', unsupported: Push.standalone() ? 'Это устройство не поддерживает веб-пуши.' : 'Откройте приложение с иконки на экране «Домой» — в Safari пуши не работают.', denied: 'Уведомления запрещены. Разрешите их: Настройки iPhone → 字卡 → Уведомления.', off: 'Выключены.', on: 'Включены ✓ — Лун напомнит о переходе.' }[st];
         box.textContent = msg;
-        btns.innerHTML = st === 'off' ? '<button class="btn btn-primary btn-block" data-action="push-on">Включить напоминания</button>' : st === 'on' ? '<button class="btn btn-secondary btn-block" data-action="push-off">Выключить</button>' : '';
+        btns.innerHTML = st === 'off' ? '<button class="btn btn-primary btn-block" data-action="push-on">Включить напоминания</button>' : st === 'on' ? '<button class="btn btn-secondary btn-block" data-action="push-test">Проверить пуш</button><button class="btn btn-secondary btn-block" data-action="push-off">Выключить</button>' : '';
       })();
       Vault.listBackups().then(list => { const el = $('#backup-info'); if (el) el.textContent = list.length ? 'Резервные копии в хранилище: ' + list.map(b => (b.key === 'backup:auto' ? 'ежедневная' : 'перед обновлением схемы ' + b.schema) + ' (' + fmt.date(b.at) + ', попыток ' + b.attempts + ')').join('; ') + '. Обновления приложения прогресс не трогают.' : 'Резервные копии появятся после первого дня использования. Обновления приложения прогресс не трогают.'; });
       const inp = $('#import-file');
@@ -394,6 +394,7 @@ window.App = (() => {
     render();
   };
   actions['push-off'] = async () => { await Push.disable(); toast('Напоминания выключены'); render(); };
+  actions['push-test'] = async el => { el.disabled = true; try { await Push.test(); toast('Отправлено — пуш придёт в течение пары секунд'); } catch (e) { toast('Не получилось: ' + e.message, 3500); } el.disabled = false; };
   actions['clear-stats'] = async () => {
     if (!await confirm('Удалить все ' + fmt.plural(state.attempts.length, 'попытку', 'попытки', 'попыток') + ' и статистику по карточкам? Это необратимо.', { ok: 'Удалить', danger: true, title: 'Очистить статистику' })) return;
     await Store.clearAttempts(); state.attempts = []; state.cardStats = {}; toast('Статистика очищена'); render();

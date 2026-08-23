@@ -1,4 +1,5 @@
 name = "zika-push"
+account_id = "d0ae60ae49a7c6fe01b16b31bdba0926"
 main = "worker.js"
 compatibility_date = "2026-08-01"
 
@@ -10,4 +11,4 @@ VAPID_PUBLIC = "BNlUK3R6LYQzrryHsvr6D8YZ2XAVvfsvsBJzyRK1ANnE54aPT2YjCOv7qoxVWhZo
 
 [[kv_namespaces]]
 binding = "SUBS"
-id = "KV_PLACEHOLDER"
+id = "bb4424975b8146efbdb5205608e778d8"

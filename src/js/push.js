@@ -43,5 +43,13 @@ window.Push = (() => {
       fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
     } catch (e) { /* ignore */ }
   }
-  return { CONF, supported, standalone, status, enable, disable, report };
+  async function test() {
+    const sub = await getSub();
+    if (!sub) throw new Error('подписки нет');
+    const r = await fetch(CONF.url + '/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error('сервер вернул статус ' + (d.status || r.status));
+    return true;
+  }
+  return { CONF, supported, standalone, status, enable, disable, report, test };
 })();

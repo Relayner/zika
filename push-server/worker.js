@@ -62,6 +62,14 @@ export default {
       await env.SUBS.put('s:' + id, JSON.stringify(rec));
       return json({ ok: true });
     }
+    if (url.pathname === '/test') {
+      if (!body.endpoint) return json({ error: 'no endpoint' }, 400);
+      const raw = await env.SUBS.get('s:' + (await idOf(body.endpoint)));
+      if (!raw) return json({ ok: false, resubscribe: true });
+      const rec = JSON.parse(raw);
+      const res = await sendPush(rec.sub, JSON.stringify({ title: 'Наставник Лун 龙教头', body: 'Связь работает! Лун вернётся после полудня, если день будет без перехода.' }), { subject: 'mailto:kellianar@gmail.com', publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE });
+      return json({ ok: res.ok || res.status === 201, status: res.status });
+    }
     if (url.pathname === '/unsubscribe') {
       if (!body.endpoint) return json({ error: 'no endpoint' }, 400);
       await env.SUBS.delete('s:' + (await idOf(body.endpoint)));
