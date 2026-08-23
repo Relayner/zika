@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+tools/gen/raw/
+tools/gen/*.jpg
+tools/gen/*.png
+*.zip

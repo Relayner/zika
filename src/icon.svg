@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a2438"/>
+      <stop offset="1" stop-color="#4e1220"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="34" y="34" width="444" height="444" rx="90" fill="none" stroke="#d2ad55" stroke-width="6" opacity=".9"/>
+  <rect x="50" y="50" width="412" height="412" rx="78" fill="none" stroke="#d2ad55" stroke-width="2" opacity=".6"/>
+  <text x="256" y="336" text-anchor="middle" font-family="Songti SC, STSong, Kaiti SC, PingFang SC, Hiragino Sans GB, serif" font-size="272" font-weight="700" fill="#f6ead2">字</text>
+  <g transform="translate(372 372) rotate(-8)">
+    <rect x="-38" y="-38" width="76" height="76" rx="8" fill="#c4371f"/>
+    <rect x="-31" y="-31" width="62" height="62" rx="5" fill="none" stroke="#f6ead2" stroke-width="3"/>
+    <text x="0" y="18" text-anchor="middle" font-family="Songti SC, STSong, PingFang SC, serif" font-size="46" font-weight="700" fill="#f6ead2">卡</text>
+  </g>
+</svg>
