@@ -454,3 +454,10 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .reveal-card.big { max-width: 260px; margin: 0 auto; padding: 12px; font-size: 13px; opacity: 1; animation: none; }
 .reveal-card.big .inv-n { font-size: 24px; }
 @keyframes reveal { from { opacity: 0; transform: translateY(16px) scale(.8); } to { opacity: 1; transform: none; } }
+/* кнопка i на панели похода */
+.camp { position: relative; }
+.camp.ornate::after { display: none; }
+.camp .camp-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info-btn { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--gold); background: var(--card); color: var(--gold); font-family: var(--serif); font-style: italic; font-weight: 700; font-size: 15px; line-height: 1; display: grid; place-items: center; padding: 0; z-index: 2; }
+.info-btn:active { transform: scale(.92); }
+.camp .chev { margin-top: 14px; }

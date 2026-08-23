@@ -456,6 +456,13 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .reveal-card.big { max-width: 260px; margin: 0 auto; padding: 12px; font-size: 13px; opacity: 1; animation: none; }
 .reveal-card.big .inv-n { font-size: 24px; }
 @keyframes reveal { from { opacity: 0; transform: translateY(16px) scale(.8); } to { opacity: 1; transform: none; } }
+/* кнопка i на панели похода */
+.camp { position: relative; }
+.camp.ornate::after { display: none; }
+.camp .camp-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info-btn { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--gold); background: var(--card); color: var(--gold); font-family: var(--serif); font-style: italic; font-weight: 700; font-size: 15px; line-height: 1; display: grid; place-items: center; padding: 0; z-index: 2; }
+.info-btn:active { transform: scale(.92); }
+.camp .chev { margin-top: 14px; }
 
 </style>
 <div id="app">
@@ -2033,7 +2040,7 @@ window.Vault = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260823-0918';
+  const VERSION = '20260823-0924';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2886,8 +2893,8 @@ window.App = (() => {
     const status = t.ultra ? `${zh} Марш-бросок! День зачтён за два` : t.done ? `Переход зачтён ✓ · до марш-броска ещё ${pt(t.toUltra)}` : `Ещё ${pt(t.toCap)} до перехода · ${pt(t.toUltra)} до марш-броска`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${Campaign.CAP} · переход${t.done ? ' ✓' : ''}</span><span class="end">${Campaign.ULTRA} · ${zh}${t.ultra ? ' ✓' : ''}</span></div>
-      <div class="tbar-status ${compact ? 'small' : ''}">${status}</div></div>`;
+      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${compact ? Campaign.CAP : Campaign.CAP + ' · переход'}${t.done ? ' ✓' : ''}</span><span class="end">${compact ? Campaign.ULTRA : Campaign.ULTRA + ' · ' + zh}${t.ultra ? ' ✓' : ''}</span></div>
+      ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {
     const n = Campaign.TOTAL_DAYS, per = Campaign.DAYS_PER_RANK;
@@ -2983,11 +2990,25 @@ window.App = (() => {
     const r = R()[i];
     sheet(`<div class="rankup-card"><div class="rankup-t">晋升 · Новый ранг!</div>${Cats.imgTag(i)}<div class="rank-zh">${r.zh}</div><div class="rank-py">${r.py}</div><div class="rank-ru">${esc(r.ru)} · ранг ${i + 1} из ${Campaign.RANKS}</div><div class="motto"><div class="motto-zh">${r.motto}</div><div class="motto-py">${r.mpy}</div><div class="motto-ru">${esc(r.mru)}</div></div><div class="bio">${esc(r.bio)}</div></div><button class="btn btn-primary btn-block mt" data-close>В строй!</button>`);
   }
-  /* Компактная панель похода для главной */
+  /* Компактная панель похода для главной: минимум текста, пояснение — по кнопке i */
   function homePanel() {
-    const { today, days, rp, rank, idx } = info();
-    return `<button class="panel ornate camp tap" data-go="profile"><div class="camp-ava">${Cats.imgTag(idx)}</div><div class="camp-body"><div class="camp-rank">${rank.zh} · ${esc(rank.ru)}</div><div class="camp-sub">Ранг ${idx + 1} · день ${Math.min(days, Campaign.TOTAL_DAYS)} из ${Campaign.TOTAL_DAYS}${rp.complete ? ' ✓' : ' · до ранга ' + rp.toNext + ' дн.'}</div>${todayBar(today, true)}</div><span class="chev">›</span></button>`;
+    const { today, days, rank, idx } = info();
+    return `<div class="panel ornate camp tap" data-go="profile" role="button" tabindex="0"><button class="info-btn" data-action="camp-info" data-nosound aria-label="Как работает поход">i</button><div class="camp-ava">${Cats.imgTag(idx)}</div><div class="camp-body"><div class="camp-rank">${rank.zh} · ${esc(rank.ru)}</div><div class="camp-sub">Ранг ${idx + 1} · день ${Math.min(days, Campaign.TOTAL_DAYS)}/${Campaign.TOTAL_DAYS} · сегодня ${pt(today.points)} очк.</div>${todayBar(today, true)}</div><span class="chev">›</span></div>`;
   }
+  actions['camp-info'] = () => {
+    const { today, days, rp, rank, idx } = info();
+    const left = today.ultra ? `${Campaign.NAMES.ultraZh} Марш-бросок! День зачтён за два.` : today.done ? `Переход зачтён ✓. До марш-броска ещё ${pt(today.toUltra)} очк.` : `До перехода ещё ${pt(today.toCap)} очк., до марш-броска — ${pt(today.toUltra)}.`;
+    Sound.click();
+    sheet(`<h3 class="sh-t">Поход · сегодня</h3>
+      <div class="panel" style="margin-bottom:12px">${todayBar(today)}</div>
+      <div class="install-note">
+        <p><b>Сейчас:</b> ${left}</p>
+        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Новый ранг — каждые ${Campaign.DAYS_PER_RANK} зачтённых дня; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
+        <p><b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два и сундук с сокровищами.</p>
+        <p>День без перехода откатывает поход на день. Очки — за верные ответы: сложнее режим — больше очков.</p>
+      </div>
+      <div class="btns"><button class="btn btn-primary btn-block" data-go="profile">Открыть профиль</button><button class="btn btn-secondary btn-block" data-close>Закрыть</button></div>`);
+  };
   /* Панель на экране результата */
   function resultPanel(a, ev) {
     const { today } = info();
