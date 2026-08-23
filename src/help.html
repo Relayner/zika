@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>字卡 — инструкция</title>
+<meta name="theme-color" content="#6e1b2b">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+:root { --paper:#f4ead6; --card:#fbf6ea; --ink:#2b1d18; --ink-2:#5c463c; --ink-3:#8e7a6b; --bordeaux:#6e1b2b; --gold:#c49a3c; --verm:#c4371f; --line:rgba(43,29,24,.14); }
+@media (prefers-color-scheme: dark) { :root { --paper:#15100f; --card:#241719; --ink:#f1e6d1; --ink-2:#cfbda5; --ink-3:#9c8979; --bordeaux:#9b2b42; --gold:#d2ad55; --verm:#e2492f; --line:rgba(241,230,209,.13); } }
+* { box-sizing:border-box } body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.5 -apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif; }
+main { max-width:560px; margin:0 auto; padding:20px 18px 48px; }
+h1 { font-family:"Songti SC","STSong",Georgia,serif; font-size:30px; margin:0 0 4px; display:flex; align-items:center; gap:12px }
+.seal { width:42px; height:42px; border-radius:6px; background:var(--verm); color:#fff6e8; font-family:"Songti SC","STSong",serif; display:grid; place-items:center; font-size:24px; transform:rotate(-5deg); box-shadow:inset 0 0 0 2px rgba(255,246,232,.55), inset 0 0 0 4px var(--verm) }
+.sub { color:var(--ink-3); margin:0 0 18px }
+h2 { font-family:"Songti SC","STSong",Georgia,serif; font-size:20px; margin:26px 0 8px; color:var(--ink-2); display:flex; align-items:center; gap:10px } h2::after { content:""; flex:1; height:1px; background:linear-gradient(90deg,var(--gold),transparent) }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin:10px 0; box-shadow:0 6px 18px rgba(70,35,20,.1) }
+ol, ul { padding-left:22px; margin:6px 0 } li { margin:5px 0 } b { color:var(--ink) }
+a { color:var(--bordeaux); font-weight:600; word-break:break-all }
+.btn { display:block; text-align:center; background:linear-gradient(180deg,#8c2439,#6e1b2b); color:#fff3e0; text-decoration:none; padding:14px; border-radius:13px; font-weight:700; box-shadow:0 2px 0 var(--gold); margin:14px 0 }
+kbd { font-size:13px; padding:2px 6px; border-radius:5px; background:var(--paper); border:1px solid var(--line) }
+.warn { border-left:4px solid var(--verm); padding-left:12px; color:var(--ink-2) }
+.muted { color:var(--ink-3); font-size:13px }
+</style>
+</head>
+<body><main>
+<h1><span class="seal">字</span>字卡 · Карточки китайского</h1>
+<p class="sub">Иероглиф · пиньинь · перевод. HSK 1–3, тесты, поход кота-воина. Работает на iPhone без интернета.</p>
+<a class="btn" href="./">Открыть приложение → relayner.github.io/zika</a>
+
+<h2>Установка на iPhone — 1 минута</h2>
+<div class="card"><ol>
+<li>Откройте ссылку <a href="https://relayner.github.io/zika/">relayner.github.io/zika</a> именно в <b>Safari</b>.</li>
+<li>Нажмите <b>Поделиться</b> (квадрат со стрелкой внизу экрана) → <b>На экран «Домой»</b> → <b>Добавить</b>.</li>
+<li>Запускайте с иконки <b>字</b> на экране. Полный экран, без адресной строки, работает офлайн.</li>
+</ol></div>
+
+<h2>Что внутри</h2>
+<div class="card"><ul>
+<li><b>Тренировка</b> — тест (лёгкий: 4 варианта · средний: 8 похожих · сложный: ввод с клавиатуры), карточки-перевёртыши («знал / не знал») и <b>Письмо 写</b> — набираете иероглифы сами.</li>
+<li><b>HSK 1–3</b> — встроенные словари (600 слов) и экзамены в фиксированном формате, как на реальном HSK: сдан при 60 %.</li>
+<li><b>Колоды</b> — свои слова: добавлять по одной или вставить список строками <kbd>иероглиф;пиньинь;перевод</kbd>. Тоны можно цифрами: <kbd>ni3 hao3</kbd> → nǐ hǎo.</li>
+<li><b>Статистика</b> — каждая попытка с ответами, графики по дням, проблемные и освоенные слова.</li>
+</ul></div>
+
+<h2>Поход кота-воина</h2>
+<div class="card"><ul>
+<li>Ваш персонаж — кот из армии Троецарствия, <b>10 рангов за 30 дней</b>: от кашевара до бога войны. Кнопка-аватар вверху главной.</li>
+<li><b>Переход</b> — 400 очков за день (примерно 20 минут занятий): день зачтён, поход идёт вперёд. Новый ранг — каждые 3 зачтённых дня.</li>
+<li><b>Марш-бросок 兼程</b> — 2000 очков за день: день считается за два, и вас ждёт <b>сундук с сокровищами</b> (3 предмета, от связки монет до императорской печати).</li>
+<li>День без перехода откатывает поход на день. За один день выше ранга не прыгнуть — только дисциплина.</li>
+<li>Очки дают верные ответы: сложнее режим — больше очков; законченная тренировка, «без ошибок» и сданный экзамен — бонусы.</li>
+</ul></div>
+
+<h2>Китайская клавиатура</h2>
+<div class="card"><p>Нужна для режима «Письмо» и сложного уровня. Один раз:</p><ol>
+<li><b>Настройки</b> iPhone → Основные → Клавиатура → Клавиатуры → <b>Новые клавиатуры…</b></li>
+<li><b>Китайский (упрощённый)</b> → <b>Пиньинь — QWERTY</b>. Можно добавить и <b>Рукописный ввод</b> — рисовать иероглиф пальцем.</li>
+<li>В поле ввода нажмите <kbd>🌐</kbd> на клавиатуре → <b>简体拼音</b>. Набираете <kbd>nihao</kbd> — сверху появляются иероглифы, выбираете 你好.</li>
+</ol></div>
+
+<h2>Данные и обновления</h2>
+<div class="card"><ul>
+<li>Всё хранится <b>только на вашем телефоне</b>, никуда не отправляется. Обновления приложения прогресс не стирают.</li>
+<li><b>Резервная копия</b>: Настройки → Экспорт → сохранить в «Файлы» или iCloud. Восстановить на этом или другом телефоне — Импорт.</li>
+<li class="warn"><b>Важно:</b> если удалить иконку с экрана «Домой», iPhone удалит и все данные. Перед этим сделайте экспорт.</li>
+<li>Новая версия подхватывается сама при следующем запуске — закройте приложение и откройте снова.</li>
+<li>Нет звука — проверьте переключатель беззвучного режима на телефоне и «Звуки» в настройках приложения.</li>
+</ul></div>
+<p class="muted">Поделиться: просто отправьте ссылку relayner.github.io/zika — у каждого будут свои колоды и свой поход.</p>
+</main></body>
+</html>

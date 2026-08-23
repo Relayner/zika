@@ -30,6 +30,7 @@ for (const f of ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
   if (fs.existsSync(p)) fs.copyFileSync(p, dist(f));
 }
 fs.copyFileSync(src('icon.svg'), dist('icon.svg'));
+fs.copyFileSync(src('help.html'), dist('help.html'));
 console.log('built', VERSION, (html.length / 1024).toFixed(0) + ' KB');
 /* Страница-превью всех рангов котов (для отладки рисунков) */
 const catsPage = '<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>cats</title>'
