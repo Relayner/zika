@@ -30,12 +30,13 @@ window.HskReal = (() => {
     let picCursor = 0;
     const takePics = n => pics.slice(picCursor, picCursor += n);
     const qs = [];
-    /* Слушание ч.1: слово + картинка → 对/错 */
-    for (const p of takePics(5)) {
-      const truth = Math.random() < 0.5;
+    /* Слушание ч.1: слово + картинка → 对/错 (смесь гарантирована) */
+    const truths1 = shuffle([true, true, false, false, Math.random() < 0.5]);
+    takePics(5).forEach((p, ti) => {
+      const truth = truths1[ti];
       const other = pics[picCursor + rnd(pics.length - picCursor - 1)] || pics[0];
       qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? p.h : other.h, pic: p.id, correct: truth ? 0 : 1 });
-    }
+    });
     /* Слушание ч.2: предложение → выбрать картинку из 3 */
     const l2 = sentPool.slice(0, 5);
     for (const it of l2) {
@@ -54,13 +55,14 @@ window.HskReal = (() => {
       const order = shuffle([0, 1, 2]);
       qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: order.map(i => it.opts[i]), correct: order.indexOf(0) });
     }
-    /* Чтение ч.1: картинка + слово → 对/错 */
-    for (const p of takePics(5)) {
-      const truth = Math.random() < 0.5;
+    /* Чтение ч.1: картинка + слово → 对/错 (смесь гарантирована) */
+    const truthsR = shuffle([true, true, false, false, Math.random() < 0.5]);
+    takePics(5).forEach((p, ti) => {
+      const truth = truthsR[ti];
       const other = pics[rnd(picCursor - 5)] || pics[0];
       const w = truth ? p : (other.id === p.id ? pics[(pics.indexOf(p) + 1) % pics.length] : other);
       qs.push({ sec: 'reading', part: 1, type: 'tf', text: w.h, textPy: w.py, pic: p.id, correct: truth ? 0 : 1 });
-    }
+    });
     /* Чтение ч.2: предложение (текстом) → картинка */
     const r2 = sentPool.slice(5, 10);
     for (const it of r2) {
@@ -71,11 +73,11 @@ window.HskReal = (() => {
     /* Чтение ч.3: вопрос ↔ ответ, общий пул из 6 */
     const qa = shuffle(B.QA3).slice(0, 6);
     const pool3 = shuffle(qa.map(x => x.a));
-    qa.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 3, type: 'pool', text: it.q, pool: pool3, answer: it.a }));
+    qa.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 3, type: 'pool', block: 'e1r3', text: it.q, pool: pool3, answer: it.a }));
     /* Чтение ч.4: пропуск ↔ слово, общий пул из 6 */
     const fills = shuffle(B.FILL).slice(0, 6);
     const pool4 = shuffle(fills.map(x => x.ans));
-    fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', text: it.t, pool: pool4, answer: it.ans }));
+    fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', block: 'e1r4', text: it.t, pool: pool4, answer: it.ans }));
     return qs;
   }
 
@@ -88,18 +90,19 @@ window.HskReal = (() => {
     const dlgPool = shuffle(B.DLG.filter(x => av.has(x.pic)));
     if (sentPool.length < 15 || dlgPool.length < 10) throw new Error('Мало картинок для экзамена HSK 2');
     const qs = [];
-    /* 听力 ч.1 (10): предложение + картинка → 对/错 */
-    for (const it of sentPool.slice(0, 10)) {
-      const truth = Math.random() < 0.5;
+    /* 听力 ч.1 (10): предложение + картинка → 对/错 (5 верных + 5 неверных) */
+    const truths2 = shuffle([true, true, true, true, true, false, false, false, false, false]);
+    sentPool.slice(0, 10).forEach((it, ti) => {
+      const truth = truths2[ti];
       const other = sentPool[10 + rnd(Math.max(1, sentPool.length - 10))] || sentPool[0];
       qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? it.say : other.say, pic: it.pic, correct: truth ? 0 : 1 });
-    }
+    });
     /* 听力 ч.2 (10 = 2 блока по 5): диалог → картинка из пула 6 */
     for (let b = 0; b < 2; b++) {
       const block = dlgPool.slice(b * 5, b * 5 + 5);
       const extra = shuffle(pics.filter(p => !block.some(x => x.pic === p.id)))[0];
       const pool = shuffle([...block.map(x => x.pic), extra.id]);
-      for (const it of block) qs.push({ sec: 'listening', part: 2, type: 'poolpic', say: [it.a, it.b], pool, answer: it.pic });
+      for (const it of block) qs.push({ sec: 'listening', part: 2, type: 'poolpic', block: 'e2l2' + b, say: [it.a, it.b], pool, answer: it.pic });
     }
     /* 听力 ч.3 (10): диалог + вопрос → 3 варианта */
     for (const it of shuffle(B.Q3).slice(0, 10)) {
@@ -116,20 +119,21 @@ window.HskReal = (() => {
     {
       const extra = shuffle(pics.filter(p => !r1.some(x => x.pic === p.id)))[0];
       const pool = shuffle([...r1.map(x => x.pic), extra.id]);
-      for (const it of r1) qs.push({ sec: 'reading', part: 1, type: 'poolpic', text: it.say, pool, answer: it.pic });
+      for (const it of r1) qs.push({ sec: 'reading', part: 1, type: 'poolpic', block: 'e2r1', text: it.say, pool, answer: it.pic });
     }
     /* 阅读 ч.2 (5): пропуск ↔ слово из пула 6 */
     const fills = shuffle(B.FILL).slice(0, 6);
     const pool2 = shuffle(fills.map(x => x.ans));
-    fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', text: it.t, pool: pool2, answer: it.ans }));
+    fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', block: 'e2r2', text: it.t, pool: pool2, answer: it.ans }));
     /* 阅读 ч.3 (5): текст + суждение ★ → 对/错 */
-    for (const it of shuffle(B.TF).slice(0, 5)) qs.push({ sec: 'reading', part: 3, type: 'tf', text: it.text, star: it.star, correct: it.truth ? 0 : 1 });
+    const tf5 = [...shuffle(B.TF.filter(x => x.truth)).slice(0, 3), ...shuffle(B.TF.filter(x => !x.truth)).slice(0, 2)];
+    for (const it of shuffle(tf5)) qs.push({ sec: 'reading', part: 3, type: 'tf', text: it.text, star: it.star, correct: it.truth ? 0 : 1 });
     /* 阅读 ч.4 (10 = 2 блока по 5): реплика ↔ ответ из пула 6 */
     const pairs = shuffle(B.PAIR);
     for (let b = 0; b < 2; b++) {
       const block = pairs.slice(b * 6, b * 6 + 6);
       const pool = shuffle(block.map(x => x.a));
-      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', text: it.q, pool, answer: it.a }));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', block: 'e2r4' + b, text: it.q, pool, answer: it.a }));
     }
     return qs;
   }
@@ -147,10 +151,11 @@ window.HskReal = (() => {
       const block = dlgPool.slice(b * 5, b * 5 + 5);
       const extra = shuffle(pics.filter(p => !block.some(x => x.pic === p.id)))[0];
       const pool = shuffle([...block.map(x => x.pic), extra.id]);
-      for (const it of block) qs.push({ sec: 'listening', part: 1, type: 'poolpic', say: [it.a, it.b], pool, answer: it.pic });
+      for (const it of block) qs.push({ sec: 'listening', part: 1, type: 'poolpic', block: 'e3l1' + b, say: [it.a, it.b], pool, answer: it.pic });
     }
-    /* 听力 ч.2 (10): высказывание на слух + суждение ★ */
-    for (const it of shuffle(B.TFL).slice(0, 10)) qs.push({ sec: 'listening', part: 2, type: 'tf', say: it.say, star: it.star, correct: it.truth ? 0 : 1 });
+    /* 听力 ч.2 (10): высказывание на слух + суждение ★ (5 верных + 5 неверных) */
+    const tfl = [...shuffle(B.TFL.filter(x => x.truth)).slice(0, 5), ...shuffle(B.TFL.filter(x => !x.truth)).slice(0, 5)];
+    for (const it of shuffle(tfl)) qs.push({ sec: 'listening', part: 2, type: 'tf', say: it.say, star: it.star, correct: it.truth ? 0 : 1 });
     /* 听力 ч.3 (10) и ч.4 (10): диалоги с вопросом */
     for (const it of shuffle(B.Q3).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
     for (const it of shuffle(B.Q4).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
@@ -159,14 +164,14 @@ window.HskReal = (() => {
     for (let b = 0; b < 2; b++) {
       const block = pairs.slice(b * 6, b * 6 + 6);
       const pool = shuffle(block.map(x => x.a));
-      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 1, type: 'pool', text: it.q, pool, answer: it.a }));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 1, type: 'pool', block: 'e3r1' + b, text: it.q, pool, answer: it.a }));
     }
     /* 阅读 ч.2 (10 = 2 блока по 5): пропуски */
     const fills = shuffle(B.FILL);
     for (let b = 0; b < 2; b++) {
       const block = fills.slice(b * 6, b * 6 + 6);
       const pool = shuffle(block.map(x => x.ans));
-      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', text: it.t, pool, answer: it.ans }));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', block: 'e3r2' + b, text: it.t, pool, answer: it.ans }));
     }
     /* 阅读 ч.3 (10): текст + вопрос */
     for (const it of shuffle(B.READ).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'reading', part: 3, type: 'opts', text: it.t, sub: it.q, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
@@ -186,8 +191,8 @@ window.HskReal = (() => {
       'listening-4': 'Вы услышите вопрос. Выберите правильный ответ.',
       'reading-1': 'Соответствует ли слово картинке? Выберите 对 (верно) или 错 (неверно).',
       'reading-2': 'Прочитайте предложение и выберите картинку.',
-      'reading-3': 'Подберите ответ к вопросу из общего списка.',
-      'reading-4': 'Выберите слово, которое подходит в пропуск.',
+      'reading-3': 'Слева — вопросы, ниже — ответы A–F, один лишний.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
+      'reading-4': 'В предложениях пропущено слово — подберите его из списка A–F, один лишний.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
     },
   };
   /* Подсчёт: каждая секция из 100 */
@@ -208,13 +213,13 @@ window.HskReal = (() => {
     sections: { listening: { zh: '听力', ru: 'Аудирование', total: 35 }, reading: { zh: '阅读', ru: 'Чтение', total: 25 } },
     partRules: {
       'listening-1': 'Вы услышите предложение. Верна ли картинка? Аудио прозвучит два раза.',
-      'listening-2': 'Вы услышите диалог. Выберите картинку из общего набора — каждая используется один раз.',
+      'listening-2': 'Прозвучат пять диалогов по очереди, каждый два раза. К каждому диалогу подберите картинку A–F, одна лишняя.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
       'listening-3': 'Вы услышите диалог и вопрос. Выберите правильный ответ.',
       'listening-4': 'Вы услышите длинный диалог и вопрос. Выберите правильный ответ.',
-      'reading-1': 'Прочитайте предложение и выберите картинку из общего набора.',
+      'reading-1': 'К каждому предложению подберите картинку A–F, одна лишняя.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
       'reading-2': 'Выберите слово, которое подходит в пропуск.',
       'reading-3': 'Прочитайте текст и суждение со звездой ★. Верно оно или нет?',
-      'reading-4': 'Подберите ответ к реплике из общего списка.',
+      'reading-4': 'Слева — реплики, ниже — ответы на них A–F, один лишний.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
     },
   };
   const SPEC3 = {
@@ -222,13 +227,13 @@ window.HskReal = (() => {
     sectionSec: { reading: 30 * 60, writing: 15 * 60 },
     sections: { listening: { zh: '听力', ru: 'Аудирование', total: 40 }, reading: { zh: '阅读', ru: 'Чтение', total: 30 }, writing: { zh: '书写', ru: 'Письмо', total: 10 } },
     partRules: {
-      'listening-1': 'Вы услышите диалог. Выберите картинку из общего набора — каждая используется один раз.',
+      'listening-1': 'Прозвучат пять диалогов по очереди, каждый два раза. К каждому диалогу подберите картинку A–F, одна лишняя.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
       'listening-2': 'Вы услышите высказывание. Верно ли суждение со звездой ★?',
       'listening-3': 'Вы услышите диалог и вопрос. Выберите правильный ответ.',
       'listening-4': 'Вы услышите длинный диалог и вопрос. Выберите правильный ответ.',
-      'reading-1': 'Подберите ответ к реплике из общего списка.',
-      'reading-2': 'Выберите слово, которое подходит в пропуск.',
-      'reading-3': 'Прочитайте текст и ответьте на вопрос.',
+      'reading-1': 'Слева — реплики, ниже — ответы на них A–F, один лишний.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
+      'reading-2': 'В предложениях пропущено слово — подберите его из списка A–F, один лишний.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
+      'reading-3': 'Прочитайте текст и ответьте на вопрос — три варианта.',
       'writing-1': 'Составьте предложение из данных слов — нажимайте их в правильном порядке.',
       'writing-2': 'Впишите иероглиф по пиньиню (нужна китайская клавиатура 中文).',
     },

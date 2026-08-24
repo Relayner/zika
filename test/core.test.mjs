@@ -372,3 +372,39 @@ t('real exam 3 build', () => {
   assert.equal(HskReal3.score([{ sec: 'listening', ok: true }, { sec: 'reading', ok: false }, { sec: 'writing', ok: false }], HskReal3.SPEC3).passed, false);
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'real exam 3 group passed');
+
+/* ── баланс 对/错, блоки, симуляция «всегда первый вариант» ── */
+t('tf balance and blocks', () => {
+  for (let iter = 0; iter < 8; iter++) {
+    const q1 = HskReal3.buildExam1();
+    const l1 = q1.filter(q => q.sec === 'listening' && q.part === 1).filter(q => q.correct === 0).length;
+    const r1 = q1.filter(q => q.sec === 'reading' && q.part === 1).filter(q => q.correct === 0).length;
+    assert.ok(l1 >= 2 && l1 <= 3, 'HSK1 L1 对 count ' + l1);
+    assert.ok(r1 >= 2 && r1 <= 3, 'HSK1 R1 对 count ' + r1);
+    assert.ok(q1.filter(q => q.block === 'e1r3').length === 5 && q1.filter(q => q.block === 'e1r4').length === 5);
+    const q2 = HskReal3.buildExam2();
+    const l21 = q2.filter(q => q.sec === 'listening' && q.part === 1 && q.correct === 0).length;
+    assert.equal(l21, 5, 'HSK2 L1 balanced');
+    assert.equal(new Set(q2.filter(q => q.block).map(q => q.block)).size, 6, 'HSK2 blocks');
+    const q3 = HskReal3.buildExam3();
+    const l32 = q3.filter(q => q.sec === 'listening' && q.part === 2 && q.correct === 0).length;
+    assert.equal(l32, 5, 'HSK3 L2 balanced');
+    assert.equal(new Set(q3.filter(q => q.block).map(q => q.block)).size, 6, 'HSK3 blocks');
+  }
+});
+t('simulate always-first-answer', () => {
+  for (const [n, build, spec] of [[1, HskReal3.buildExam1, HskReal3.SPEC1], [2, HskReal3.buildExam2, HskReal3.SPEC2], [3, HskReal3.buildExam3, HskReal3.SPEC3]]) {
+    const qs = build();
+    for (const q of qs) {
+      if (q.type === 'pool' || q.type === 'poolpic') { q.given = q.pool[0]; q.ok = q.given === q.answer; }
+      else if (q.type === 'arrange') { q.given = q.chunks.join(''); q.ok = q.answers.includes(q.given); }
+      else if (q.type === 'input') { q.given = '错'; q.ok = q.given === q.answer; }
+      else { q.ok = q.correct === 0; }
+    }
+    const sc = HskReal3.score(qs, spec);
+    const pct = sc.score / spec.max;
+    assert.ok(pct < 0.9, 'HSK' + n + ' not everything correct: ' + sc.score + '/' + spec.max);
+    assert.ok(sc.score > 0, 'HSK' + n + ' scored something');
+  }
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'balance/simulation group passed');
