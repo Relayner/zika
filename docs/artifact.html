@@ -3668,7 +3668,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260824-0955';
+  const VERSION = '20260824-1002';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3837,6 +3837,7 @@ window.App = (() => {
     root.innerHTML = v.render(state.params) || '';
     window.scrollTo(0, 0);
     document.body.classList.toggle('no-tabs', state.view === 'quiz' || state.view === 'exam');
+    if (pendingReload && state.view !== 'quiz' && state.view !== 'exam') { pendingReload = false; toast('Применяю обновление…', 2500); setTimeout(() => location.reload(), 700); }
     const tab = TAB_OF[state.view];
     $$('#tabbar .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     if (v.mount) v.mount(state.params);
@@ -4023,6 +4024,7 @@ window.App = (() => {
         <div class="flabel">Установка на iPhone</div>
         <div class="install-note">${standalone ? 'Приложение запущено с экрана «Домой» ✓' : 'В Safari нажмите <b>Поделиться</b> → <b>На экран «Домой»</b>. Откроется на весь экран и будет работать без сети.'}</div>
         <a class="btn btn-secondary btn-block mt" href="help.html" target="_blank" rel="noopener" data-nosound>Инструкция и правила похода</a>
+        <button class="btn btn-secondary btn-sm btn-block" data-action="check-update">Проверить обновления</button>
         <div class="hint">Версия ${VERSION} · схема данных ${state.meta ? state.meta.schema : '—'} · Хранилище: ${modeName} · Карточек: ${hskCards.length + state.cards.length} · Попыток: ${state.attempts.length}</div>
         <div class="hint" id="backup-info">Резервные копии: …</div>
       </div>`;
@@ -4056,6 +4058,17 @@ window.App = (() => {
   actions['set-theme'] = el => { state.settings.theme = el.dataset.val; applyTheme(); persist(); render(); };
   actions['export-all'] = async () => { const ok = await shareJSON(exportData(), 'zika-backup-' + Stats.dayKey(Date.now()) + '.json'); if (ok) toast('Копия подготовлена'); };
   actions['import-all'] = () => { const i = $('#import-file'); if (i) i.click(); };
+  actions['check-update'] = async el => {
+    el.disabled = true;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) { toast('Обновления работают только у установленного приложения с сетью'); el.disabled = false; return; }
+      toast('Проверяю…', 1500);
+      await reg.update();
+      setTimeout(() => { if (!pendingReload) toast('У вас последняя версия · ' + VERSION, 3000); }, 3000);
+    } catch (e) { toast('Не удалось проверить: ' + e.message, 3000); }
+    el.disabled = false;
+  };
   actions['push-on'] = async el => {
     el.disabled = true;
     try { await Push.enable(); toast('Напоминания включены — Лун на связи'); } catch (e) { toast('Не получилось: ' + e.message, 3500); }
@@ -4073,14 +4086,19 @@ window.App = (() => {
   };
 
   /* ── запуск ── */
+  let pendingReload = false;
   function registerSW() {
     if (!('serviceWorker' in navigator) || location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      reg.addEventListener('updatefound', () => {
-        const w = reg.installing;
-        if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) toast('Доступно обновление — перезапустите приложение', 4000); });
-      });
-    }).catch(() => {});
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then(reg => { reg.update().catch(() => {}); }).catch(() => {});
+    let reloaded = false;
+    /* Новая версия активировалась — применяем сами: перезагрузка, когда это безопасно */
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      if (state.view === 'quiz' || state.view === 'exam') { pendingReload = true; toast('Обновление готово — применится после тренировки', 4000); }
+      else { toast('Применяю обновление…', 2500); setTimeout(() => location.reload(), 700); }
+    });
   }
   async function init() {
     try {

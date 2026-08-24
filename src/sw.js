@@ -1,11 +1,32 @@
 /* Service worker: офлайн-кэш оболочки. Версия подставляется сборкой. */
 const CACHE = 'zika-__VERSION__';
 const ASSETS = __ASSETS__;
+const CORE = ASSETS.filter(a => !a.startsWith('./img/'));
+const IMGS = ASSETS.filter(a => a.startsWith('./img/'));
+/* Установка лёгкая: только оболочка. Картинки переезжают из старого кэша и дообновляются фоном. */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const nc = await caches.open(CACHE);
+    const keys = await caches.keys();
+    for (const k of keys) {
+      if (k === CACHE) continue;
+      try {
+        const oc = await caches.open(k);
+        for (const req of await oc.keys()) {
+          if (req.url.includes('/img/') && !(await nc.match(req, { ignoreSearch: true }))) {
+            const res = await oc.match(req);
+            if (res) await nc.put(req, res);
+          }
+        }
+      } catch (err) { /* ignore */ }
+      await caches.delete(k);
+    }
+    await self.clients.claim();
+    (async () => { for (const u of IMGS) { try { await nc.add(u); } catch (err) { /* офлайн — обновятся позже */ } } })();
+  })());
 });
 self.addEventListener('push', e => {
   let d = {};
