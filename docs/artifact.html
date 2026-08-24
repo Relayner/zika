@@ -220,7 +220,7 @@ select.inp { appearance: none; -webkit-appearance: none; }
 .progress > i { display: block; height: 100%; background: linear-gradient(90deg, var(--bordeaux), var(--vermilion)); border-radius: 4px; transition: width .3s; }
 .progress.gold > i { background: linear-gradient(90deg, var(--gold), var(--gold-2)); }
 .qcount { font-family: var(--serif); font-size: 15px; color: var(--ink-2); min-width: 44px; text-align: right; }
-.qtimer { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--gold); display: grid; place-items: center; font-family: var(--serif); font-weight: 700; color: var(--bordeaux); }
+.qtimer { min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px; border: 2px solid var(--gold); display: grid; place-items: center; font-family: var(--serif); font-weight: 700; color: var(--bordeaux); white-space: nowrap; font-size: 14px; }
 .qtimer.urgent { border-color: var(--vermilion); color: var(--vermilion); animation: pulse .5s infinite alternate; }
 @keyframes pulse { to { transform: scale(1.12); } }
 .qlabel { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); text-align: center; margin-bottom: 10px; font-weight: 700; }
@@ -494,6 +494,7 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .ex-pics.pool6 { grid-template-columns: repeat(3, 1fr); }
 .ex-picbtn.used { opacity: .3; filter: grayscale(.8); }
 .ex-star { font-size: 20px; font-family: var(--hanzi); text-align: center; margin-top: 12px; padding: 10px; border: 1px dashed var(--line-2); border-radius: 10px; }
+.arr-line { min-height: 56px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 </style>
 <div id="app">
@@ -3114,6 +3115,198 @@ window.HSK2EXAM = {
 };
 
 ;
+/* Банки заданий настоящего экзамена HSK 3 (лексика HSK 1–3). */
+window.HSK3EXAM = {
+  /* 听力 ч.1: диалог ↔ картинка из пула */
+  DLG: [
+    { a: '这么晚了还在工作？', b: '马上就完，你先睡吧。', pic: 'p33' },
+    { a: '你的感冒好点儿了吗？', b: '吃了药，好多了。', pic: 'p50' },
+    { a: '周末的火车票买到了吗？', b: '买到了，上午九点的。', pic: 'p53' },
+    { a: '你想喝点儿什么？', b: '来杯咖啡吧，加牛奶。', pic: 'p41' },
+    { a: '你每天都跑步吗？', b: '对，除了下雨天。', pic: 'p54' },
+    { a: '这条鱼真新鲜！', b: '那晚上就吃鱼吧。', pic: 'p45' },
+    { a: '儿子呢？', b: '在外面和同学踢足球呢。', pic: 'p55' },
+    { a: '你游泳游得真好！', b: '我从小就学游泳了。', pic: 'p57' },
+    { a: '这些苹果真便宜。', b: '多买一点儿吧。', pic: 'p01' },
+    { a: '喂，你在哪儿？', b: '在图书馆看书呢，小声点儿。', pic: 'p27' },
+    { a: '今天的报纸看了吗？', b: '还没有，有什么新闻？', pic: 'p49' },
+    { a: '我的手机不见了！', b: '别着急，我给你打一个。', pic: 'p47' },
+    { a: '冰箱里没有鸡蛋了。', b: '我下班去买。', pic: 'p44' },
+    { a: '妹妹在做什么呢？这么安静。', b: '在练习写汉字呢。', pic: 'p28' },
+    { a: '电视里在演什么？', b: '一个关于熊猫的节目，特别有意思。', pic: 'p31' },
+    { a: '这件衣服怎么样？', b: '不错，就是有点儿贵。', pic: 'p14' },
+    { a: '你会做饭吗？', b: '会一点儿，我做的面条还可以。', pic: 'p37' },
+    { a: '昨天的篮球比赛你们赢了吗？', b: '当然，我们班第一！', pic: 'p56' },
+    { a: '飞机几点起飞？', b: '下午三点，我们该出发了。', pic: 'p11' },
+    { a: '医生，我最近总是睡不好。', b: '少喝咖啡，多运动。', pic: 'p21' },
+    { a: '公共汽车怎么还不来？', b: '别等了，我们打车吧。', pic: 'p52' },
+    { a: '你唱歌唱得真不错！', b: '哪里哪里，就是爱好。', pic: 'p59' },
+    { a: '牛奶还有吗？', b: '就一杯了，给你吧。', pic: 'p42' },
+    { a: '西瓜太大了，我们两个人吃不完。', b: '没关系，放冰箱里。', pic: 'p43' },
+  ],
+  /* 听力 ч.2: услышанное высказывание + суждение ★ → 对/错 */
+  TFL: [
+    { say: '我几乎每天都坐地铁上班，又快又便宜。', star: '他觉得坐地铁很方便。', truth: true },
+    { say: '昨天晚上我看电视看到十二点，今天起晚了。', star: '他今天起得很早。', truth: false },
+    { say: '这家饭馆的菜又好吃又便宜，我们经常来。', star: '他们第一次来这家饭馆。', truth: false },
+    { say: '小李的汉语水平提高得很快，因为他每天都练习。', star: '小李每天练习汉语。', truth: true },
+    { say: '秋天到了，山上的叶子都红了，特别漂亮。', star: '现在是秋天。', truth: true },
+    { say: '我打算明年去中国留学，现在正在努力学习中文。', star: '他已经在中国留学了。', truth: false },
+    { say: '我的行李箱太重了，一个人搬不动。', star: '他需要别人帮忙。', truth: true },
+    { say: '会议九点开始，请大家不要迟到。', star: '会议已经结束了。', truth: false },
+    { say: '妹妹很喜欢小动物，家里有两只猫和一只狗。', star: '妹妹家里有三只小动物。', truth: true },
+    { say: '虽然今天是周末，但是爸爸还要去公司工作。', star: '爸爸周末休息。', truth: false },
+    { say: '为了身体健康，爷爷每天早上都去公园锻炼。', star: '爷爷经常锻炼身体。', truth: true },
+    { say: '外面风刮得很大，你多穿点儿衣服再出去。', star: '外面天气很冷。', truth: true },
+    { say: '这次考试比上次难多了，很多同学都没考好。', star: '这次考试很简单。', truth: false },
+    { say: '我们学校的图书馆周日不开门。', star: '周日可以去学校图书馆。', truth: false },
+    { say: '张先生刚搬来的时候，谁都不认识。', star: '张先生是新搬来的。', truth: true },
+    { say: '别担心，你的自行车我已经帮你修理好了。', star: '自行车还是坏的。', truth: false },
+    { say: '医生让我少吃甜的，可是我还是很想吃蛋糕。', star: '医生让他多吃蛋糕。', truth: false },
+    { say: '从我家到机场，开车要一个半小时。', star: '他家离机场很近。', truth: false },
+    { say: '妈妈做的鱼汤特别好喝，我喝了两碗。', star: '他喜欢妈妈做的鱼汤。', truth: true },
+    { say: '这个故事我小时候听奶奶讲过很多次。', star: '他对这个故事很熟悉。', truth: true },
+  ],
+  /* 听力 ч.3: диалог + вопрос (первый вариант — правильный) */
+  Q3: [
+    { say: ['男：你的护照办好了吗？', '女：办好了，下个月就去北京。', '问：女的下个月去哪儿？'], opts: ['北京', '学校', '公司'] },
+    { say: ['女：这双皮鞋多少钱？', '男：三百八。', '女：太贵了，能便宜点儿吗？', '问：女的觉得皮鞋怎么样？'], opts: ['太贵了', '很便宜', '不好看'] },
+    { say: ['男：会议室的空调坏了。', '女：我马上找人来检查。', '问：什么坏了？'], opts: ['空调', '电脑', '冰箱'] },
+    { say: ['女：你瘦了很多啊！', '男：我最近每天都去锻炼。', '问：男的为什么瘦了？'], opts: ['他经常锻炼', '他生病了', '他不吃饭'] },
+    { say: ['男：这些句子我总是记不住。', '女：多读几遍就记住了。', '问：女的让男的怎么做？'], opts: ['多读几遍', '别学了', '问老师'] },
+    { say: ['女：你把伞带上吧，天阴了。', '男：好的，谢谢妈。', '问：天气怎么样？'], opts: ['阴天，可能下雨', '晴天', '下雪'] },
+    { say: ['男：图书馆几点关门？', '女：晚上九点。', '男：那我们还有两个小时。', '问：现在几点？'], opts: ['七点', '九点', '五点'] },
+    { say: ['女：这个蛋糕是我自己做的，你尝尝。', '男：真甜！你太厉害了。', '问：蛋糕是谁做的？'], opts: ['女的', '男的', '买的'] },
+    { say: ['男：你怎么才来？电影都开始十分钟了。', '女：对不起，路上堵车了。', '问：女的为什么迟到？'], opts: ['堵车', '起晚了', '忘了时间'] },
+    { say: ['女：先生，您的房间在八层，这是钥匙。', '男：谢谢，电梯在哪儿？', '问：他们最可能在哪儿？'], opts: ['宾馆', '医院', '学校'] },
+    { say: ['男：小王呢？', '女：他去银行取钱了，一会儿就回来。', '问：小王去做什么？'], opts: ['取钱', '买东西', '上课'] },
+    { say: ['女：你的字写得真漂亮！练了多久？', '男：从五岁就开始练了。', '问：男的几岁开始练字？'], opts: ['五岁', '十五岁', '五年前'] },
+    { say: ['男：这条街上新开了一家超市，东西很多。', '女：那我们去看看吧。', '问：他们要去哪儿？'], opts: ['超市', '银行', '饭馆'] },
+    { say: ['女：你脸色不太好，是不是又工作到很晚？', '男：嗯，这几天特别忙。', '问：男的最近怎么样？'], opts: ['很忙', '很高兴', '在旅游'] },
+    { say: ['男：这个季节去南方旅游最舒服。', '女：那我们下个月就去！', '问：他们打算做什么？'], opts: ['去旅游', '去上班', '搬家'] },
+    { say: ['女：弟弟对画画儿特别感兴趣。', '男：那让他去学学吧。', '问：弟弟对什么感兴趣？'], opts: ['画画儿', '唱歌', '跳舞'] },
+    { say: ['男：这次会议很重要，别忘了带笔记本。', '女：放心吧，都准备好了。', '问：女的准备得怎么样？'], opts: ['都准备好了', '忘了带东西', '还没准备'] },
+    { say: ['女：图书馆里请安静。', '男：对不起，我马上出去打电话。', '问：男的要做什么？'], opts: ['出去打电话', '大声说话', '看书'] },
+    { say: ['男：你相信他说的话吗？', '女：我了解他，他从来不说假话。', '问：女的觉得他怎么样？'], opts: ['很诚实', '爱说假话', '不认识他'] },
+    { say: ['女：香蕉和苹果都买了，还需要什么？', '男：再买个西瓜吧。', '问：他们还要买什么？'], opts: ['西瓜', '香蕉', '苹果'] },
+    { say: ['男：你的成绩比上学期好多了。', '女：因为我换了学习的办法。', '问：女的成绩为什么提高了？'], opts: ['换了学习办法', '换了学校', '少睡觉了'] },
+    { say: ['女：都八点半了，你怎么还不起床？', '男：今天是星期六，让我再睡一会儿。', '问：今天星期几？'], opts: ['星期六', '星期一', '星期三'] },
+    { say: ['男：请问，去火车站怎么走？', '女：一直往东，看见银行往右转。', '问：男的要去哪儿？'], opts: ['火车站', '银行', '机场'] },
+    { say: ['女：这个冰箱太旧了，换个新的吧。', '男：好，周末去商场看看。', '问：他们打算买什么？'], opts: ['冰箱', '空调', '电视'] },
+  ],
+  /* 听力 ч.4: длинный диалог + вопрос */
+  Q4: [
+    { say: ['女：听说你要搬家了？', '男：对，新家离公司近，走路就能到。', '女：那太方便了！', '男：是啊，以后不用坐地铁了。', '问：男的为什么搬家？'], opts: ['离公司近', '新家便宜', '旧家太小'] },
+    { say: ['男：这个周末天气怎么样？', '女：天气预报说晴天。', '男：太好了，我们去爬山吧。', '女：好啊，把照相机带上。', '问：他们周末打算做什么？'], opts: ['爬山', '看电影', '在家休息'] },
+    { say: ['女：你怎么了？一直咳嗽。', '男：昨天吹了空调，感冒了。', '女：吃药了吗？', '男：吃了，医生说两三天就好。', '问：男的怎么了？'], opts: ['感冒了', '腿疼', '发烧很厉害'] },
+    { say: ['男：这本书你看完了吗？', '女：看完了，故事特别有意思。', '男：那借我看看吧。', '女：好，明天带给你。', '问：女的觉得这本书怎么样？'], opts: ['很有意思', '太难了', '没看完'] },
+    { say: ['女：师傅，去机场。', '男：好，您赶几点的飞机？', '女：十一点的，来得及吗？', '男：没问题，一个小时就到。', '问：女的坐几点的飞机？'], opts: ['十一点', '一点', '十点'] },
+    { say: ['男：你们班的新同学怎么样？', '女：她很热情，学习也努力。', '男：她从哪儿来？', '女：她从北京来。', '问：新同学是从哪儿来的？'], opts: ['北京', '上海', '南京'] },
+    { say: ['女：儿子的生日快到了，送他什么好呢？', '男：他不是一直想要一辆自行车吗？', '女：对啊，我怎么忘了。', '男：明天我们一起去选。', '问：他们打算送儿子什么？'], opts: ['自行车', '手表', '电脑'] },
+    { say: ['男：这家店的面条真好吃。', '女：是吧？我经常来。', '男：下次带同事一起来。', '女：他们一定会喜欢的。', '问：男的觉得面条怎么样？'], opts: ['很好吃', '太贵了', '一般'] },
+    { say: ['女：你的护照找到了吗？', '男：找到了，就在办公室的椅子下面。', '女：太好了，什么都没少吧？', '男：都在，放心吧。', '问：护照在哪儿找到的？'], opts: ['办公室', '出租车上', '家里'] },
+    { say: ['男：喂，妈，这个节日我不回家了。', '女：怎么了？', '男：公司只放一天假，来回时间不够。', '女：那你自己照顾好自己。', '问：男的为什么不回家？'], opts: ['假期太短', '不想回家', '票太贵'] },
+    { say: ['女：先生，这是菜单。', '男：来一个鱼，一个鸡蛋汤。', '女：喝点儿什么？', '男：两杯茶就可以了。', '问：男的没要什么？'], opts: ['咖啡', '鱼', '茶'] },
+    { say: ['男：你普通话说得真标准！', '女：谢谢，我在中国住了五年。', '男：真厉害！在哪儿学的？', '女：在北京的大学。', '问：女的普通话为什么好？'], opts: ['她在中国住了五年', '她是老师', '她刚开始学'] },
+  ],
+  /* 阅读 ч.1: реплика ↔ ответ из пула */
+  PAIR: [
+    { q: '你把窗户关一下吧。', a: '好的，马上关。' }, { q: '这个词是什么意思？', a: '你查一下词典吧。' },
+    { q: '你为什么迟到了？', a: '对不起，路上堵车了。' }, { q: '你觉得这个电影怎么样？', a: '一般，故事太简单了。' },
+    { q: '你的腿怎么了？', a: '昨天运动的时候弄疼了。' }, { q: '明天的会议几点开始？', a: '上午九点半，别迟到。' },
+    { q: '这些行李太重了。', a: '我来帮你拿吧。' }, { q: '你决定去哪儿工作了吗？', a: '还没有，我再想想。' },
+    { q: '你家附近有地铁站吗？', a: '有，走五分钟就到。' }, { q: '这条裙子我穿着怎么样？', a: '特别漂亮，就买这条吧。' },
+    { q: '你哥哥做什么工作？', a: '他是司机，开公共汽车。' }, { q: '冰箱里还有什么吃的？', a: '只有几个鸡蛋了。' },
+    { q: '你普通话说得真好！', a: '谢谢，我练习了很长时间。' }, { q: '周末我们去公园画画儿吧。', a: '好啊，我带铅笔和本子。' },
+    { q: '你怎么又感冒了？', a: '昨天穿得太少了。' }, { q: '图书馆里人多吗？', a: '不多，很安静。' },
+    { q: '这个箱子放哪儿？', a: '先放门口吧。' }, { q: '火车还有多久到站？', a: '还有一刻钟。' },
+    { q: '你相信他吗？', a: '当然，我们认识十年了。' }, { q: '空调是不是坏了？', a: '可能是，一点儿也不冷。' },
+    { q: '你最近在忙什么？', a: '在准备下个月的考试。' }, { q: '铅笔可以借我用一下吗？', a: '给你，不用着急还。' },
+    { q: '今天的作业多不多？', a: '不多，半个小时就能写完。' }, { q: '你去过南方吗？', a: '去过，那儿的冬天不太冷。' },
+    { q: '这么晚了你去哪儿？', a: '去机场接朋友。' }, { q: '太阳出来了！', a: '是啊，天气终于好了。' },
+    { q: '你的自行车骑了几年了？', a: '三年了，还跟新的一样。' }, { q: '这个菜有点儿辣。', a: '那你多喝点儿水。' },
+    { q: '老师讲的你都听懂了吗？', a: '几乎都懂了，就一个地方不明白。' }, { q: '你的猫真可爱！', a: '是我女儿从街上带回来的。' },
+  ],
+  /* 阅读 ч.2: пропуск ↔ слово из пула */
+  FILL: [
+    { t: '都十点了，他＿＿来。', ans: '才' }, { t: '我的蛋糕＿＿弟弟吃了。', ans: '被' }, { t: '请＿＿门关上。', ans: '把' },
+    { t: '这个地方漂亮＿＿了。', ans: '极' }, { t: '别急，我＿＿就到。', ans: '马上' }, { t: '我＿＿去那家店买东西。', ans: '经常' },
+    { t: '＿＿明天不下雨，我们就去爬山。', ans: '如果' }, { t: '＿＿了周末，他每天都工作。', ans: '除' },
+    { t: '等了三个月，签证＿＿拿到了。', ans: '终于' }, { t: '你＿＿多喝水，少喝咖啡。', ans: '应该' },
+    { t: '他走得很＿＿，大家都没想到。', ans: '突然' }, { t: '这本书是＿＿中国历史的。', ans: '关于' },
+    { t: '＿＿天气预报，明天有大风。', ans: '根据' }, { t: '你喝咖啡＿＿喝茶？', ans: '还是' },
+    { t: '我们可以坐火车去，＿＿坐飞机去。', ans: '或者' }, { t: '＿＿他只学了一年，但是汉语说得很好。', ans: '虽然' },
+    { t: '＿＿提高成绩，他每天学习到很晚。', ans: '为了' }, { t: '我＿＿小时候常来这儿玩儿。', ans: '记得' },
+    { t: '别＿＿，我们还有时间。', ans: '着急' }, { t: '明年我＿＿去中国留学。', ans: '打算' },
+    { t: '妈妈同意让我去，爸爸也很＿＿。', ans: '愿意' }, { t: '路上车多，骑车要＿＿。', ans: '小心' },
+    { t: '老师的问题他＿＿都答对了。', ans: '几乎' }, { t: '从早上到现在，雨＿＿在下。', ans: '一直' },
+  ],
+  /* 阅读 ч.3: текст + вопрос → 3 варианта */
+  READ: [
+    { t: '我家小狗特别聪明，每天我下班回家，它都在门口等我，看见我就高兴得又跳又叫。', q: '小狗每天在哪儿等他？', opts: ['门口', '公园', '楼下'] },
+    { t: '别人都说秋天去北京最好，天气不冷不热，山上的叶子都红了，特别好看。', q: '什么时候去北京最好？', opts: ['秋天', '夏天', '冬天'] },
+    { t: '小张虽然工作很忙，但是每个星期都会给父母打两次电话。', q: '小张多长时间给父母打电话？', opts: ['每星期两次', '每天', '很少打'] },
+    { t: '这家店的羊肉面很有名，每天中午来吃的人特别多，去晚了就要站着等。', q: '为什么去晚了要等？', opts: ['吃的人多', '店关门了', '服务员少'] },
+    { t: '妹妹刚开始学骑自行车的时候总是害怕。爸爸告诉她：眼睛看前面，别看脚下。现在她骑得很好了。', q: '谁教妹妹骑车？', opts: ['爸爸', '妈妈', '老师'] },
+    { t: '明天的会议改到下午三点了，地点没变，还是八楼的会议室。请大家互相告诉一下。', q: '会议的什么变了？', opts: ['时间', '地点', '参加的人'] },
+    { t: '很多人觉得工作忙就不锻炼身体。其实每天走半个小时的路，对健康也很有帮助。', q: '这段话主要讲什么？', opts: ['走路对健康有好处', '工作不重要', '应该多坐车'] },
+    { t: '我记得来这个城市的第一天，我一句中文也不会说，是热情的邻居帮我搬的行李。', q: '谁帮他搬了行李？', opts: ['邻居', '同事', '司机'] },
+    { t: '儿子画的马得了第一名，他高兴极了，说自己长大了要一直画画儿。', q: '儿子画的什么得了第一名？', opts: ['马', '猫', '熊猫'] },
+    { t: '天气预报说今天有雨，我把伞放进了包里。没想到下班的时候是晴天。', q: '今天下班时天气怎么样？', opts: ['晴天', '下大雨', '下雪'] },
+    { t: '姐姐在银行工作了十年。最近她决定离开银行，去做自己一直喜欢的事——教孩子们音乐。', q: '姐姐打算做什么工作？', opts: ['教音乐', '在银行工作', '开饭馆'] },
+    { t: '如果你想学好一种语言，最好的办法就是多听、多说、多读、多写，而且要每天练习。', q: '学好语言最重要的是什么？', opts: ['每天练习', '买好词典', '去外国'] },
+    { t: '圆圆是我们家的猫，今年三岁了。它白天喜欢睡觉，晚上就不睡了，在家里跑来跑去。', q: '圆圆晚上做什么？', opts: ['在家里跑来跑去', '睡觉', '出去玩儿'] },
+    { t: '这次旅游我们没坐飞机，选择了火车。虽然时间长一点儿，但是可以看外面的景色。', q: '他们为什么坐火车？', opts: ['想看景色', '飞机票太贵', '怕坐飞机'] },
+    { t: '小王发烧了，医生让他多喝水，好好休息，还给他开了三天的药。', q: '小王怎么了？', opts: ['他发烧了', '他腿疼', '他没生病'] },
+    { t: '我们公司搬到新办公室了，比以前的大多了，窗户外面就是公园，环境特别好。', q: '新办公室怎么样？', opts: ['大，环境好', '比以前小', '离公园远'] },
+    { t: '中国人吃饭用筷子。孩子一般两三岁就开始学，刚开始拿不住，练习练习就会了。', q: '中国孩子几岁开始学用筷子？', opts: ['两三岁', '十岁', '上学以后'] },
+    { t: '妈妈的生日快到了。我和爸爸打算自己做一个生日蛋糕，先不告诉她。', q: '他们打算做什么？', opts: ['做生日蛋糕', '买蛋糕', '请妈妈吃饭'] },
+    { t: '电梯今天坏了，我上了十层楼，到办公室的时候累得说不出话来。', q: '他今天为什么走楼梯上来？', opts: ['电梯坏了', '想锻炼', '楼层不高'] },
+    { t: '弟弟特别喜欢刮风下雨的天气，因为这样就可以不出去跑步了。', q: '弟弟为什么喜欢坏天气？', opts: ['可以不跑步', '喜欢看雨', '可以玩水'] },
+    { t: '老师说，遇到不会的词，先别急着查词典，可以根据句子的意思猜一猜。', q: '老师让学生先做什么？', opts: ['猜词的意思', '马上查词典', '问同学'] },
+    { t: '我家楼下新开了一家超市，一天二十四个小时都开门，晚上想买东西也很方便。', q: '这家超市有什么特点？', opts: ['一直开门', '东西便宜', '离地铁近'] },
+    { t: '哥哥的行李箱又大又重，里面除了衣服，还有给朋友们带的礼物。', q: '行李箱里没有什么？', opts: ['词典', '衣服', '礼物'] },
+    { t: '阿姨做的饺子特别好吃，我一次能吃三十个。', q: '他觉得饺子怎么样？', opts: ['特别好吃', '太少了', '不好吃'] },
+  ],
+  /* 书写 ч.1: собрать предложение из частей */
+  ARRANGE: [
+    { chunks: ['他', '把门', '关上了'], a: ['他把门关上了'] },
+    { chunks: ['这本书', '非常', '有意思'], a: ['这本书非常有意思'] },
+    { chunks: ['蛋糕', '被弟弟', '吃完了'], a: ['蛋糕被弟弟吃完了'] },
+    { chunks: ['你', '应该', '早点儿', '睡觉'], a: ['你应该早点儿睡觉'] },
+    { chunks: ['他', '汉语', '说得', '很流利'], a: ['他汉语说得很流利', '汉语他说得很流利'] },
+    { chunks: ['我们', '是', '坐火车', '来的'], a: ['我们是坐火车来的'] },
+    { chunks: ['请', '把空调', '打开'], a: ['请把空调打开'] },
+    { chunks: ['妹妹', '比我', '小', '三岁'], a: ['妹妹比我小三岁'] },
+    { chunks: ['外面', '突然', '下起了', '大雨'], a: ['外面突然下起了大雨'] },
+    { chunks: ['我', '几乎', '忘了', '这件事'], a: ['我几乎忘了这件事'] },
+    { chunks: ['大家', '都', '同意', '这个办法'], a: ['大家都同意这个办法'] },
+    { chunks: ['叔叔', '送给我', '一块', '手表'], a: ['叔叔送给我一块手表'] },
+    { chunks: ['黑板上', '写着', '几个', '汉字'], a: ['黑板上写着几个汉字'] },
+    { chunks: ['会议', '马上', '就要', '开始了'], a: ['会议马上就要开始了'] },
+    { chunks: ['他', '对中国文化', '很感兴趣'], a: ['他对中国文化很感兴趣'] },
+    { chunks: ['我们', '应该', '关心', '老人'], a: ['我们应该关心老人'] },
+    { chunks: ['他', '把房间', '打扫得', '很干净'], a: ['他把房间打扫得很干净'] },
+    { chunks: ['这个问题', '太', '简单了'], a: ['这个问题太简单了'] },
+    { chunks: ['我', '越来越', '喜欢', '这个城市'], a: ['我越来越喜欢这个城市'] },
+    { chunks: ['请', '在这儿', '写上', '你的名字'], a: ['请在这儿写上你的名字'] },
+  ],
+  /* 书写 ч.2: написать иероглиф по пиньиню */
+  WRITE: [
+    { t: '春天来了，花都＿＿了。', py: 'kāi', ans: '开' }, { t: '他每天早上七点＿＿床。', py: 'qǐ', ans: '起' },
+    { t: '这条裙子真＿＿亮。', py: 'piào', ans: '漂' }, { t: '我想喝一＿＿热水。', py: 'bēi', ans: '杯' },
+    { t: '哥哥比我＿＿两岁。', py: 'dà', ans: '大' }, { t: '外面风大，请把＿＿关上。', py: 'mén', ans: '门' },
+    { t: '我的爱＿＿是打篮球。', py: 'hào', ans: '好' }, { t: '祝你生日快＿＿！', py: 'lè', ans: '乐' },
+    { t: '天冷了，多＿＿点儿衣服。', py: 'chuān', ans: '穿' }, { t: '这个字怎么＿＿？', py: 'dú', ans: '读' },
+    { t: '妈妈在做＿＿，你们先坐。', py: 'fàn', ans: '饭' }, { t: '她的眼＿＿又大又漂亮。', py: 'jing', ans: '睛' },
+    { t: '考试的时候要认＿＿。', py: 'zhēn', ans: '真' }, { t: '冬天到了，开始下＿＿了。', py: 'xuě', ans: '雪' },
+    { t: '他游泳游得非常＿＿。', py: 'kuài', ans: '快' }, { t: '请问，洗手间在哪＿＿？', py: 'ér', ans: '儿' },
+    { t: '图书馆里非常安＿＿。', py: 'jìng', ans: '静' }, { t: '我＿＿信你一定能做好。', py: 'xiāng', ans: '相' },
+    { t: '这些苹果很新＿＿。', py: 'xiān', ans: '鲜' }, { t: '别忘了带＿＿照。', py: 'hù', ans: '护' },
+  ],
+};
+
+;
 /* Движок настоящего экзамена HSK: собирает случайный вариант из банков по структуре реального экзамена. */
 window.HskReal = (() => {
   const rnd = n => Math.floor(Math.random() * n);
@@ -3250,6 +3443,48 @@ window.HskReal = (() => {
     return qs;
   }
 
+  /* Экзамен HSK 3: 听力 40 + 阅读 30 + 书写 10 */
+  function buildExam3() {
+    const B = window.HSK3EXAM;
+    const av = new Set(window.PICS_AVAILABLE || []);
+    const pics = shuffle(availPics());
+    const dlgPool = shuffle(B.DLG.filter(x => av.has(x.pic)));
+    if (dlgPool.length < 10) throw new Error('Мало картинок для экзамена HSK 3');
+    const qs = [];
+    /* 听力 ч.1 (10 = 2 блока по 5): диалог → картинка из пула 6 */
+    for (let b = 0; b < 2; b++) {
+      const block = dlgPool.slice(b * 5, b * 5 + 5);
+      const extra = shuffle(pics.filter(p => !block.some(x => x.pic === p.id)))[0];
+      const pool = shuffle([...block.map(x => x.pic), extra.id]);
+      for (const it of block) qs.push({ sec: 'listening', part: 1, type: 'poolpic', say: [it.a, it.b], pool, answer: it.pic });
+    }
+    /* 听力 ч.2 (10): высказывание на слух + суждение ★ */
+    for (const it of shuffle(B.TFL).slice(0, 10)) qs.push({ sec: 'listening', part: 2, type: 'tf', say: it.say, star: it.star, correct: it.truth ? 0 : 1 });
+    /* 听力 ч.3 (10) и ч.4 (10): диалоги с вопросом */
+    for (const it of shuffle(B.Q3).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    for (const it of shuffle(B.Q4).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    /* 阅读 ч.1 (10 = 2 блока по 5): реплика ↔ ответ */
+    const pairs = shuffle(B.PAIR);
+    for (let b = 0; b < 2; b++) {
+      const block = pairs.slice(b * 6, b * 6 + 6);
+      const pool = shuffle(block.map(x => x.a));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 1, type: 'pool', text: it.q, pool, answer: it.a }));
+    }
+    /* 阅读 ч.2 (10 = 2 блока по 5): пропуски */
+    const fills = shuffle(B.FILL);
+    for (let b = 0; b < 2; b++) {
+      const block = fills.slice(b * 6, b * 6 + 6);
+      const pool = shuffle(block.map(x => x.ans));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', text: it.t, pool, answer: it.ans }));
+    }
+    /* 阅读 ч.3 (10): текст + вопрос */
+    for (const it of shuffle(B.READ).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'reading', part: 3, type: 'opts', text: it.t, sub: it.q, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    /* 书写 ч.1 (5): собрать предложение; ч.2 (5): написать иероглиф */
+    for (const it of shuffle(B.ARRANGE).slice(0, 5)) qs.push({ sec: 'writing', part: 1, type: 'arrange', chunks: shuffle(it.chunks), answers: it.a });
+    for (const it of shuffle(B.WRITE).slice(0, 5)) qs.push({ sec: 'writing', part: 2, type: 'input', text: it.t, py: it.py, answer: it.ans });
+    return qs;
+  }
+
   const SPEC1 = {
     level: 1, max: 200, pass: 120, readingSec: 17 * 60, answerSec: 12,
     sections: { listening: { zh: '听力', ru: 'Аудирование', total: 20 }, reading: { zh: '阅读', ru: 'Чтение', total: 20 } },
@@ -3264,17 +3499,17 @@ window.HskReal = (() => {
       'reading-4': 'Выберите слово, которое подходит в пропуск.',
     },
   };
-  /* Подсчёт: каждая секция из 100, итог из 200 */
-  function score(questions) {
+  /* Подсчёт: каждая секция из 100 */
+  function score(questions, spec) {
     const out = { sections: {}, score: 0 };
-    for (const sec of ['listening', 'reading']) {
+    for (const sec of Object.keys((spec || SPEC1).sections)) {
       const qs = questions.filter(q => q.sec === sec);
       const correct = qs.filter(q => q.ok).length;
       const pts = qs.length ? Math.round(correct / qs.length * 100) : 0;
       out.sections[sec] = { correct, total: qs.length, points: pts };
       out.score += pts;
     }
-    out.passed = out.score >= SPEC1.pass;
+    out.passed = out.score >= (spec || SPEC1).pass;
     return out;
   }
   const SPEC2 = {
@@ -3291,9 +3526,25 @@ window.HskReal = (() => {
       'reading-4': 'Подберите ответ к реплике из общего списка.',
     },
   };
-  const SPECS = { 1: SPEC1, 2: SPEC2 };
-  const BUILDERS = { 1: buildExam1, 2: buildExam2 };
-  return { buildExam1, buildExam2, SPEC1, SPEC2, SPECS, BUILDERS, score, availPics, picById, shuffle };
+  const SPEC3 = {
+    level: 3, max: 300, pass: 180, readingSec: 30 * 60, answerSec: 12,
+    sectionSec: { reading: 30 * 60, writing: 15 * 60 },
+    sections: { listening: { zh: '听力', ru: 'Аудирование', total: 40 }, reading: { zh: '阅读', ru: 'Чтение', total: 30 }, writing: { zh: '书写', ru: 'Письмо', total: 10 } },
+    partRules: {
+      'listening-1': 'Вы услышите диалог. Выберите картинку из общего набора — каждая используется один раз.',
+      'listening-2': 'Вы услышите высказывание. Верно ли суждение со звездой ★?',
+      'listening-3': 'Вы услышите диалог и вопрос. Выберите правильный ответ.',
+      'listening-4': 'Вы услышите длинный диалог и вопрос. Выберите правильный ответ.',
+      'reading-1': 'Подберите ответ к реплике из общего списка.',
+      'reading-2': 'Выберите слово, которое подходит в пропуск.',
+      'reading-3': 'Прочитайте текст и ответьте на вопрос.',
+      'writing-1': 'Составьте предложение из данных слов — нажимайте их в правильном порядке.',
+      'writing-2': 'Впишите иероглиф по пиньиню (нужна китайская клавиатура 中文).',
+    },
+  };
+  const SPECS = { 1: SPEC1, 2: SPEC2, 3: SPEC3 };
+  const BUILDERS = { 1: buildExam1, 2: buildExam2, 3: buildExam3 };
+  return { buildExam1, buildExam2, buildExam3, SPEC1, SPEC2, SPEC3, SPECS, BUILDERS, score, availPics, picById, shuffle };
 })();
 
 ;
@@ -3417,7 +3668,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260824-0813';
+  const VERSION = '20260824-0931';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3585,7 +3836,7 @@ window.App = (() => {
     const root = $('#view');
     root.innerHTML = v.render(state.params) || '';
     window.scrollTo(0, 0);
-    document.body.classList.toggle('no-tabs', state.view === 'quiz');
+    document.body.classList.toggle('no-tabs', state.view === 'quiz' || state.view === 'exam');
     const tab = TAB_OF[state.view];
     $$('#tabbar .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     if (v.mount) v.mount(state.params);
@@ -4414,9 +4665,9 @@ window.App = (() => {
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>
-      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 2 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
-      ${d.level <= 2 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="${d.level}">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
-      ${d.level <= 2 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
+      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 3 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
+      ${d.level <= 3 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="${d.level}">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
+      ${d.level <= 3 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
   }
   views.hsk = {
     render() {
@@ -4436,6 +4687,8 @@ window.App = (() => {
         '<b>阅读 Чтение</b> — 20 вопросов, 4 части: слово и картинка, предложение → картинка, подбор ответов, слово в пропуск.'],
     2: ['<b>听力 Аудирование</b> — 35 вопросов, 4 части: предложение и картинка (对/错), диалог → картинка из общего набора, диалог с вопросом, длинный диалог с вопросом.',
         '<b>阅读 Чтение</b> — 25 вопросов, 4 части: предложение → картинка, слово в пропуск, суждение ★ (对/错), подбор ответа к реплике.'],
+    3: ['<b>听力 Аудирование</b> — 40 вопросов, 4 части: диалог → картинка из общего набора, суждение ★ на слух (对/错), диалог с вопросом, длинный диалог с вопросом.',
+        '<b>阅读 Чтение</b> — 30 вопросов, 3 части: подбор ответа к реплике, слово в пропуск, текст с вопросом. Плюс <b>书写 Письмо</b> — 10 заданий: составить предложение из слов и вписать иероглиф по пиньиню (15 минут).'],
   };
   actions['hsk-real-info'] = el => {
     const level = +el.dataset.level || 1;
@@ -4444,7 +4697,7 @@ window.App = (() => {
       <p>${REAL_DESC[level][0]} Каждое аудио звучит два раза, на ответ ${spec.answerSec} с.</p>
       <p>${REAL_DESC[level][1]} Время секции — ${Math.round(spec.readingSec / 60)} минут.</p>
       <p>Проверка только в конце. Секции по 100 баллов, сдано от ${spec.pass} из ${spec.max}. Вариант каждый раз собирается заново.</p>
-      ${level === 2 ? '<p class="muted">У уровня 3 настоящий формат появится следом.</p>' : ''}</div>
+      </div>
       <button class="btn btn-primary btn-block mt" data-action="hsk-real" data-level="${level}">Начать экзамен</button>`);
   };
   actions['hsk-test'] = el => {
@@ -4470,7 +4723,7 @@ window.App = (() => {
     if (!Speech.available()) return toast('Для секции 听力 нужен китайский голос: Настройки iPhone → Универсальный доступ → Устный контент → Голоса', 5000);
     let qs;
     try { qs = HskReal.BUILDERS[level](); } catch (e) { return toast(e.message, 4000); }
-    ex = { qs, i: -1, phase: 'intro', level, spec: HskReal.SPECS[level], startedAt: Date.now(), qStart: 0, secDeadline: 0, answerTimer: null, audioRun: 0 };
+    ex = { qs, i: -1, phase: 'intro', level, spec: HskReal.SPECS[level], startedAt: Date.now(), qStart: 0, deadlines: {}, qRunFor: -1, answerTimer: null, audioRun: 0 };
     nav('exam');
   }
   actions['hsk-real'] = el => { closeSheet(); startRealExam(+el.dataset.level); };
@@ -4507,7 +4760,9 @@ window.App = (() => {
         let prompt = '';
         if (isL) prompt = `<div class="ex-audio"><span class="say-ico" id="say-ico">🔊</span><div class="hint">${q.part === 3 ? 'Диалог' : 'Аудио'} прозвучит два раза</div></div>`;
         else if (q.type === 'tf') prompt = `<div class="ex-word"><span class="hanzi" style="font-size:44px">${esc(q.text)}</span><div class="pinyin">${esc(q.textPy || '')}</div></div>`;
-        else prompt = `<div class="hanzi sent-q" style="font-size:26px">${esc(q.text)}</div>`;
+        else if (q.type === 'input') prompt = `<div class="hanzi sent-q" style="font-size:24px">${esc(q.text)}</div><div class="pinyin" style="margin-top:6px">（${esc(q.py)}）</div>`;
+        else if (q.type === 'arrange') prompt = `<div class="hint" style="text-align:center;margin:0">Составьте предложение</div>`;
+        else prompt = `<div class="hanzi sent-q" style="font-size:${q.text && q.text.length > 26 ? 20 : 26}px">${esc(q.text)}</div>${q.sub ? `<div class="ru" style="margin-top:8px;font-weight:600">${esc(q.sub)}</div>` : ''}`;
         let answerUi = '';
         if (q.type === 'tf') answerUi = `${q.pic ? picImg(q.pic) : ''}${q.star ? `<div class="ex-star">★ ${esc(q.star)}</div>` : ''}<div class="btns row2 mt"><button class="btn btn-jade ex-opt" data-action="exam-answer" data-idx="0" data-nosound>对 · верно</button><button class="btn btn-danger ex-opt" data-action="exam-answer" data-idx="1" data-nosound>错 · неверно</button></div>`;
         else if (q.type === 'pickpic') answerUi = `<div class="ex-pics">${q.pics.map((p, i) => `<button class="ex-picbtn" data-action="exam-answer" data-idx="${i}" data-nosound><span class="ex-letter">${'ABC'[i]}</span>${picImg(p)}</button>`).join('')}</div>`;
@@ -4515,6 +4770,15 @@ window.App = (() => {
         else if (q.type === 'pool') {
           const used = new Set(ex.qs.filter(x => x !== q && x.type === 'pool' && x.pool === q.pool && x.given != null).map(x => x.given));
           answerUi = `<div class="opts">${q.pool.map((o, i) => `<button class="opt opt-txt" data-action="exam-answer" data-idx="${i}" ${used.has(o) ? 'disabled' : ''} data-nosound><span class="ex-letter">${'ABCDEF'[i]}</span><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>`;
+        }
+        else if (q.type === 'arrange') {
+          const sel = q.sel || [];
+          answerUi = `<div class="arr-line panel" style="margin-bottom:10px">${sel.length ? sel.map((ci, i) => `<button class="chip on" data-action="arr-del" data-i="${i}" data-nosound>${esc(q.chunks[ci])}</button>`).join('') : '<span class="hint">Нажимайте слова по порядку</span>'}</div>
+          <div class="chips">${q.chunks.map((c, i) => sel.includes(i) ? '' : `<button class="chip" data-action="arr-add" data-i="${i}" data-nosound>${esc(c)}</button>`).join('')}</div>
+          <button class="btn btn-primary btn-block mt" data-action="arr-ok" ${sel.length === q.chunks.length ? '' : 'disabled'}>Готово</button>`;
+        }
+        else if (q.type === 'input') {
+          answerUi = `<form id="ex-inputs" class="inputs" autocomplete="off"><div class="field"><label>Иероглиф <span class="muted">· пиньинь: ${esc(q.py)} · клавиатура 中文</span></label><input class="inp" name="answer" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="汉字"></div><button class="btn btn-primary btn-block" type="submit">Готово</button></form>`;
         }
         else if (q.type === 'poolpic') {
           const used = new Set(ex.qs.filter(x => x !== q && x.type === 'poolpic' && x.pool === q.pool && x.given != null).map(x => x.given));
@@ -4526,7 +4790,21 @@ window.App = (() => {
     },
     mount() {
       if (!ex) return;
-      if (ex.phase === 'q') runQuestion();
+      if (ex.phase === 'q') {
+        runQuestion();
+        const f = $('#ex-inputs');
+        if (f) f.addEventListener('submit', e => {
+          e.preventDefault();
+          const q = ex.qs[ex.i];
+          if (!ex || q.ok != null) return;
+          const val = Quiz.normZh(f.elements.answer.value);
+          if (!val) { toast('Введите иероглиф'); return; }
+          stopTimers();
+          q.given = val; q.ok = val === q.answer; q.ms = Date.now() - ex.qStart;
+          Sound.click();
+          advance();
+        });
+      }
     },
   };
 
@@ -4546,6 +4824,8 @@ window.App = (() => {
   }
   function runQuestion() {
     const q = ex.qs[ex.i];
+    if (ex.qRunFor === ex.i) { return; }
+    ex.qRunFor = ex.i;
     ex.qStart = Date.now();
     const el = $('#extimer');
     if (q.sec === 'listening') {
@@ -4560,11 +4840,23 @@ window.App = (() => {
       }, 250);
     } else {
       ex.answerTimer = setInterval(() => {
-        const left = Math.ceil((ex.secDeadline - Date.now()) / 1000);
-        if (el) el.textContent = left > 60 ? Math.ceil(left / 60) + ' мин' : left;
-        if (left <= 0) { finishExam(true); }
+        const dl = ex.deadlines[q.sec] || 0;
+        const left = Math.ceil((dl - Date.now()) / 1000);
+        const tm = $('#extimer');
+        if (tm) tm.textContent = left > 60 ? Math.ceil(left / 60) + ' мин' : left;
+        if (left <= 0) expireSection(q.sec);
       }, 250);
     }
+  }
+  /* Время секции вышло: оставшиеся вопросы секции — мимо, дальше следующая секция или итог */
+  function expireSection(sec) {
+    stopTimers();
+    toast('Время секции вышло');
+    let last = ex.i;
+    for (let i = ex.i; i < ex.qs.length; i++) if (ex.qs[i].sec === sec) { if (ex.qs[i].ok == null) { ex.qs[i].ok = false; ex.qs[i].given = null; } last = i; }
+    ex.i = last;
+    ex.phase = 'q';
+    advance();
   }
   function answer(q, idx, timeout) {
     if (!ex || q.given != null || q.ok != null) return;
@@ -4577,6 +4869,18 @@ window.App = (() => {
     advance();
   }
   actions['exam-answer'] = el => { if (ex && ex.phase === 'q') answer(ex.qs[ex.i], +el.dataset.idx, false); };
+  actions['arr-add'] = el => { if (!ex) return; const q = ex.qs[ex.i]; q.sel = q.sel || []; q.sel.push(+el.dataset.i); render(); };
+  actions['arr-del'] = el => { if (!ex) return; const q = ex.qs[ex.i]; q.sel.splice(+el.dataset.i, 1); render(); };
+  actions['arr-ok'] = () => {
+    if (!ex) return;
+    const q = ex.qs[ex.i];
+    if (!q.sel || q.sel.length !== q.chunks.length || q.ok != null) return;
+    stopTimers();
+    const joined = q.sel.map(i => q.chunks[i]).join('');
+    q.given = joined; q.ok = q.answers.includes(joined); q.ms = Date.now() - ex.qStart;
+    Sound.click();
+    advance();
+  };
   actions['exam-next'] = () => { if (ex) advance(); };
   function advance() {
     stopTimers();
@@ -4589,7 +4893,10 @@ window.App = (() => {
       if (ex.phase === 'intro' || newPart) { ex.phase = 'part'; render(); return; }
     }
     if (ex.phase === 'part') {
-      if (next.sec === 'reading' && (!prev || prev.sec === 'listening') && !ex.secDeadline) ex.secDeadline = Date.now() + ex.spec.readingSec * 1000;
+      if (next.sec !== 'listening' && !ex.deadlines[next.sec]) {
+        const secs = (ex.spec.sectionSec && ex.spec.sectionSec[next.sec]) || ex.spec.readingSec;
+        ex.deadlines[next.sec] = Date.now() + secs * 1000;
+      }
       ex.i++; ex.phase = 'q'; render(); return;
     }
   }
@@ -4604,7 +4911,7 @@ window.App = (() => {
   function finishExam(timeUp) {
     stopTimers();
     for (const q of ex.qs) if (q.ok == null) { q.ok = false; q.given = null; }
-    const res = HskReal.score(ex.qs);
+    const res = HskReal.score(ex.qs, ex.spec);
     const spec = ex.spec;
     const a = {
       id: uid(), ts: ex.startedAt, endedAt: Date.now(), durationMs: Date.now() - ex.startedAt,
@@ -4626,9 +4933,10 @@ window.App = (() => {
       if (!a || !a.sections) return '<div class="empty">Результат не найден</div>';
       const stamp = `<div class="stamp ${a.passed ? 'pass' : 'fail'}">${a.passed ? '合格' : '不合格'}<small>${a.passed ? 'сдан' : 'не сдан'}</small></div>`;
       const lvl = a.level || 1;
+      const SEC_LABELS = { listening: ['听力', 'Аудирование'], reading: ['阅读', 'Чтение'], writing: ['书写', 'Письмо'] };
       const secRow = (id, zh, ru) => { const s = a.sections[id]; return `<div class="fb-row"><span class="fb-p" style="min-width:110px">${zh} ${ru}</span><span class="fb-a">${s.correct} из ${s.total}</span><span class="fb-v"><b>${s.points}</b> / 100</span></div>`; };
       return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">Экзамен HSK ${a.level}</h1><div class="sub">настоящий формат · ${fmt.dur(a.durationMs)}</div></div></div>
-      <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${secRow('listening', '听力', 'Аудирование')}${secRow('reading', '阅读', 'Чтение')}</div>${stamp}</div>
+      <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${Object.keys(a.sections).map(k => secRow(k, SEC_LABELS[k][0], SEC_LABELS[k][1])).join('')}</div>${stamp}</div>
       ${App.Profile.resultPanel(a, null)}
       <div class="btns"><button class="btn btn-primary btn-block" data-action="hsk-real" data-level="${lvl}">Ещё вариант</button><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор ответов</button><button class="btn btn-secondary btn-block" data-go="hsk">К HSK</button></div>`;
     },

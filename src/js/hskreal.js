@@ -134,6 +134,48 @@ window.HskReal = (() => {
     return qs;
   }
 
+  /* Экзамен HSK 3: 听力 40 + 阅读 30 + 书写 10 */
+  function buildExam3() {
+    const B = window.HSK3EXAM;
+    const av = new Set(window.PICS_AVAILABLE || []);
+    const pics = shuffle(availPics());
+    const dlgPool = shuffle(B.DLG.filter(x => av.has(x.pic)));
+    if (dlgPool.length < 10) throw new Error('Мало картинок для экзамена HSK 3');
+    const qs = [];
+    /* 听力 ч.1 (10 = 2 блока по 5): диалог → картинка из пула 6 */
+    for (let b = 0; b < 2; b++) {
+      const block = dlgPool.slice(b * 5, b * 5 + 5);
+      const extra = shuffle(pics.filter(p => !block.some(x => x.pic === p.id)))[0];
+      const pool = shuffle([...block.map(x => x.pic), extra.id]);
+      for (const it of block) qs.push({ sec: 'listening', part: 1, type: 'poolpic', say: [it.a, it.b], pool, answer: it.pic });
+    }
+    /* 听力 ч.2 (10): высказывание на слух + суждение ★ */
+    for (const it of shuffle(B.TFL).slice(0, 10)) qs.push({ sec: 'listening', part: 2, type: 'tf', say: it.say, star: it.star, correct: it.truth ? 0 : 1 });
+    /* 听力 ч.3 (10) и ч.4 (10): диалоги с вопросом */
+    for (const it of shuffle(B.Q3).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    for (const it of shuffle(B.Q4).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    /* 阅读 ч.1 (10 = 2 блока по 5): реплика ↔ ответ */
+    const pairs = shuffle(B.PAIR);
+    for (let b = 0; b < 2; b++) {
+      const block = pairs.slice(b * 6, b * 6 + 6);
+      const pool = shuffle(block.map(x => x.a));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 1, type: 'pool', text: it.q, pool, answer: it.a }));
+    }
+    /* 阅读 ч.2 (10 = 2 блока по 5): пропуски */
+    const fills = shuffle(B.FILL);
+    for (let b = 0; b < 2; b++) {
+      const block = fills.slice(b * 6, b * 6 + 6);
+      const pool = shuffle(block.map(x => x.ans));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', text: it.t, pool, answer: it.ans }));
+    }
+    /* 阅读 ч.3 (10): текст + вопрос */
+    for (const it of shuffle(B.READ).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'reading', part: 3, type: 'opts', text: it.t, sub: it.q, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    /* 书写 ч.1 (5): собрать предложение; ч.2 (5): написать иероглиф */
+    for (const it of shuffle(B.ARRANGE).slice(0, 5)) qs.push({ sec: 'writing', part: 1, type: 'arrange', chunks: shuffle(it.chunks), answers: it.a });
+    for (const it of shuffle(B.WRITE).slice(0, 5)) qs.push({ sec: 'writing', part: 2, type: 'input', text: it.t, py: it.py, answer: it.ans });
+    return qs;
+  }
+
   const SPEC1 = {
     level: 1, max: 200, pass: 120, readingSec: 17 * 60, answerSec: 12,
     sections: { listening: { zh: '听力', ru: 'Аудирование', total: 20 }, reading: { zh: '阅读', ru: 'Чтение', total: 20 } },
@@ -148,17 +190,17 @@ window.HskReal = (() => {
       'reading-4': 'Выберите слово, которое подходит в пропуск.',
     },
   };
-  /* Подсчёт: каждая секция из 100, итог из 200 */
-  function score(questions) {
+  /* Подсчёт: каждая секция из 100 */
+  function score(questions, spec) {
     const out = { sections: {}, score: 0 };
-    for (const sec of ['listening', 'reading']) {
+    for (const sec of Object.keys((spec || SPEC1).sections)) {
       const qs = questions.filter(q => q.sec === sec);
       const correct = qs.filter(q => q.ok).length;
       const pts = qs.length ? Math.round(correct / qs.length * 100) : 0;
       out.sections[sec] = { correct, total: qs.length, points: pts };
       out.score += pts;
     }
-    out.passed = out.score >= SPEC1.pass;
+    out.passed = out.score >= (spec || SPEC1).pass;
     return out;
   }
   const SPEC2 = {
@@ -175,7 +217,23 @@ window.HskReal = (() => {
       'reading-4': 'Подберите ответ к реплике из общего списка.',
     },
   };
-  const SPECS = { 1: SPEC1, 2: SPEC2 };
-  const BUILDERS = { 1: buildExam1, 2: buildExam2 };
-  return { buildExam1, buildExam2, SPEC1, SPEC2, SPECS, BUILDERS, score, availPics, picById, shuffle };
+  const SPEC3 = {
+    level: 3, max: 300, pass: 180, readingSec: 30 * 60, answerSec: 12,
+    sectionSec: { reading: 30 * 60, writing: 15 * 60 },
+    sections: { listening: { zh: '听力', ru: 'Аудирование', total: 40 }, reading: { zh: '阅读', ru: 'Чтение', total: 30 }, writing: { zh: '书写', ru: 'Письмо', total: 10 } },
+    partRules: {
+      'listening-1': 'Вы услышите диалог. Выберите картинку из общего набора — каждая используется один раз.',
+      'listening-2': 'Вы услышите высказывание. Верно ли суждение со звездой ★?',
+      'listening-3': 'Вы услышите диалог и вопрос. Выберите правильный ответ.',
+      'listening-4': 'Вы услышите длинный диалог и вопрос. Выберите правильный ответ.',
+      'reading-1': 'Подберите ответ к реплике из общего списка.',
+      'reading-2': 'Выберите слово, которое подходит в пропуск.',
+      'reading-3': 'Прочитайте текст и ответьте на вопрос.',
+      'writing-1': 'Составьте предложение из данных слов — нажимайте их в правильном порядке.',
+      'writing-2': 'Впишите иероглиф по пиньиню (нужна китайская клавиатура 中文).',
+    },
+  };
+  const SPECS = { 1: SPEC1, 2: SPEC2, 3: SPEC3 };
+  const BUILDERS = { 1: buildExam1, 2: buildExam2, 3: buildExam3 };
+  return { buildExam1, buildExam2, buildExam3, SPEC1, SPEC2, SPEC3, SPECS, BUILDERS, score, availPics, picById, shuffle };
 })();

@@ -9,7 +9,7 @@
     if (!Speech.available()) return toast('Для секции 听力 нужен китайский голос: Настройки iPhone → Универсальный доступ → Устный контент → Голоса', 5000);
     let qs;
     try { qs = HskReal.BUILDERS[level](); } catch (e) { return toast(e.message, 4000); }
-    ex = { qs, i: -1, phase: 'intro', level, spec: HskReal.SPECS[level], startedAt: Date.now(), qStart: 0, secDeadline: 0, answerTimer: null, audioRun: 0 };
+    ex = { qs, i: -1, phase: 'intro', level, spec: HskReal.SPECS[level], startedAt: Date.now(), qStart: 0, deadlines: {}, qRunFor: -1, answerTimer: null, audioRun: 0 };
     nav('exam');
   }
   actions['hsk-real'] = el => { closeSheet(); startRealExam(+el.dataset.level); };
@@ -46,7 +46,9 @@
         let prompt = '';
         if (isL) prompt = `<div class="ex-audio"><span class="say-ico" id="say-ico">🔊</span><div class="hint">${q.part === 3 ? 'Диалог' : 'Аудио'} прозвучит два раза</div></div>`;
         else if (q.type === 'tf') prompt = `<div class="ex-word"><span class="hanzi" style="font-size:44px">${esc(q.text)}</span><div class="pinyin">${esc(q.textPy || '')}</div></div>`;
-        else prompt = `<div class="hanzi sent-q" style="font-size:26px">${esc(q.text)}</div>`;
+        else if (q.type === 'input') prompt = `<div class="hanzi sent-q" style="font-size:24px">${esc(q.text)}</div><div class="pinyin" style="margin-top:6px">（${esc(q.py)}）</div>`;
+        else if (q.type === 'arrange') prompt = `<div class="hint" style="text-align:center;margin:0">Составьте предложение</div>`;
+        else prompt = `<div class="hanzi sent-q" style="font-size:${q.text && q.text.length > 26 ? 20 : 26}px">${esc(q.text)}</div>${q.sub ? `<div class="ru" style="margin-top:8px;font-weight:600">${esc(q.sub)}</div>` : ''}`;
         let answerUi = '';
         if (q.type === 'tf') answerUi = `${q.pic ? picImg(q.pic) : ''}${q.star ? `<div class="ex-star">★ ${esc(q.star)}</div>` : ''}<div class="btns row2 mt"><button class="btn btn-jade ex-opt" data-action="exam-answer" data-idx="0" data-nosound>对 · верно</button><button class="btn btn-danger ex-opt" data-action="exam-answer" data-idx="1" data-nosound>错 · неверно</button></div>`;
         else if (q.type === 'pickpic') answerUi = `<div class="ex-pics">${q.pics.map((p, i) => `<button class="ex-picbtn" data-action="exam-answer" data-idx="${i}" data-nosound><span class="ex-letter">${'ABC'[i]}</span>${picImg(p)}</button>`).join('')}</div>`;
@@ -54,6 +56,15 @@
         else if (q.type === 'pool') {
           const used = new Set(ex.qs.filter(x => x !== q && x.type === 'pool' && x.pool === q.pool && x.given != null).map(x => x.given));
           answerUi = `<div class="opts">${q.pool.map((o, i) => `<button class="opt opt-txt" data-action="exam-answer" data-idx="${i}" ${used.has(o) ? 'disabled' : ''} data-nosound><span class="ex-letter">${'ABCDEF'[i]}</span><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>`;
+        }
+        else if (q.type === 'arrange') {
+          const sel = q.sel || [];
+          answerUi = `<div class="arr-line panel" style="margin-bottom:10px">${sel.length ? sel.map((ci, i) => `<button class="chip on" data-action="arr-del" data-i="${i}" data-nosound>${esc(q.chunks[ci])}</button>`).join('') : '<span class="hint">Нажимайте слова по порядку</span>'}</div>
+          <div class="chips">${q.chunks.map((c, i) => sel.includes(i) ? '' : `<button class="chip" data-action="arr-add" data-i="${i}" data-nosound>${esc(c)}</button>`).join('')}</div>
+          <button class="btn btn-primary btn-block mt" data-action="arr-ok" ${sel.length === q.chunks.length ? '' : 'disabled'}>Готово</button>`;
+        }
+        else if (q.type === 'input') {
+          answerUi = `<form id="ex-inputs" class="inputs" autocomplete="off"><div class="field"><label>Иероглиф <span class="muted">· пиньинь: ${esc(q.py)} · клавиатура 中文</span></label><input class="inp" name="answer" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="汉字"></div><button class="btn btn-primary btn-block" type="submit">Готово</button></form>`;
         }
         else if (q.type === 'poolpic') {
           const used = new Set(ex.qs.filter(x => x !== q && x.type === 'poolpic' && x.pool === q.pool && x.given != null).map(x => x.given));
@@ -65,7 +76,21 @@
     },
     mount() {
       if (!ex) return;
-      if (ex.phase === 'q') runQuestion();
+      if (ex.phase === 'q') {
+        runQuestion();
+        const f = $('#ex-inputs');
+        if (f) f.addEventListener('submit', e => {
+          e.preventDefault();
+          const q = ex.qs[ex.i];
+          if (!ex || q.ok != null) return;
+          const val = Quiz.normZh(f.elements.answer.value);
+          if (!val) { toast('Введите иероглиф'); return; }
+          stopTimers();
+          q.given = val; q.ok = val === q.answer; q.ms = Date.now() - ex.qStart;
+          Sound.click();
+          advance();
+        });
+      }
     },
   };
 
@@ -85,6 +110,8 @@
   }
   function runQuestion() {
     const q = ex.qs[ex.i];
+    if (ex.qRunFor === ex.i) { return; }
+    ex.qRunFor = ex.i;
     ex.qStart = Date.now();
     const el = $('#extimer');
     if (q.sec === 'listening') {
@@ -99,11 +126,23 @@
       }, 250);
     } else {
       ex.answerTimer = setInterval(() => {
-        const left = Math.ceil((ex.secDeadline - Date.now()) / 1000);
-        if (el) el.textContent = left > 60 ? Math.ceil(left / 60) + ' мин' : left;
-        if (left <= 0) { finishExam(true); }
+        const dl = ex.deadlines[q.sec] || 0;
+        const left = Math.ceil((dl - Date.now()) / 1000);
+        const tm = $('#extimer');
+        if (tm) tm.textContent = left > 60 ? Math.ceil(left / 60) + ' мин' : left;
+        if (left <= 0) expireSection(q.sec);
       }, 250);
     }
+  }
+  /* Время секции вышло: оставшиеся вопросы секции — мимо, дальше следующая секция или итог */
+  function expireSection(sec) {
+    stopTimers();
+    toast('Время секции вышло');
+    let last = ex.i;
+    for (let i = ex.i; i < ex.qs.length; i++) if (ex.qs[i].sec === sec) { if (ex.qs[i].ok == null) { ex.qs[i].ok = false; ex.qs[i].given = null; } last = i; }
+    ex.i = last;
+    ex.phase = 'q';
+    advance();
   }
   function answer(q, idx, timeout) {
     if (!ex || q.given != null || q.ok != null) return;
@@ -116,6 +155,18 @@
     advance();
   }
   actions['exam-answer'] = el => { if (ex && ex.phase === 'q') answer(ex.qs[ex.i], +el.dataset.idx, false); };
+  actions['arr-add'] = el => { if (!ex) return; const q = ex.qs[ex.i]; q.sel = q.sel || []; q.sel.push(+el.dataset.i); render(); };
+  actions['arr-del'] = el => { if (!ex) return; const q = ex.qs[ex.i]; q.sel.splice(+el.dataset.i, 1); render(); };
+  actions['arr-ok'] = () => {
+    if (!ex) return;
+    const q = ex.qs[ex.i];
+    if (!q.sel || q.sel.length !== q.chunks.length || q.ok != null) return;
+    stopTimers();
+    const joined = q.sel.map(i => q.chunks[i]).join('');
+    q.given = joined; q.ok = q.answers.includes(joined); q.ms = Date.now() - ex.qStart;
+    Sound.click();
+    advance();
+  };
   actions['exam-next'] = () => { if (ex) advance(); };
   function advance() {
     stopTimers();
@@ -128,7 +179,10 @@
       if (ex.phase === 'intro' || newPart) { ex.phase = 'part'; render(); return; }
     }
     if (ex.phase === 'part') {
-      if (next.sec === 'reading' && (!prev || prev.sec === 'listening') && !ex.secDeadline) ex.secDeadline = Date.now() + ex.spec.readingSec * 1000;
+      if (next.sec !== 'listening' && !ex.deadlines[next.sec]) {
+        const secs = (ex.spec.sectionSec && ex.spec.sectionSec[next.sec]) || ex.spec.readingSec;
+        ex.deadlines[next.sec] = Date.now() + secs * 1000;
+      }
       ex.i++; ex.phase = 'q'; render(); return;
     }
   }
@@ -143,7 +197,7 @@
   function finishExam(timeUp) {
     stopTimers();
     for (const q of ex.qs) if (q.ok == null) { q.ok = false; q.given = null; }
-    const res = HskReal.score(ex.qs);
+    const res = HskReal.score(ex.qs, ex.spec);
     const spec = ex.spec;
     const a = {
       id: uid(), ts: ex.startedAt, endedAt: Date.now(), durationMs: Date.now() - ex.startedAt,
@@ -165,9 +219,10 @@
       if (!a || !a.sections) return '<div class="empty">Результат не найден</div>';
       const stamp = `<div class="stamp ${a.passed ? 'pass' : 'fail'}">${a.passed ? '合格' : '不合格'}<small>${a.passed ? 'сдан' : 'не сдан'}</small></div>`;
       const lvl = a.level || 1;
+      const SEC_LABELS = { listening: ['听力', 'Аудирование'], reading: ['阅读', 'Чтение'], writing: ['书写', 'Письмо'] };
       const secRow = (id, zh, ru) => { const s = a.sections[id]; return `<div class="fb-row"><span class="fb-p" style="min-width:110px">${zh} ${ru}</span><span class="fb-a">${s.correct} из ${s.total}</span><span class="fb-v"><b>${s.points}</b> / 100</span></div>`; };
       return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">Экзамен HSK ${a.level}</h1><div class="sub">настоящий формат · ${fmt.dur(a.durationMs)}</div></div></div>
-      <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${secRow('listening', '听力', 'Аудирование')}${secRow('reading', '阅读', 'Чтение')}</div>${stamp}</div>
+      <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${Object.keys(a.sections).map(k => secRow(k, SEC_LABELS[k][0], SEC_LABELS[k][1])).join('')}</div>${stamp}</div>
       ${App.Profile.resultPanel(a, null)}
       <div class="btns"><button class="btn btn-primary btn-block" data-action="hsk-real" data-level="${lvl}">Ещё вариант</button><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор ответов</button><button class="btn btn-secondary btn-block" data-go="hsk">К HSK</button></div>`;
     },

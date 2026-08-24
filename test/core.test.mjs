@@ -344,3 +344,31 @@ t('real exam 2 build', () => {
   }
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'real exam 2 group passed');
+
+/* ── настоящий экзамен HSK 3 ── */
+require('../src/js/hsk3exam.js');
+delete require.cache[require.resolve('../src/js/hskreal.js')];
+require('../src/js/hskreal.js');
+const HskReal3 = global.HskReal;
+t('real exam 3 build', () => {
+  for (let iter = 0; iter < 5; iter++) {
+    const qs = HskReal3.buildExam3();
+    assert.equal(qs.length, 80);
+    assert.equal(qs.filter(q => q.sec === 'listening').length, 40);
+    assert.equal(qs.filter(q => q.sec === 'reading').length, 30);
+    assert.equal(qs.filter(q => q.sec === 'writing').length, 10);
+    for (const [sec, part, n] of [['listening',1,10],['listening',2,10],['listening',3,10],['listening',4,10],['reading',1,10],['reading',2,10],['reading',3,10],['writing',1,5],['writing',2,5]])
+      assert.equal(qs.filter(q => q.sec === sec && q.part === part).length, n, sec + part);
+    for (const q of qs) {
+      if (q.type === 'poolpic') { assert.equal(q.pool.length, 6); assert.ok(q.pool.includes(q.answer)); }
+      if (q.type === 'tf' && q.sec === 'listening') { assert.ok(q.star && q.say); }
+      if (q.type === 'arrange') { assert.ok(q.chunks.length >= 3); assert.equal(q.answers[0].length, q.chunks.join('').length); }
+      if (q.type === 'input') { assert.ok(q.py && q.answer.length === 1); }
+      if (q.sec === 'reading' && q.part === 3) { assert.ok(q.sub); assert.equal(q.opts.length, 3); }
+    }
+  }
+  const sc = HskReal3.score([{ sec: 'listening', ok: true }, { sec: 'reading', ok: true }, { sec: 'writing', ok: false }], HskReal3.SPEC3);
+  assert.equal(sc.score, 200); assert.equal(sc.passed, true); assert.equal(Object.keys(sc.sections).length, 3);
+  assert.equal(HskReal3.score([{ sec: 'listening', ok: true }, { sec: 'reading', ok: false }, { sec: 'writing', ok: false }], HskReal3.SPEC3).passed, false);
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'real exam 3 group passed');

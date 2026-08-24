@@ -168,7 +168,7 @@ window.App = (() => {
     const root = $('#view');
     root.innerHTML = v.render(state.params) || '';
     window.scrollTo(0, 0);
-    document.body.classList.toggle('no-tabs', state.view === 'quiz');
+    document.body.classList.toggle('no-tabs', state.view === 'quiz' || state.view === 'exam');
     const tab = TAB_OF[state.view];
     $$('#tabbar .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     if (v.mount) v.mount(state.params);
