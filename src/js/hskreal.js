@@ -19,14 +19,52 @@ window.HskReal = (() => {
   };
   const picById = id => ALL_PICS().find(p => p.id === id);
 
+  /* ── Глубокий рандомайзер ──
+     Каждый банк помнит, какие задания уже выпадали, и следующий вариант собирается
+     сначала из тех, что давно не встречались. Повтор возможен только когда банк исчерпан. */
+  const SEEN_KEY = 'zika:examSeen';
+  const loadSeen = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY)) || {}; } catch (e) { return {}; } };
+  const saveSeen = s => { try { localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } catch (e) { /* не критично */ } };
+  const itemKey = it => [
+    Array.isArray(it.say) ? it.say.join('|') : (it.say || ''),
+    it.q || '', it.t || '', it.text || '', it.star || '',
+    Array.isArray(it.chunks) ? it.chunks.join('') : '',
+  ].join('\u00a7');
+  let pendingSeen = null;
+  /* n заданий из банка: сначала не встречавшиеся, потом самые давние */
+  function pick(bank, n, tag, uniqBy) {
+    if (!bank || !bank.length) return [];
+    const seen = pendingSeen || (pendingSeen = loadSeen());
+    const used = seen[tag] || [];
+    const age = new Map(used.map((k, i) => [k, i + 1])); /* больше — свежее, значит брать в последнюю очередь */
+    const fresh = shuffle(bank.filter(it => !age.has(itemKey(it))));
+    const stale = shuffle(bank.filter(it => age.has(itemKey(it)))).sort((a, b) => age.get(itemKey(a)) - age.get(itemKey(b)));
+    const queue = [...fresh, ...stale];
+    const out = [];
+    const taken = new Set();
+    for (const it of queue) {
+      if (out.length >= n) break;
+      /* для пулов: два задания с одинаковым ответом в один блок не пускаем */
+      if (uniqBy) { const u = uniqBy(it); if (taken.has(u)) continue; taken.add(u); }
+      out.push(it);
+    }
+    /* помним не больше 60% банка, иначе свежих не останется */
+    const cap = Math.max(n, Math.floor(bank.length * 0.6));
+    const keys = out.map(itemKey);
+    seen[tag] = [...used.filter(k => keys.indexOf(k) < 0), ...keys].slice(-cap);
+    return out;
+  }
+  /* Записываем память один раз в конце сборки варианта */
+  function flushSeen() { if (pendingSeen) { saveSeen(pendingSeen); pendingSeen = null; } }
+
   /* Экзамен HSK 1: 听力 4×5 + 阅读 4×5. Вопросы без мгновенной проверки — разбор в конце, как на настоящем. */
   function buildExam1() {
     const B = window.HSK1EXAM;
     const pics = shuffle(availPics());
     if (pics.length < 16) throw new Error('Мало картинок для экзамена');
     const avail = new Set(pics.map(p => p.id));
-    const sentPool = shuffle(B.SENT.filter(s => avail.has(s.pic)));
-    const dlgPool = shuffle(B.DLG.filter(d => avail.has(d.pic)));
+    const sentPool = pick(B.SENT.filter(s => avail.has(s.pic)), 10, 'e1:SENT');
+    const dlgPool = pick(B.DLG.filter(d => avail.has(d.pic)), 5, 'e1:DLG');
     let picCursor = 0;
     const takePics = n => pics.slice(picCursor, picCursor += n);
     const qs = [];
@@ -51,7 +89,7 @@ window.HskReal = (() => {
       qs.push({ sec: 'listening', part: 3, type: 'pickpic', say: [it.a, it.b], pics: opts, correct: opts.indexOf(it.pic) });
     }
     /* Слушание ч.4: вопрос → выбрать ответ (текст) */
-    for (const it of shuffle(B.QA4).slice(0, 5)) {
+    for (const it of pick(B.QA4, 5, 'e1:QA4')) {
       const order = shuffle([0, 1, 2]);
       qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: order.map(i => it.opts[i]), correct: order.indexOf(0) });
     }
@@ -71,13 +109,14 @@ window.HskReal = (() => {
       qs.push({ sec: 'reading', part: 2, type: 'pickpic', text: it.say, pics: opts, correct: opts.indexOf(it.pic) });
     }
     /* Чтение ч.3: вопрос ↔ ответ, общий пул из 6 */
-    const qa = shuffle(B.QA3).slice(0, 6);
+    const qa = pick(B.QA3, 6, 'e1:QA3', x => x.a);
     const pool3 = shuffle(qa.map(x => x.a));
     qa.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 3, type: 'pool', block: 'e1r3', text: it.q, pool: pool3, answer: it.a }));
     /* Чтение ч.4: пропуск ↔ слово, общий пул из 6 */
-    const fills = shuffle(B.FILL).slice(0, 6);
+    const fills = pick(B.FILL, 6, 'e1:FILL', x => x.ans);
     const pool4 = shuffle(fills.map(x => x.ans));
     fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', block: 'e1r4', text: it.t, pool: pool4, answer: it.ans }));
+    flushSeen();
     return qs;
   }
 
@@ -86,8 +125,8 @@ window.HskReal = (() => {
     const B = window.HSK2EXAM;
     const av = new Set((window.PICS_AVAILABLE || []));
     const pics = shuffle(availPics());
-    const sentPool = shuffle(B.SENT.filter(x => av.has(x.pic)));
-    const dlgPool = shuffle(B.DLG.filter(x => av.has(x.pic)));
+    const sentPool = pick(B.SENT.filter(x => av.has(x.pic)), 15, 'e2:SENT');
+    const dlgPool = pick(B.DLG.filter(x => av.has(x.pic)), 10, 'e2:DLG');
     if (sentPool.length < 15 || dlgPool.length < 10) throw new Error('Мало картинок для экзамена HSK 2');
     const qs = [];
     /* 听力 ч.1 (10): предложение + картинка → 对/错 (5 верных + 5 неверных) */
@@ -105,12 +144,12 @@ window.HskReal = (() => {
       for (const it of block) qs.push({ sec: 'listening', part: 2, type: 'poolpic', block: 'e2l2' + b, say: [it.a, it.b], pool, answer: it.pic });
     }
     /* 听力 ч.3 (10): диалог + вопрос → 3 варианта */
-    for (const it of shuffle(B.Q3).slice(0, 10)) {
+    for (const it of pick(B.Q3, 10, 'e2:Q3')) {
       const order = shuffle([0, 1, 2]);
       qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: order.map(i => it.opts[i]), correct: order.indexOf(0) });
     }
     /* 听力 ч.4 (5): длинный диалог + вопрос */
-    for (const it of shuffle(B.Q4).slice(0, 5)) {
+    for (const it of pick(B.Q4, 5, 'e2:Q4')) {
       const order = shuffle([0, 1, 2]);
       qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: order.map(i => it.opts[i]), correct: order.indexOf(0) });
     }
@@ -122,19 +161,20 @@ window.HskReal = (() => {
       for (const it of r1) qs.push({ sec: 'reading', part: 1, type: 'poolpic', block: 'e2r1', text: it.say, pool, answer: it.pic });
     }
     /* 阅读 ч.2 (5): пропуск ↔ слово из пула 6 */
-    const fills = shuffle(B.FILL).slice(0, 6);
+    const fills = pick(B.FILL, 6, 'e2:FILL', x => x.ans);
     const pool2 = shuffle(fills.map(x => x.ans));
     fills.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', block: 'e2r2', text: it.t, pool: pool2, answer: it.ans }));
     /* 阅读 ч.3 (5): текст + суждение ★ → 对/错 */
-    const tf5 = [...shuffle(B.TF.filter(x => x.truth)).slice(0, 3), ...shuffle(B.TF.filter(x => !x.truth)).slice(0, 2)];
+    const tf5 = [...pick(B.TF.filter(x => x.truth), 3, 'e2:TFy'), ...pick(B.TF.filter(x => !x.truth), 2, 'e2:TFn')];
     for (const it of shuffle(tf5)) qs.push({ sec: 'reading', part: 3, type: 'tf', text: it.text, star: it.star, correct: it.truth ? 0 : 1 });
     /* 阅读 ч.4 (10 = 2 блока по 5): реплика ↔ ответ из пула 6 */
-    const pairs = shuffle(B.PAIR);
+    const pairs = pick(B.PAIR, 12, 'e2:PAIR', x => x.a);
     for (let b = 0; b < 2; b++) {
       const block = pairs.slice(b * 6, b * 6 + 6);
       const pool = shuffle(block.map(x => x.a));
       block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 4, type: 'pool', block: 'e2r4' + b, text: it.q, pool, answer: it.a }));
     }
+    flushSeen();
     return qs;
   }
 
@@ -143,7 +183,7 @@ window.HskReal = (() => {
     const B = window.HSK3EXAM;
     const av = new Set(window.PICS_AVAILABLE || []);
     const pics = shuffle(availPics());
-    const dlgPool = shuffle(B.DLG.filter(x => av.has(x.pic)));
+    const dlgPool = pick(B.DLG.filter(x => av.has(x.pic)), 10, 'e3:DLG');
     if (dlgPool.length < 10) throw new Error('Мало картинок для экзамена HSK 3');
     const qs = [];
     /* 听力 ч.1 (10 = 2 блока по 5): диалог → картинка из пула 6 */
@@ -154,30 +194,31 @@ window.HskReal = (() => {
       for (const it of block) qs.push({ sec: 'listening', part: 1, type: 'poolpic', block: 'e3l1' + b, say: [it.a, it.b], pool, answer: it.pic });
     }
     /* 听力 ч.2 (10): высказывание на слух + суждение ★ (5 верных + 5 неверных) */
-    const tfl = [...shuffle(B.TFL.filter(x => x.truth)).slice(0, 5), ...shuffle(B.TFL.filter(x => !x.truth)).slice(0, 5)];
+    const tfl = [...pick(B.TFL.filter(x => x.truth), 5, 'e3:TFLy'), ...pick(B.TFL.filter(x => !x.truth), 5, 'e3:TFLn')];
     for (const it of shuffle(tfl)) qs.push({ sec: 'listening', part: 2, type: 'tf', say: it.say, star: it.star, correct: it.truth ? 0 : 1 });
     /* 听力 ч.3 (10) и ч.4 (10): диалоги с вопросом */
-    for (const it of shuffle(B.Q3).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
-    for (const it of shuffle(B.Q4).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    for (const it of pick(B.Q3, 10, 'e3:Q3')) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    for (const it of pick(B.Q4, 10, 'e3:Q4')) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'listening', part: 4, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
     /* 阅读 ч.1 (10 = 2 блока по 5): реплика ↔ ответ */
-    const pairs = shuffle(B.PAIR);
+    const pairs = pick(B.PAIR, 12, 'e3:PAIR', x => x.a);
     for (let b = 0; b < 2; b++) {
       const block = pairs.slice(b * 6, b * 6 + 6);
       const pool = shuffle(block.map(x => x.a));
       block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 1, type: 'pool', block: 'e3r1' + b, text: it.q, pool, answer: it.a }));
     }
     /* 阅读 ч.2 (10 = 2 блока по 5): пропуски */
-    const fills = shuffle(B.FILL);
+    const fills = pick(B.FILL, 12, 'e3:FILL', x => x.ans);
     for (let b = 0; b < 2; b++) {
       const block = fills.slice(b * 6, b * 6 + 6);
       const pool = shuffle(block.map(x => x.ans));
       block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 2, type: 'pool', block: 'e3r2' + b, text: it.t, pool, answer: it.ans }));
     }
     /* 阅读 ч.3 (10): текст + вопрос */
-    for (const it of shuffle(B.READ).slice(0, 10)) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'reading', part: 3, type: 'opts', text: it.t, sub: it.q, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    for (const it of pick(B.READ, 10, 'e3:READ')) { const o = shuffle([0, 1, 2]); qs.push({ sec: 'reading', part: 3, type: 'opts', text: it.t, sub: it.q, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
     /* 书写 ч.1 (5): собрать предложение; ч.2 (5): написать иероглиф */
-    for (const it of shuffle(B.ARRANGE).slice(0, 5)) qs.push({ sec: 'writing', part: 1, type: 'arrange', chunks: shuffle(it.chunks), answers: it.a });
-    for (const it of shuffle(B.WRITE).slice(0, 5)) qs.push({ sec: 'writing', part: 2, type: 'input', text: it.t, py: it.py, answer: it.ans });
+    for (const it of pick(B.ARRANGE, 5, 'e3:ARRANGE')) qs.push({ sec: 'writing', part: 1, type: 'arrange', chunks: shuffle(it.chunks), answers: it.a });
+    for (const it of pick(B.WRITE, 5, 'e3:WRITE')) qs.push({ sec: 'writing', part: 2, type: 'input', text: it.t, py: it.py, answer: it.ans });
+    flushSeen();
     return qs;
   }
 

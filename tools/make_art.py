@@ -66,7 +66,7 @@ PICS = {
     'pic-p01': 'a red apple',
     'pic-p02': 'a cup of hot tea with steam',
     'pic-p03': 'a bowl of white rice with chopsticks',
-    'pic-p04': 'a clear glass of water',
+    'pic-p04': 'a chrome water tap at the top pouring a continuous stream of PALE BLUE water down into a tall transparent drinking glass. The liquid filling the glass is PALE LIGHT BLUE, the same blue as the falling stream. Do not use red, burgundy, brown or dark colors for the liquid. Blue droplets around',
     'pic-p05': 'one simple ceramic mug with a single handle, side view, plain solid color, steam above, nothing else',
     'pic-p06': 'a simple rectangular wooden dining table with four straight legs, three-quarter view, empty tabletop, plain empty background, nothing else in the picture, no frames, no ornaments',
     'pic-p07': 'a wooden chair',
