@@ -526,3 +526,9 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .res-sec .fb-p { font-size: 13px; min-width: 0; }
 .res-sec .fb-a, .res-sec .fb-v { white-space: nowrap; }
 .res-sec .fb-p { text-transform: none; letter-spacing: 0; }
+
+/* Приглашение включить напоминания Луна */
+.push-invite { border: 1.5px dashed var(--gold, #c9a227); }
+.push-invite .pi-t { font-weight: 700; color: var(--bordeaux, #6d1a24); margin-bottom: 4px; }
+.push-invite .pi-x { color: var(--ink-2, #6b6156); font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
+.push-invite .pi-ico { margin-right: 8px; display: inline-block; }

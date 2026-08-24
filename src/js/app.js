@@ -258,11 +258,31 @@ window.App = (() => {
   function dragonPanel() {
     const ds = Dragon.state(state.campaign, state.attempts);
     if (!ds) return '';
-    return `<div class="panel dragon m-${ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div><button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button></div></div>`;
+    const btn = ds.quiet && ds.kind !== 'morning'
+      ? `<button class="btn btn-secondary btn-sm" data-go="setup">Ещё позаниматься</button>`
+      : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button>`;
+    return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
+  }
+  /* Приглашение включить пуши — прямо на главной, пока они выключены */
+  let pushSt = null;
+  function pushInvite() {
+    if (pushSt === null || pushSt === 'on' || pushSt === 'unconfigured') return '';
+    if (pushSt === 'denied') {
+      return `<div class="panel push-invite"><div class="pi-t"><span class="pi-ico">🔕</span>Лун не может достучаться</div><div class="pi-x">Уведомления для 字卡 запрещены. Включить: Настройки iPhone → Уведомления → 字卡 → «Допуск уведомлений».</div></div>`;
+    }
+    if (pushSt === 'unsupported') {
+      if (Push.standalone()) return '';
+      return `<div class="panel push-invite"><div class="pi-t"><span class="pi-ico">🔔</span>Лун живёт только в установленном приложении</div><div class="pi-x">В браузере напоминания не работают. Нажмите «Поделиться» → «На экран «Домой», откройте 字卡 с домашнего экрана — и Лун сможет писать.</div></div>`;
+    }
+    return `<div class="panel push-invite"><div class="pi-t"><span class="pi-ico">🔔</span>Лун хочет напоминать о тренировке</div><div class="pi-x">Он пишет с полудня, если очков за день не хватает, и тем настойчивее, чем ближе вечер. Не больше четырёх раз в день.</div><button class="btn btn-primary btn-sm" data-action="push-on">Разрешить напоминания</button></div>`;
+  }
+  function refreshPushState() {
+    if (!window.Push) return;
+    Push.status().then(st => { if (st !== pushSt) { pushSt = st; render(); } }).catch(() => {});
   }
   function maybeNag() {
     const ds = Dragon.state(state.campaign, state.attempts);
-    if (!ds || ds.mood < 2) return;
+    if (!ds || ds.quiet || ds.mood < 2) return;
     const today = Stats.dayKey(Date.now());
     if (state.settings.dragonDay === today) return;
     state.settings.dragonDay = today; persist();
@@ -303,6 +323,7 @@ window.App = (() => {
       <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Карточки китайского · HSK 1–3</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
       ${App.Profile.homePanel()}
       ${dragonPanel()}
+      ${pushInvite()}
       <div class="panel ornate hero">
         <div class="hero-greet">${greet}</div>
         <div class="hero-row">
@@ -403,10 +424,10 @@ window.App = (() => {
   };
   actions['push-on'] = async el => {
     el.disabled = true;
-    try { await Push.enable(); toast('Напоминания включены — Лун на связи'); } catch (e) { toast('Не получилось: ' + e.message, 3500); }
+    try { await Push.enable(); pushSt = 'on'; toast('Напоминания включены — Лун на связи'); } catch (e) { toast('Не получилось: ' + e.message, 3500); }
     render();
   };
-  actions['push-off'] = async () => { await Push.disable(); toast('Напоминания выключены'); render(); };
+  actions['push-off'] = async () => { await Push.disable(); pushSt = 'off'; toast('Напоминания выключены'); render(); };
   actions['push-test'] = async el => { el.disabled = true; try { await Push.test(); toast('Отправлено — пуш придёт в течение пары секунд'); } catch (e) { toast('Не получилось: ' + e.message, 3500); } el.disabled = false; };
   actions['clear-stats'] = async () => {
     if (!await confirm('Удалить все ' + fmt.plural(state.attempts.length, 'попытку', 'попытки', 'попыток') + ' и статистику по карточкам? Это необратимо.', { ok: 'Удалить', danger: true, title: 'Очистить статистику' })) return;
@@ -468,6 +489,7 @@ window.App = (() => {
     render();
     updateBadge();
     setTimeout(maybeNag, 1200);
+    refreshPushState();
     Push.report(Campaign.todayState(state.campaign, state.attempts));
     registerSW();
     const sp = $('#splash'); if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 400); }

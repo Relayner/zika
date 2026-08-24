@@ -6,6 +6,30 @@ window.Dragon = (() => {
     { img: 'dragon-3', title: 'Наставник Лун сердится' },
     { img: 'dragon-4', title: 'Наставник Лун теряет терпение' },
   ];
+  /* Спокойные состояния: дракон на главной живёт весь день, а не только когда сердится */
+  const CALM = {
+    morning: { img: 'dragon-1', title: 'Наставник Лун приветствует', lines: [
+      'Утро доброе. Свиток дня чист: {n} очков — и день зачтён.',
+      'Лун разминает крылья на черепице: «С утра дело идёт легче».',
+      'Лун заварил чай и ждёт: {n} очков до перехода.',
+      'Новый день, чистый свиток. {n} очков — минут двадцать неспешной работы.',
+      'Лун щурится на солнце: «Начнём, пока день молодой?»',
+      'Лун раскладывает карточки: «{n} очков, и я от тебя отстану».'] },
+    done: { img: 'dragon-1', title: 'Наставник Лун доволен', lines: [
+      'День зачтён. Лун довольно жмурится: в свитке {p} очков.',
+      'Лун кивает: сегодня поход не дрогнул. {p} очков.',
+      'Норма взята. Лун сворачивается на крыше и дремлет.',
+      'Лун поднимает лапу: «Хорошая работа. До марш-броска ещё {u}».',
+      '{p} очков в свитке. Лун доволен и почти улыбается.',
+      'День закрыт. Лун ставит печать в свиток похода.'] },
+    ultra: { img: 'dragon-2', title: 'Наставник Лун поражён', lines: [
+      'Марш-бросок! {p} очков за день — Лун такого давно не видел.',
+      'Лун встаёт в полный рост: «兼程! День считается за два».',
+      'Сундук твой по праву. Лун уважительно склоняет голову.',
+      'Лун разводит крыльями: «{p} очков… Ты меня удивил».',
+      'Такой день войдёт в летопись похода. {p} очков.',
+      'Лун довольно рычит: марш-бросок закрыт.'] },
+  };
   const PHRASES = [
     ['Полдень миновал. {n} очков до перехода — начнём, пока солнце высоко?',
      'Лун потягивается на черепице: «Небольшая тренировка — и день зачтён».',
@@ -57,7 +81,15 @@ window.Dragon = (() => {
     const t = Campaign.todayState(campaign, attempts, now.getTime());
     const u = urgency(t, now);
     const m = moodIdx(u);
-    return m < 0 ? null : { mood: m, img: MOODS[m].img, title: MOODS[m].title, text: phrase(m, t, now), t, u };
+    if (m >= 0) return { mood: m, img: MOODS[m].img, title: MOODS[m].title, text: phrase(m, t, now), t, u, quiet: false };
+    /* Спокойные состояния — дракон всё равно на месте */
+    const c = t.ultra ? CALM.ultra : t.done ? CALM.done : CALM.morning;
+    const seed = now.getDate() * 7 + now.getHours();
+    const text = c.lines[seed % c.lines.length]
+      .replace('{n}', String(Math.round(t.toCap)))
+      .replace('{p}', String(Math.round(t.points)))
+      .replace('{u}', String(Math.round(t.toUltra)));
+    return { mood: 0, img: c.img, title: c.title, text, t, u, quiet: true, kind: t.ultra ? 'ultra' : t.done ? 'done' : 'morning' };
   }
-  return { MOODS, PHRASES, urgency, moodIdx, phrase, state };
+  return { MOODS, CALM, PHRASES, urgency, moodIdx, phrase, state };
 })();
