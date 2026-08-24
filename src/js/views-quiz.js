@@ -365,6 +365,9 @@
     render() {
       return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–3</h1><div class="sub">Встроенные словари и экзамены · стандарт HSK 2.0</div></div></div>
       ${builtinDecks.filter(d => d.level).map(levelCard).join('')}
+      <div class="panel ornate level"><div class="level-h"><div class="level-n">HSKK</div><div class="level-d">говорение · устный экзамен</div></div>
+        <div class="hint" style="margin:0 0 12px">Повторяете за диктором, описываете картинку и отвечаете голосом — приложение распознаёт вашу речь и оценивает.</div>
+        <button class="btn btn-secondary btn-block" disabled>В разработке · 即将推出</button></div>
       <div class="panel"><div class="hint" style="margin:0">Формат экзаменов фиксированный и не зависит от настроек тренировки. Порог сдачи — 60 %, как на реальном экзамене. «Освоено» — три верных ответа подряд.</div></div>`;
     },
   };
