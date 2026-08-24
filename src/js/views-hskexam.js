@@ -5,14 +5,14 @@
 
   const picImg = id => `<img class="ex-pic" src="${IMG_URL('pic-' + id)}" alt="" draggable="false">`;
 
-  function startExam1() {
+  function startRealExam(level) {
     if (!Speech.available()) return toast('Для секции 听力 нужен китайский голос: Настройки iPhone → Универсальный доступ → Устный контент → Голоса', 5000);
     let qs;
-    try { qs = HskReal.buildExam1(); } catch (e) { return toast(e.message, 4000); }
-    ex = { qs, i: -1, phase: 'intro', level: 1, spec: HskReal.SPEC1, startedAt: Date.now(), qStart: 0, secDeadline: 0, answerTimer: null, audioRun: 0 };
+    try { qs = HskReal.BUILDERS[level](); } catch (e) { return toast(e.message, 4000); }
+    ex = { qs, i: -1, phase: 'intro', level, spec: HskReal.SPECS[level], startedAt: Date.now(), qStart: 0, secDeadline: 0, answerTimer: null, audioRun: 0 };
     nav('exam');
   }
-  actions['hsk-real-1'] = startExam1;
+  actions['hsk-real'] = el => { closeSheet(); startRealExam(+el.dataset.level); };
 
   function stopTimers() { if (ex && ex.answerTimer) { clearInterval(ex.answerTimer); ex.answerTimer = null; } try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
   function partKey(q) { return q.sec + '-' + q.part; }
@@ -48,12 +48,16 @@
         else if (q.type === 'tf') prompt = `<div class="ex-word"><span class="hanzi" style="font-size:44px">${esc(q.text)}</span><div class="pinyin">${esc(q.textPy || '')}</div></div>`;
         else prompt = `<div class="hanzi sent-q" style="font-size:26px">${esc(q.text)}</div>`;
         let answerUi = '';
-        if (q.type === 'tf') answerUi = `${picImg(q.pic)}<div class="btns row2 mt"><button class="btn btn-jade ex-opt" data-action="exam-answer" data-idx="0" data-nosound>对 · верно</button><button class="btn btn-danger ex-opt" data-action="exam-answer" data-idx="1" data-nosound>错 · неверно</button></div>`;
+        if (q.type === 'tf') answerUi = `${q.pic ? picImg(q.pic) : ''}${q.star ? `<div class="ex-star">★ ${esc(q.star)}</div>` : ''}<div class="btns row2 mt"><button class="btn btn-jade ex-opt" data-action="exam-answer" data-idx="0" data-nosound>对 · верно</button><button class="btn btn-danger ex-opt" data-action="exam-answer" data-idx="1" data-nosound>错 · неверно</button></div>`;
         else if (q.type === 'pickpic') answerUi = `<div class="ex-pics">${q.pics.map((p, i) => `<button class="ex-picbtn" data-action="exam-answer" data-idx="${i}" data-nosound><span class="ex-letter">${'ABC'[i]}</span>${picImg(p)}</button>`).join('')}</div>`;
         else if (q.type === 'opts') answerUi = `<div class="opts">${q.opts.map((o, i) => `<button class="opt opt-txt" data-action="exam-answer" data-idx="${i}" data-nosound><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>`;
         else if (q.type === 'pool') {
           const used = new Set(ex.qs.filter(x => x !== q && x.type === 'pool' && x.pool === q.pool && x.given != null).map(x => x.given));
           answerUi = `<div class="opts">${q.pool.map((o, i) => `<button class="opt opt-txt" data-action="exam-answer" data-idx="${i}" ${used.has(o) ? 'disabled' : ''} data-nosound><span class="ex-letter">${'ABCDEF'[i]}</span><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>`;
+        }
+        else if (q.type === 'poolpic') {
+          const used = new Set(ex.qs.filter(x => x !== q && x.type === 'poolpic' && x.pool === q.pool && x.given != null).map(x => x.given));
+          answerUi = `<div class="ex-pics pool6">${q.pool.map((p, i) => `<button class="ex-picbtn ${used.has(p) ? 'used' : ''}" data-action="exam-answer" data-idx="${i}" ${used.has(p) ? 'disabled' : ''} data-nosound><span class="ex-letter">${'ABCDEF'[i]}</span>${picImg(p)}</button>`).join('')}</div>`;
         }
         return head + `<div class="panel ornate qcard" style="min-height:auto">${prompt}</div>` + answerUi;
       }
@@ -86,7 +90,7 @@
     if (q.sec === 'listening') {
       ex.audioRun++;
       const run = ex.audioRun;
-      const deadline = Date.now() + 1000 * (ex.spec.answerSec + (Array.isArray(q.say) ? 14 : 8));
+      const deadline = Date.now() + 1000 * (ex.spec.answerSec + (Array.isArray(q.say) ? 8 + q.say.length * 7 : 8));
       playAudio(q, run);
       ex.answerTimer = setInterval(() => {
         const left = Math.ceil((deadline - Date.now()) / 1000);
@@ -104,8 +108,8 @@
   function answer(q, idx, timeout) {
     if (!ex || q.given != null || q.ok != null) return;
     stopTimers();
-    if (q.type === 'tf' || q.type === 'pickpic' || q.type === 'opts') { q.givenIdx = idx; q.ok = idx === q.correct; q.given = idx < 0 ? null : String(idx); }
-    else { const val = idx < 0 ? null : q.pool[idx]; q.given = val; q.ok = val === q.answer; }
+    if (q.type === 'pool' || q.type === 'poolpic') { const val = idx < 0 ? null : q.pool[idx]; q.given = val; q.ok = val === q.answer; }
+    else { q.givenIdx = idx; q.ok = idx === q.correct; q.given = idx < 0 ? null : String(idx); }
     q.ms = Date.now() - ex.qStart;
     if (timeout) toast('Время вышло');
     Sound.click();
@@ -149,7 +153,7 @@
       correct: ex.qs.filter(q => q.ok).length, partial: 0, wrong: ex.qs.filter(q => !q.ok).length,
       percent: Math.round(ex.qs.filter(q => q.ok).length / ex.qs.length * 100),
       score: res.score, examMax: spec.max, passed: res.passed, sections: res.sections,
-      questions: ex.qs.map(q => ({ cardId: 'ex1:' + q.sec + q.part, hanzi: q.type === 'tf' ? (q.say || q.text) : (Array.isArray(q.say) ? q.say.join(' ') : (q.say || q.text)), pinyin: '', ru: LABELS.part.answer + ': ' + (q.type === 'pool' ? q.answer : q.type === 'opts' ? q.opts[q.correct] : q.correct === 0 ? '对' : '错'), show: q.sec, guess: [String(q.part)], answer: { given: q.given }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0 })),
+      questions: ex.qs.map(q => ({ cardId: 'ex' + ex.level + ':' + q.sec + q.part, hanzi: q.type === 'tf' ? (q.say || q.text) : (Array.isArray(q.say) ? q.say.join(' ') : (q.say || q.text)), pinyin: '', ru: LABELS.part.answer + ': ' + (q.type === 'pool' ? q.answer : q.type === 'opts' ? q.opts[q.correct] : q.correct === 0 ? '对' : '错'), show: q.sec, guess: [String(q.part)], answer: { given: q.given }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0 })),
     };
     a.points = Campaign.attemptPoints(a);
     const finished = ex; ex = null;
@@ -160,11 +164,12 @@
       const a = state.attempts.find(x => x.id === p.id);
       if (!a || !a.sections) return '<div class="empty">Результат не найден</div>';
       const stamp = `<div class="stamp ${a.passed ? 'pass' : 'fail'}">${a.passed ? '合格' : '不合格'}<small>${a.passed ? 'сдан' : 'не сдан'}</small></div>`;
+      const lvl = a.level || 1;
       const secRow = (id, zh, ru) => { const s = a.sections[id]; return `<div class="fb-row"><span class="fb-p" style="min-width:110px">${zh} ${ru}</span><span class="fb-a">${s.correct} из ${s.total}</span><span class="fb-v"><b>${s.points}</b> / 100</span></div>`; };
       return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">Экзамен HSK ${a.level}</h1><div class="sub">настоящий формат · ${fmt.dur(a.durationMs)}</div></div></div>
       <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${secRow('listening', '听力', 'Аудирование')}${secRow('reading', '阅读', 'Чтение')}</div>${stamp}</div>
       ${App.Profile.resultPanel(a, null)}
-      <div class="btns"><button class="btn btn-primary btn-block" data-action="hsk-real-1">Ещё вариант</button><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор ответов</button><button class="btn btn-secondary btn-block" data-go="hsk">К HSK</button></div>`;
+      <div class="btns"><button class="btn btn-primary btn-block" data-action="hsk-real" data-level="${lvl}">Ещё вариант</button><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор ответов</button><button class="btn btn-secondary btn-block" data-go="hsk">К HSK</button></div>`;
     },
   };
 })();

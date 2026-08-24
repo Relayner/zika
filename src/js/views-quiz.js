@@ -357,9 +357,9 @@
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>
-      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level === 1 ? `<button class="btn btn-primary" data-action="hsk-real-info">Экзамен HSK 1</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
-      ${d.level === 1 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="1">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
-      ${d.level === 1 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
+      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 2 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
+      ${d.level <= 2 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="${d.level}">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
+      ${d.level <= 2 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
   }
   views.hsk = {
     render() {
@@ -374,14 +374,21 @@
     quiz = { cfg: { deckIds: ['hsk' + level], mode: 'quiz', show: 'exam', guess: [], difficulty: 'exam', count: spec.count, order: 'random', timer: spec.timer }, kind: 'hsk', level, deckIds: ['hsk' + level], questions, i: 0, startedAt: Date.now(), qStart: Date.now(), answered: false, flipped: false, timerId: null, timeLeft: 0 };
     nav('quiz');
   }
-  actions['hsk-real-info'] = () => {
-    const spec = HskReal.SPEC1;
-    sheet(`<h3 class="sh-t">Экзамен HSK 1 · настоящий формат</h3><div class="install-note">
-      <p><b>听力 Аудирование</b> — 20 вопросов, 4 части: слово и картинка (对/错), предложение → картинка, диалог → картинка, вопрос → ответ. Каждое аудио звучит два раза, на ответ ${spec.answerSec} с.</p>
-      <p><b>阅读 Чтение</b> — 20 вопросов, 4 части: слово и картинка, предложение → картинка, подбор ответов, слово в пропуск. Время секции — ${Math.round(spec.readingSec / 60)} минут.</p>
+  const REAL_DESC = {
+    1: ['<b>听力 Аудирование</b> — 20 вопросов, 4 части: слово и картинка (对/错), предложение → картинка, диалог → картинка, вопрос → ответ.',
+        '<b>阅读 Чтение</b> — 20 вопросов, 4 части: слово и картинка, предложение → картинка, подбор ответов, слово в пропуск.'],
+    2: ['<b>听力 Аудирование</b> — 35 вопросов, 4 части: предложение и картинка (对/错), диалог → картинка из общего набора, диалог с вопросом, длинный диалог с вопросом.',
+        '<b>阅读 Чтение</b> — 25 вопросов, 4 части: предложение → картинка, слово в пропуск, суждение ★ (对/错), подбор ответа к реплике.'],
+  };
+  actions['hsk-real-info'] = el => {
+    const level = +el.dataset.level || 1;
+    const spec = HskReal.SPECS[level];
+    sheet(`<h3 class="sh-t">Экзамен HSK ${level} · настоящий формат</h3><div class="install-note">
+      <p>${REAL_DESC[level][0]} Каждое аудио звучит два раза, на ответ ${spec.answerSec} с.</p>
+      <p>${REAL_DESC[level][1]} Время секции — ${Math.round(spec.readingSec / 60)} минут.</p>
       <p>Проверка только в конце. Секции по 100 баллов, сдано от ${spec.pass} из ${spec.max}. Вариант каждый раз собирается заново.</p>
-      <p class="muted">У уровней 2 и 3 настоящий формат появится следом; пока там словарный тест.</p></div>
-      <button class="btn btn-primary btn-block mt" data-action="hsk-real-1">Начать экзамен</button>`);
+      ${level === 2 ? '<p class="muted">У уровня 3 настоящий формат появится следом.</p>' : ''}</div>
+      <button class="btn btn-primary btn-block mt" data-action="hsk-real" data-level="${level}">Начать экзамен</button>`);
   };
   actions['hsk-test'] = el => {
     const level = +el.dataset.level, spec = Quiz.EXAM[level];

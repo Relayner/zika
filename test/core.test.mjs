@@ -316,3 +316,31 @@ t('real exam build', () => {
   assert.equal(sc.sections.listening.points, 50); assert.equal(sc.sections.reading.points, 100); assert.equal(sc.score, 150); assert.equal(sc.passed, true);
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'real exam group passed');
+
+/* ── настоящий экзамен HSK 2 ── */
+global.window.PICS_AVAILABLE = Array.from({ length: 60 }, (_, i) => 'p' + String(i + 1).padStart(2, '0'));
+require('../src/js/hsk2exam.js');
+delete require.cache[require.resolve('../src/js/hskreal.js')];
+require('../src/js/hskreal.js');
+const HskReal2 = global.HskReal;
+t('real exam 2 build', () => {
+  for (let iter = 0; iter < 5; iter++) {
+    const qs = HskReal2.buildExam2();
+    assert.equal(qs.length, 60);
+    assert.equal(qs.filter(q => q.sec === 'listening').length, 35);
+    assert.equal(qs.filter(q => q.sec === 'reading').length, 25);
+    assert.equal(qs.filter(q => q.sec === 'listening' && q.part === 1).length, 10);
+    assert.equal(qs.filter(q => q.sec === 'listening' && q.part === 2).length, 10);
+    assert.equal(qs.filter(q => q.sec === 'listening' && q.part === 3).length, 10);
+    assert.equal(qs.filter(q => q.sec === 'listening' && q.part === 4).length, 5);
+    for (let part = 1; part <= 4; part++) assert.equal(qs.filter(q => q.sec === 'reading' && q.part === part).length, 5 * (part === 4 ? 2 : 1));
+    for (const q of qs) {
+      if (q.type === 'poolpic') { assert.equal(q.pool.length, 6); assert.ok(q.pool.includes(q.answer)); }
+      if (q.type === 'pool') { assert.equal(q.pool.length, q.part === 4 && q.sec === 'reading' ? 6 : 6); assert.ok(q.pool.includes(q.answer)); }
+      if (q.type === 'opts') { assert.equal(q.opts.length, 3); assert.ok(q.correct >= 0 && q.correct < 3); }
+      if (q.type === 'tf' && q.sec === 'reading') { assert.ok(q.star); assert.ok(q.correct === 0 || q.correct === 1); }
+    }
+    assert.ok(HskReal2.SPECS[2].sections.listening.total === 35);
+  }
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'real exam 2 group passed');

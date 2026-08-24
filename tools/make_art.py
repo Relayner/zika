@@ -104,6 +104,29 @@ PICS = {
     'pic-p39': CAT_PIC + 'as a mother cat in an apron holding a teapot',
     'pic-p40': 'two happy cats standing together as friends',
 }
+PICS2 = {
+    'pic-p41': 'a cup of coffee with latte foam',
+    'pic-p42': 'a glass of milk and a milk bottle',
+    'pic-p43': 'a watermelon with one cut slice',
+    'pic-p44': 'a basket of chicken eggs',
+    'pic-p45': 'a whole cooked fish on a plate',
+    'pic-p46': 'a bowl of noodles with chopsticks lifting noodles',
+    'pic-p47': 'a modern smartphone',
+    'pic-p48': 'a wristwatch',
+    'pic-p49': 'a folded newspaper',
+    'pic-p50': 'a medicine bottle and some pills',
+    'pic-p51': 'a bicycle, side view',
+    'pic-p52': 'a city bus, side view',
+    'pic-p53': 'a green train at a station platform',
+    'pic-p54': CAT_PIC + 'running, jogging in a tracksuit',
+    'pic-p55': CAT_PIC + 'kicking a classic black-and-white pentagon-pattern soccer ball with one hind leg, the ball flying to the side',
+    'pic-p56': CAT_PIC + 'playing with a basketball',
+    'pic-p57': CAT_PIC + 'swimming in water with a swim ring',
+    'pic-p58': CAT_PIC + 'dancing joyfully with raised paws',
+    'pic-p59': CAT_PIC + 'singing into a microphone with music notes',
+    'pic-p60': 'snowy weather: a snowman and falling snowflakes',
+}
+PICS.update(PICS2)
 CHESTS = {
     'chest-closed': 'An ancient Chinese lacquered wooden treasure chest with bronze fittings and a big bronze lock, closed, centered, slightly from above.',
     'chest-open': 'An ancient Chinese lacquered wooden treasure chest with bronze fittings, lid open, golden light and glowing treasures spilling out, centered, slightly from above.',
