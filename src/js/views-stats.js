@@ -78,11 +78,29 @@
     <div class="hint" style="margin:0 0 6px">${fmt.plural(list.length, 'попытка', 'попытки', 'попыток')} · каждая сохранена с ответами на все вопросы</div>
     ${list.length ? list.slice(0, 300).map(attemptRow).join('') : '<div class="empty">Пусто.</div>'}`;
   }
+  /* Боссы: сколько кого повержено и сколько без подсказок */
+  function bossTab() {
+    const fights = state.attempts.filter(a => a.mode === 'boss');
+    const rows = Boss.LIST.map(b => {
+      const r = Boss.bs(state, b.id);
+      const mine = fights.filter(a => a.boss === b.id);
+      const best = mine.filter(a => a.won).length;
+      return `<div class="panel boss-card"><img class="boss-por" src="${IMG_URL(b.img)}" alt="">
+        <div class="grow"><div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
+        <div class="fb-row"><span class="fb-p">Побед</span><span class="fb-v"><b>${r.wins}</b></span></div>
+        <div class="fb-row"><span class="fb-p">Из них без подсказок</span><span class="fb-v"><b>${r.clean}</b></span></div>
+        <div class="fb-row"><span class="fb-p">Вызовов</span><span class="fb-v">${r.tries}</span></div>
+        <div class="fb-row"><span class="fb-p">Доля побед</span><span class="fb-v">${r.tries ? Math.round(best / r.tries * 100) + '%' : '—'}</span></div>
+        </div></div>`;
+    }).join('');
+    const tot = Boss.LIST.reduce((s2, b) => { const r = Boss.bs(state, b.id); s2.w += r.wins; s2.c += r.clean; s2.t += r.tries; return s2; }, { w: 0, c: 0, t: 0 });
+    return `<div class="tiles t3"><div class="tile"><div class="v">${tot.w}</div><div class="l">${fmt.plural(tot.w, 'победа', 'победы', 'побед').replace(/^\d+ /, '')} всего</div></div><div class="tile"><div class="v">${tot.c}</div><div class="l">без подсказок</div></div><div class="tile"><div class="v">${tot.t}</div><div class="l">${fmt.plural(tot.t, 'вызов', 'вызова', 'вызовов').replace(/^\d+ /, '')}</div></div></div>${rows}`;
+  }
   views.stats = {
     render(p) {
       const tab = p.tab || 'overview';
-      const tabs = `<div class="seg top-seg">${[['overview', 'Обзор'], ['cards', 'Карточки'], ['log', 'Журнал']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-go="stats" data-params="${attr({ tab: k })}" data-replace>${l}</button>`).join('')}</div>`;
-      return `<div class="vh"><div class="seal">计</div><div class="grow"><h1 class="title">Статистика</h1><div class="sub">统计 · всё сохраняется подробно</div></div></div>${tabs}${tab === 'overview' ? overview() : tab === 'cards' ? cardsTab(p) : logTab(p)}`;
+      const tabs = `<div class="seg top-seg">${[['overview', 'Обзор'], ['cards', 'Карточки'], ['boss', 'Боссы'], ['log', 'Журнал']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-go="stats" data-params="${attr({ tab: k })}" data-replace>${l}</button>`).join('')}</div>`;
+      return `<div class="vh"><div class="seal">计</div><div class="grow"><h1 class="title">Статистика</h1><div class="sub">统计 · всё сохраняется подробно</div></div></div>${tabs}${tab === 'overview' ? overview() : tab === 'cards' ? cardsTab(p) : tab === 'boss' ? bossTab() : logTab(p)}`;
     },
     mount(p) {
       const df = $('#deck-filter'); if (df) df.addEventListener('change', () => nav('stats', { ...p, tab: 'cards', deck: df.value }, { replace: true }));

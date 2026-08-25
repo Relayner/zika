@@ -62,6 +62,37 @@ export default {
       await env.SUBS.put('s:' + id, JSON.stringify(rec));
       return json({ ok: true });
     }
+    /* Диалоги босса: генерирует Claude Fable, ключ живёт секретом воркера и в приложение не попадает */
+    if (url.pathname === '/boss') {
+      if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 503);
+      const b = body.boss || {};
+      const lvl = Math.min(4, Math.max(1, body.level | 0 || 1));
+      const rounds = Math.min(8, Math.max(1, body.rounds | 0 || 5));
+      const avoid = (body.avoid || []).slice(0, 120);
+      const sys = [
+        'Ты пишешь диалоги для приложения, где человек учит китайский и голосом отвечает боссу.',
+        'Персонаж: ' + (b.zh || '') + ' (' + (b.ru || '') + '). Характер: ' + (b.style || '') + '.',
+        'Темы этого босса: ' + (b.topic || '') + '.',
+        'Уровень ученика: HSK ' + lvl + '. Используй ТОЛЬКО лексику и грамматику HSK 1-' + lvl + '.',
+        'Верни СТРОГО JSON без markdown: {"rounds":[{"say":"фраза босса по-китайски","py":"пиньинь с тонами","ru":"перевод фразы на русский","expect":["ключевые слова или обороты верного ответа, по-китайски"],"answer":"образцовый ответ по-китайски","answer_ru":"его перевод","opts":["верный ответ","неверный 1","неверный 2"]}]}',
+        'Ровно ' + rounds + ' раундов. Каждый say — реплика босса, на которую человек отвечает голосом одной короткой фразой.',
+        'expect: 2-5 вариантов ключевых слов, любое из которых означает, что человек ответил по существу. Пиши их иероглифами, без пунктуации.',
+        'opts: первый элемент всегда верный ответ, два других правдоподобны, но неверны.',
+        'Реплики короткие: 4-12 иероглифов. Держи характер персонажа.',
+        avoid.length ? 'НЕ повторяй эти реплики, они уже были: ' + avoid.join(' / ') : '',
+      ].filter(Boolean).join('\n');
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-fable-5', max_tokens: 2000, system: sys, messages: [{ role: 'user', content: 'Сгенерируй бой. Отвечай только JSON.' }] }),
+      });
+      if (!r.ok) return json({ error: 'upstream', status: r.status, detail: (await r.text()).slice(0, 300) }, 502);
+      const data = await r.json();
+      const text = (data.content || []).map(c => c.text || '').join('').trim();
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) return json({ error: 'bad_json' }, 502);
+      try { return json({ ok: true, ...JSON.parse(m[0]) }); } catch (e) { return json({ error: 'bad_json' }, 502); }
+    }
     if (url.pathname === '/test') {
       if (!body.endpoint) return json({ error: 'no endpoint' }, 400);
       const raw = await env.SUBS.get('s:' + (await idOf(body.endpoint)));

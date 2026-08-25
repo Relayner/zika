@@ -558,3 +558,40 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .sr-pts small { font-size: 12px; font-weight: 400; margin-left: 3px; }
 .big-btn.t-prog { color: var(--jade, #2e7d5b); }
 .blk-runs { color: var(--gold, #c9a227); font-weight: 700; }
+/* Боссы */
+.boss-card { display: flex; gap: 12px; align-items: flex-start; }
+.boss-card.locked { opacity: .72; }
+.boss-por { width: 76px; height: 76px; border-radius: 12px; flex: none; border: 2px solid var(--line, #e4d8c2); object-fit: cover; }
+.boss-card.ready .boss-por { border-color: var(--danger, #b3392f); }
+.boss-por.big { width: 120px; height: 120px; }
+.boss-n { font-family: var(--serif, serif); font-weight: 700; font-size: 17px; }
+.boss-lore { color: var(--ink-2, #6b6156); font-size: 13.5px; line-height: 1.4; margin: 4px 0 6px; }
+.boss-meta { font-size: 13px; margin-bottom: 2px; }
+.boss-when { font-size: 13px; color: var(--ink-2, #6b6156); margin-bottom: 8px; }
+.fight-card { text-align: center; }
+.fight-card .boss-por.big { margin: 0 auto 8px; display: block; }
+.fight-card .boss-por.hit { filter: grayscale(.4) brightness(.85); }
+.fight-card .boss-por.laugh { transform: scale(1.04); }
+.fight-say { font-size: 26px; margin: 10px 0; line-height: 1.5; cursor: pointer; }
+.fight-tr { color: var(--ink-2, #6b6156); font-size: 14px; margin-top: 6px; line-height: 1.45; }
+.fight-fb { margin-top: 10px; font-size: 20px; }
+.fight-fb.ok { color: var(--jade, #2e7d5b); }
+.fight-fb.bad { color: var(--danger, #b3392f); }
+.fight-fb span { font-size: 15px; color: var(--ink-2, #6b6156); display: block; margin-top: 2px; }
+.fight-acts { display: grid; gap: 8px; }
+.hint-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.hint-btn { background: var(--card, #fffdf6); border: 1.5px solid var(--gold, #c9a227); border-radius: 12px; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; color: inherit; }
+.hint-btn .zh { font-size: 20px; color: var(--bordeaux, #6d1a24); }
+.hint-btn small { font-size: 11px; color: var(--ink-2, #6b6156); }
+.hint-btn.used { opacity: .4; border-style: dashed; }
+.btn.rec { animation: recpulse 1s infinite; }
+@keyframes recpulse { 50% { opacity: .6; } }
+.fight-res { display: flex; align-items: center; gap: 14px; }
+.fight-res.win { border-color: var(--jade, #2e7d5b); }
+.fight-res.lose { border-color: var(--danger, #b3392f); }
+.loot { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+.loot-it { text-align: center; font-size: 12px; }
+.loot-it img { width: 100%; border-radius: 10px; }
+.loot-it span { display: block; margin-top: 4px; }
+.loot-it small { color: var(--ink-2, #6b6156); }
+.big-btn.t-boss { color: var(--danger, #b3392f); }

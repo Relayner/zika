@@ -59,6 +59,15 @@ DRAGONS = {
     'dragon-3': DRAGON + 'Stern angry expression, brows knitted, arms crossed, small puffs of smoke from the nostrils.',
     'dragon-4': DRAGON + 'Ominous menacing look, narrowed glowing eyes, looming pose with raised claws, dark storm cloud and a small lightning bolt behind, twilight mood.',
 }
+BOSS = ('A single imposing character of the ancient Chinese Three Kingdoms era, portrait from the chest up, facing the viewer, '
+        'large expressive face, theatrical and memorable like a Peking opera character, slightly comic but formidable. ')
+BOSSES = {
+    'boss-1': BOSS + 'A plump grey bookworm-scholar mouse in a scholar cap and blue robe, round spectacles on the nose, ink brush tucked behind the ear, a tall stack of bamboo scrolls beside him, smug know-it-all smirk.',
+    'boss-2': BOSS + 'An old tea-master badger with a long white beard, brown teahouse apron, holding a steaming clay teapot high, one eyebrow raised, sly welcoming grin, tea cups floating in steam around him.',
+    'boss-3': BOSS + 'A cunning market fox merchant in a red silk vest, gold coins in one paw and an abacus in the other, narrow gleaming eyes, wide toothy bargaining grin, market lanterns behind.',
+    'boss-4': BOSS + 'A stern imperial clerk crane in a tall black official hat and dark green robe, holding a huge writing brush like a spear and an unrolled scroll, long beak, disapproving squint, red seal stamp glowing beside him.',
+    'boss-5': BOSS + 'A fierce tiger general in heavy gold lamellar armor and a horned helmet with a red plume, huge crescent-blade guandao over the shoulder, war paint stripes, roaring open mouth showing fangs, storm clouds behind.',
+}
 PIC = 'Simple flat illustration for a language exam card: '
 PIC_STYLE = ' Single clear subject, centered, large in frame, no decorative frame, no ornament, no text. Stylized flat poster style, limited palette of vermilion red, burgundy, antique gold, jade green, warm beige; plain solid warm beige background.'
 CAT_PIC = 'the same chubby orange tabby cat character with cream muzzle, '
@@ -137,6 +146,7 @@ def jobs():
     for k, d in TREASURES.items(): out.append((f'treasure-{k}', ITEM + d + '. ' + STYLE))
     for k, d in CHESTS.items(): out.append((k, d + ' ' + STYLE))
     for k, d in DRAGONS.items(): out.append((k, d + ' ' + STYLE))
+    for k, d in BOSSES.items(): out.append((k, d + ' ' + STYLE))
     for k, d in PICS.items(): out.append((k, PIC + d + '.' + PIC_STYLE))
     return out
 

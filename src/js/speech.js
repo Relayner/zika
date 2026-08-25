@@ -8,14 +8,18 @@ window.Speech = (() => {
     return vs.find(v => /zh[-_](CN|Hans)/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
   }
   const available = () => ok && !!zhVoice();
-  function say(text, rate = 0.8) {
+  /* rate числом — как раньше; объектом {rate, pitch} — голос персонажа */
+  function say(text, opt = 0.8) {
     if (!ok) return false;
+    const o = typeof opt === 'object' && opt ? opt : { rate: opt, pitch: 1 };
     try {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(String(text));
       const v = zhVoice();
       if (v) u.voice = v;
-      u.lang = 'zh-CN'; u.rate = rate; u.pitch = 1;
+      u.lang = 'zh-CN';
+      u.rate = o.rate == null ? 0.8 : o.rate;
+      u.pitch = o.pitch == null ? 1 : o.pitch;
       speechSynthesis.speak(u);
       return true;
     } catch (e) { return false; }

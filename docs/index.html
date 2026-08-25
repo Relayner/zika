@@ -575,6 +575,43 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .sr-pts small { font-size: 12px; font-weight: 400; margin-left: 3px; }
 .big-btn.t-prog { color: var(--jade, #2e7d5b); }
 .blk-runs { color: var(--gold, #c9a227); font-weight: 700; }
+/* Боссы */
+.boss-card { display: flex; gap: 12px; align-items: flex-start; }
+.boss-card.locked { opacity: .72; }
+.boss-por { width: 76px; height: 76px; border-radius: 12px; flex: none; border: 2px solid var(--line, #e4d8c2); object-fit: cover; }
+.boss-card.ready .boss-por { border-color: var(--danger, #b3392f); }
+.boss-por.big { width: 120px; height: 120px; }
+.boss-n { font-family: var(--serif, serif); font-weight: 700; font-size: 17px; }
+.boss-lore { color: var(--ink-2, #6b6156); font-size: 13.5px; line-height: 1.4; margin: 4px 0 6px; }
+.boss-meta { font-size: 13px; margin-bottom: 2px; }
+.boss-when { font-size: 13px; color: var(--ink-2, #6b6156); margin-bottom: 8px; }
+.fight-card { text-align: center; }
+.fight-card .boss-por.big { margin: 0 auto 8px; display: block; }
+.fight-card .boss-por.hit { filter: grayscale(.4) brightness(.85); }
+.fight-card .boss-por.laugh { transform: scale(1.04); }
+.fight-say { font-size: 26px; margin: 10px 0; line-height: 1.5; cursor: pointer; }
+.fight-tr { color: var(--ink-2, #6b6156); font-size: 14px; margin-top: 6px; line-height: 1.45; }
+.fight-fb { margin-top: 10px; font-size: 20px; }
+.fight-fb.ok { color: var(--jade, #2e7d5b); }
+.fight-fb.bad { color: var(--danger, #b3392f); }
+.fight-fb span { font-size: 15px; color: var(--ink-2, #6b6156); display: block; margin-top: 2px; }
+.fight-acts { display: grid; gap: 8px; }
+.hint-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.hint-btn { background: var(--card, #fffdf6); border: 1.5px solid var(--gold, #c9a227); border-radius: 12px; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; color: inherit; }
+.hint-btn .zh { font-size: 20px; color: var(--bordeaux, #6d1a24); }
+.hint-btn small { font-size: 11px; color: var(--ink-2, #6b6156); }
+.hint-btn.used { opacity: .4; border-style: dashed; }
+.btn.rec { animation: recpulse 1s infinite; }
+@keyframes recpulse { 50% { opacity: .6; } }
+.fight-res { display: flex; align-items: center; gap: 14px; }
+.fight-res.win { border-color: var(--jade, #2e7d5b); }
+.fight-res.lose { border-color: var(--danger, #b3392f); }
+.loot { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+.loot-it { text-align: center; font-size: 12px; }
+.loot-it img { width: 100%; border-radius: 10px; }
+.loot-it span { display: block; margin-top: 4px; }
+.loot-it small { color: var(--ink-2, #6b6156); }
+.big-btn.t-boss { color: var(--danger, #b3392f); }
 
 </style>
 </head>
@@ -2171,14 +2208,18 @@ window.Speech = (() => {
     return vs.find(v => /zh[-_](CN|Hans)/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
   }
   const available = () => ok && !!zhVoice();
-  function say(text, rate = 0.8) {
+  /* rate числом — как раньше; объектом {rate, pitch} — голос персонажа */
+  function say(text, opt = 0.8) {
     if (!ok) return false;
+    const o = typeof opt === 'object' && opt ? opt : { rate: opt, pitch: 1 };
     try {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(String(text));
       const v = zhVoice();
       if (v) u.voice = v;
-      u.lang = 'zh-CN'; u.rate = rate; u.pitch = 1;
+      u.lang = 'zh-CN';
+      u.rate = o.rate == null ? 0.8 : o.rate;
+      u.pitch = o.pitch == null ? 1 : o.pitch;
       speechSynthesis.speak(u);
       return true;
     } catch (e) { return false; }
@@ -4060,7 +4101,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260825-2215';
+  const VERSION = '20260825-2232';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4076,10 +4117,10 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
-    mode: { sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
+    mode: { boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
@@ -4394,6 +4435,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
+        <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
         <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
         <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–3</small></button>
@@ -5274,6 +5316,284 @@ window.PROGRAM = (() => {
 })();
 
 ;
+/* Режим «Босс»: пять персонажей, таймеры, уровень по изученному, особый сундук, недельная память вопросов. */
+window.Boss = (() => {
+  const TRY_COOLDOWN = 10 * 60 * 1000;      /* попытка раз в 10 минут */
+  const RESPAWN = 30 * 60 * 1000;           /* побеждённый воскресает через 30 минут */
+  const MEMORY_TTL = 7 * 24 * 3600 * 1000;  /* что уже спрашивали — помним неделю */
+  const ROUNDS = 5;
+
+  const LIST = [
+    { id: 'b1', img: 'boss-1', zh: '书虫先生', py: 'Shūchóng xiānsheng', ru: 'Господин Книжный Червь',
+      lore: 'Панда-начётчик из башни свитков. Тысячу лет он переписывает одни и те же строки и уверен, что помнит больше всех на свете. Говорит медленно и снисходительно, любит переспрашивать простое.',
+      style: 'дотошный, снисходительный, говорит короткими простыми фразами, придирается к мелочам',
+      topic: 'приветствия, имена, семья, числа, простые бытовые вопросы',
+      voice: { rate: 0.75, pitch: 0.9 }, lvl: 1, note: 'A' },
+    { id: 'b2', img: 'boss-2', zh: '茶博士', py: 'Chá bóshì', ru: 'Чайный Доктор',
+      lore: 'Барсук держит чайную у горной дороги. Наливает всем, но платы просит словами: пока не расскажешь о себе — чашка не опустеет. Хитрый и радушный одновременно.',
+      style: 'радушный, хитрый, задаёт бытовые вопросы про еду, время и погоду, поддакивает',
+      topic: 'еда и напитки, время суток, погода, дом, привычки',
+      voice: { rate: 0.85, pitch: 1.05 }, lvl: 1, note: 'C' },
+    { id: 'b3', img: 'boss-3', zh: '市井狐', py: 'Shìjǐng hú', ru: 'Базарная Лиса',
+      lore: 'Торгует всем и сразу, считает быстрее счётов. Если запнёшься — тут же поднимет цену. Говорит скороговоркой, обожает торговаться.',
+      style: 'быстрый, напористый, торгуется, спрашивает про цены, количества, покупки',
+      topic: 'покупки, деньги, цены, счёт, магазин, торг',
+      voice: { rate: 1.15, pitch: 1.15 }, lvl: 2, note: 'E' },
+    { id: 'b4', img: 'boss-4', zh: '笔吏', py: 'Bǐ lì', ru: 'Писарь-Журавль',
+      lore: 'Чиновник с кистью наперевес. Проверяет не тебя, а твою грамматику, и ставит красную печать при первой же ошибке в порядке слов. Сух, точен, безжалостен.',
+      style: 'сухой, официальный, придирается к грамматике и порядку слов, требует полных ответов',
+      topic: 'учёба, работа, документы, грамматические конструкции, объяснения причин',
+      voice: { rate: 0.9, pitch: 0.8 }, lvl: 3, note: 'G' },
+    { id: 'b5', img: 'boss-5', zh: '虎将军', py: 'Hǔ jiāngjūn', ru: 'Тигр-Генерал',
+      lore: 'Последний страж заставы. Не спрашивает — требует. Отвечать надо быстро и по существу, иначе гуаньдао опускается, и разговор окончен.',
+      style: 'громкий, властный, рубит фразы, требует быстрых чётких ответов, давит',
+      topic: 'планы, решения, путь и дорога, здоровье, воля и характер',
+      voice: { rate: 1.0, pitch: 0.7 }, lvl: 4, note: 'D' },
+  ];
+  const byId = id => LIST.find(b => b.id === id);
+
+  const st = s => (s.settings.boss || (s.settings.boss = { by: {}, memory: [], lastTry: 0 }));
+  const bs = (s, id) => { const b = st(s); return b.by[id] || (b.by[id] = { wins: 0, clean: 0, tries: 0, defeatedAt: 0 }); };
+
+  /* ── таймеры ── */
+  const tryLeft = (s, now = Date.now()) => Math.max(0, st(s).lastTry + TRY_COOLDOWN - now);
+  const respawnLeft = (s, id, now = Date.now()) => { const r = bs(s, id); return r.defeatedAt ? Math.max(0, r.defeatedAt + RESPAWN - now) : 0; };
+  const ready = (s, id, now = Date.now()) => tryLeft(s, now) === 0 && respawnLeft(s, id, now) === 0;
+  function fmtLeft(ms) {
+    const t = Math.ceil(ms / 1000);
+    const m = Math.floor(t / 60), sec = t % 60;
+    return m ? m + ' мин ' + (sec < 10 ? '0' : '') + sec + ' с' : sec + ' с';
+  }
+
+  /* ── уровень: по верхней грани изученного ── */
+  function levelOf(state) {
+    const decks = { hsk1: 1, hsk2: 2, hsk3: 3, freq1: 4 };
+    const cs = state.cardStats || {};
+    const studied = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    for (const [id, v] of Object.entries(cs)) {
+      if (!v || (!v.asked && !v.mastered)) continue;
+      const pref = String(id).split(':')[0];
+      const l = decks[pref];
+      if (l) studied[l]++;
+    }
+    const prog = (state.settings && state.settings.program) || {};
+    for (const [bid, v] of Object.entries(prog)) {
+      const lv = +String(bid).slice(1, 2);
+      if (studied[lv] != null && v && v.seen) studied[lv] += v.seen.length;
+    }
+    let lvl = 1;
+    for (const l of [2, 3, 4]) if (studied[l] >= 20) lvl = l;   /* верхняя грань — где набралось хотя бы 20 слов */
+    return lvl;
+  }
+
+  /* ── недельная память сгенерированного ── */
+  function recall(state, now = Date.now()) {
+    const b = st(state);
+    b.memory = (b.memory || []).filter(m => now - m.ts < MEMORY_TTL);
+    return b.memory;
+  }
+  function remember(state, lines, now = Date.now()) {
+    const b = st(state);
+    recall(state, now);
+    lines.forEach(t => b.memory.push({ t: String(t).slice(0, 40), ts: now }));
+    if (b.memory.length > 400) b.memory = b.memory.slice(-400);
+  }
+
+  /* ── сундук босса: скромнее ультра-дневного, но с разбросом ── */
+  function chest(boss, noHints, rnd = Math.random) {
+    const base = 1 + (rnd() < 0.45 ? 1 : 0) + (boss.lvl >= 3 && rnd() < 0.35 ? 1 : 0);   /* 1–3 предмета против 3 в ультра-сундуке */
+    const n = noHints ? base + (rnd() < 0.3 ? 1 : 0) : base;
+    const items = [];
+    for (let i = 0; i < n; i++) {
+      let it = Treasures.rollItem(rnd);
+      /* без подсказок — шанс на предмет получше */
+      if (noHints && rnd() < 0.3 && it.rarity === 'common') { const pool = Treasures.ITEMS.filter(x => x.rarity === 'uncommon'); it = pool[Math.floor(rnd() * pool.length)]; }
+      items.push(it.id);
+    }
+    return items;
+  }
+  const chestBonusPct = 30;   /* «полнее на 30%», если не тронул ни одной подсказки */
+
+  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest };
+})();
+
+;
+/* Диалоги босса: сначала Claude Fable через воркер, при недоступности — встроенный банк. Плюс голосовой ввод. */
+window.BossGen = (() => {
+  /* Запасной банк: работает без сети и без ключа. Каждый бой берёт случайные раунды. */
+  const BANK = {
+    b1: [
+      { say: '你好，你叫什么名字？', py: 'nǐ hǎo, nǐ jiào shénme míngzi?', ru: 'Здравствуй, как тебя зовут?', expect: ['我叫', '我是'], answer: '我叫小明。', answer_ru: 'Меня зовут Сяомин.', opts: ['我叫小明。', '我很好，谢谢。', '这是我的书。'] },
+      { say: '你家有几个人？', py: 'nǐ jiā yǒu jǐ ge rén?', ru: 'Сколько человек в твоей семье?', expect: ['个人', '四个', '三个', '五个'], answer: '我家有四个人。', answer_ru: 'В моей семье четыре человека.', opts: ['我家有四个人。', '我家在北京。', '我有一个老师。'] },
+      { say: '今天几号？', py: 'jīntiān jǐ hào?', ru: 'Какое сегодня число?', expect: ['号', '日'], answer: '今天八号。', answer_ru: 'Сегодня восьмое.', opts: ['今天八号。', '今天很热。', '我今天不去。'] },
+      { say: '这是什么书？', py: 'zhè shì shénme shū?', ru: 'Что это за книга?', expect: ['汉语', '书', '这是'], answer: '这是汉语书。', answer_ru: 'Это учебник китайского.', opts: ['这是汉语书。', '我会写字。', '他是我朋友。'] },
+      { say: '你是学生吗？', py: 'nǐ shì xuéshēng ma?', ru: 'Ты студент?', expect: ['我是', '不是', '学生'], answer: '我是学生。', answer_ru: 'Я студент.', opts: ['我是学生。', '我在家里。', '这个很大。'] },
+      { say: '你会写汉字吗？', py: 'nǐ huì xiě hànzì ma?', ru: 'Ты умеешь писать иероглифы?', expect: ['会', '不会', '写'], answer: '我会写一点儿。', answer_ru: 'Немного умею.', opts: ['我会写一点儿。', '我很高兴。', '他去商店。'] },
+      { say: '老师在哪儿？', py: 'lǎoshī zài nǎr?', ru: 'Где учитель?', expect: ['在', '学校', '家'], answer: '老师在学校。', answer_ru: 'Учитель в школе.', opts: ['老师在学校。', '老师很好。', '我不认识。'] },
+      { say: '你有几本书？', py: 'nǐ yǒu jǐ běn shū?', ru: 'Сколько у тебя книг?', expect: ['本', '有'], answer: '我有三本书。', answer_ru: 'У меня три книги.', opts: ['我有三本书。', '我买了苹果。', '书在桌子上。'] },
+    ],
+    b2: [
+      { say: '客人，喝茶还是喝水？', py: 'kèrén, hē chá háishi hē shuǐ?', ru: 'Гость, чай или воду?', expect: ['喝茶', '喝水', '茶', '水'], answer: '我喝茶，谢谢。', answer_ru: 'Я выпью чаю, спасибо.', opts: ['我喝茶，谢谢。', '我不认识他。', '这里很远。'] },
+      { say: '你吃饭了吗？', py: 'nǐ chī fàn le ma?', ru: 'Ты поел?', expect: ['吃了', '没吃', '还没'], answer: '我吃了，谢谢。', answer_ru: 'Поел, спасибо.', opts: ['我吃了，谢谢。', '我会说汉语。', '天气很冷。'] },
+      { say: '今天天气怎么样？', py: 'jīntiān tiānqì zěnmeyàng?', ru: 'Какая сегодня погода?', expect: ['很热', '很冷', '下雨', '很好'], answer: '今天很热。', answer_ru: 'Сегодня жарко.', opts: ['今天很热。', '我有两个杯子。', '他在医院。'] },
+      { say: '你喜欢什么水果？', py: 'nǐ xǐhuan shénme shuǐguǒ?', ru: 'Какие фрукты ты любишь?', expect: ['喜欢', '苹果', '西瓜'], answer: '我喜欢苹果。', answer_ru: 'Я люблю яблоки.', opts: ['我喜欢苹果。', '我在学习。', '这是我的椅子。'] },
+      { say: '现在几点了？', py: 'xiànzài jǐ diǎn le?', ru: 'Который сейчас час?', expect: ['点', '现在'], answer: '现在三点。', answer_ru: 'Сейчас три часа.', opts: ['现在三点。', '我很喜欢。', '他不在家。'] },
+      { say: '你住在哪儿？', py: 'nǐ zhù zài nǎr?', ru: 'Где ты живёшь?', expect: ['住在', '北京', '家'], answer: '我住在北京。', answer_ru: 'Я живу в Пекине.', opts: ['我住在北京。', '我喝了茶。', '这个太贵了。'] },
+      { say: '要不要再来一杯？', py: 'yào bu yào zài lái yì bēi?', ru: 'Ещё чашечку?', expect: ['要', '不要', '谢谢'], answer: '要，谢谢。', answer_ru: 'Да, спасибо.', opts: ['要，谢谢。', '我去学校。', '他很高兴。'] },
+      { say: '你几点睡觉？', py: 'nǐ jǐ diǎn shuìjiào?', ru: 'Во сколько ты ложишься спать?', expect: ['点', '睡觉'], answer: '我十点睡觉。', answer_ru: 'Я ложусь в десять.', opts: ['我十点睡觉。', '我吃米饭。', '这是他的。'] },
+    ],
+    b3: [
+      { say: '这个多少钱？', py: 'zhège duōshao qián?', ru: 'Сколько это стоит?', expect: ['块', '钱', '太贵'], answer: '太贵了，便宜一点儿吧。', answer_ru: 'Дорого, давай подешевле.', opts: ['太贵了，便宜一点儿吧。', '我是学生。', '今天下雨。'] },
+      { say: '你要买几个？', py: 'nǐ yào mǎi jǐ ge?', ru: 'Сколько штук берёшь?', expect: ['个', '要', '买'], answer: '我要买两个。', answer_ru: 'Возьму две штуки.', opts: ['我要买两个。', '我在医院工作。', '他会开车。'] },
+      { say: '你有钱吗？', py: 'nǐ yǒu qián ma?', ru: 'Деньги-то есть?', expect: ['有', '没有', '钱'], answer: '有一点儿。', answer_ru: 'Немного есть.', opts: ['有一点儿。', '我很累。', '这是茶。'] },
+      { say: '苹果和西瓜，你买哪个？', py: 'píngguǒ hé xīguā, nǐ mǎi nǎge?', ru: 'Яблоки или арбуз — что берёшь?', expect: ['买', '苹果', '西瓜'], answer: '我买苹果。', answer_ru: 'Возьму яблоки.', opts: ['我买苹果。', '我不知道路。', '他是医生。'] },
+      { say: '便宜卖你，三十块，怎么样？', py: 'piányi mài nǐ, sānshí kuài, zěnmeyàng?', ru: 'Отдам дёшево, тридцать юаней — идёт?', expect: ['太贵', '好', '二十', '可以'], answer: '二十块吧。', answer_ru: 'Давай за двадцать.', opts: ['二十块吧。', '我喜欢猫。', '现在很晚。'] },
+      { say: '你从哪儿来？', py: 'nǐ cóng nǎr lái?', ru: 'Ты откуда?', expect: ['从', '来', '俄罗斯', '中国'], answer: '我从俄罗斯来。', answer_ru: 'Я из России.', opts: ['我从俄罗斯来。', '我买了三个。', '他很忙。'] },
+      { say: '还要别的吗？', py: 'hái yào biéde ma?', ru: 'Ещё что-нибудь?', expect: ['不要', '要', '谢谢'], answer: '不要了，谢谢。', answer_ru: 'Больше не нужно, спасибо.', opts: ['不要了，谢谢。', '我去睡觉。', '天气不错。'] },
+      { say: '你怎么来的？', py: 'nǐ zěnme lái de?', ru: 'Ты как добрался?', expect: ['坐', '来的', '走'], answer: '我坐公共汽车来的。', answer_ru: 'Приехал на автобусе.', opts: ['我坐公共汽车来的。', '我有很多钱。', '这个很小。'] },
+    ],
+    b4: [
+      { say: '请说明，你为什么学汉语？', py: 'qǐng shuōmíng, nǐ wèishénme xué hànyǔ?', ru: 'Изложите: почему вы учите китайский?', expect: ['因为', '喜欢', '工作'], answer: '因为我喜欢中国文化。', answer_ru: 'Потому что мне нравится китайская культура.', opts: ['因为我喜欢中国文化。', '我今天很累。', '这本书很贵。'] },
+      { say: '你学了多长时间了？', py: 'nǐ xué le duō cháng shíjiān le?', ru: 'Сколько времени вы уже учите?', expect: ['年', '个月', '学了'], answer: '我学了一年了。', answer_ru: 'Учу уже год.', opts: ['我学了一年了。', '我坐地铁上班。', '他在门口等我。'] },
+      { say: '把这句话说完整。', py: 'bǎ zhè jù huà shuō wánzhěng.', ru: 'Скажите фразу полностью.', expect: ['把', '完'], answer: '我把作业写完了。', answer_ru: 'Я дописал домашнее задание.', opts: ['我把作业写完了。', '我喝一杯茶。', '外面很冷。'] },
+      { say: '你的工作是什么？', py: 'nǐ de gōngzuò shì shénme?', ru: 'Кем вы работаете?', expect: ['工作', '是', '老师', '学生'], answer: '我是老师。', answer_ru: 'Я учитель.', opts: ['我是老师。', '我买了报纸。', '他很喜欢猫。'] },
+      { say: '虽然很难，但是你还学吗？', py: 'suīrán hěn nán, dànshì nǐ hái xué ma?', ru: 'Хоть и трудно, вы продолжаете учить?', expect: ['虽然', '但是', '还', '学'], answer: '虽然很难，但是我还想学。', answer_ru: 'Хотя трудно, я всё же хочу учить.', opts: ['虽然很难，但是我还想学。', '我不认识这个人。', '今天是星期一。'] },
+      { say: '请问，你是什么时候来的？', py: 'qǐngwèn, nǐ shì shénme shíhou lái de?', ru: 'Позвольте узнать, когда вы прибыли?', expect: ['是', '来的', '年', '月'], answer: '我是去年来的。', answer_ru: 'Я приехал в прошлом году.', opts: ['我是去年来的。', '我在写字。', '他比我高。'] },
+      { say: '你能用汉语介绍你的城市吗？', py: 'nǐ néng yòng hànyǔ jièshào nǐ de chéngshì ma?', ru: 'Можете представить свой город по-китайски?', expect: ['我的城市', '城市', '很'], answer: '我的城市不大，但是很漂亮。', answer_ru: 'Мой город небольшой, но красивый.', opts: ['我的城市不大，但是很漂亮。', '我要买两个。', '请给我茶。'] },
+      { say: '如果考试很难，你怎么办？', py: 'rúguǒ kǎoshì hěn nán, nǐ zěnme bàn?', ru: 'Если экзамен окажется трудным, что будете делать?', expect: ['如果', '就', '努力', '复习'], answer: '如果很难，我就多复习。', answer_ru: 'Если трудно, буду больше повторять.', opts: ['如果很难，我就多复习。', '我住在学校。', '他没有钱。'] },
+    ],
+    b5: [
+      { say: '站住！你要去哪里？', py: 'zhànzhù! nǐ yào qù nǎlǐ?', ru: 'Стой! Куда направляешься?', expect: ['去', '我要'], answer: '我要去北京。', answer_ru: 'Я иду в Пекин.', opts: ['我要去北京。', '我很喜欢茶。', '这个字很难。'] },
+      { say: '为什么现在才来？', py: 'wèishénme xiànzài cái lái?', ru: 'Почему только сейчас явился?', expect: ['因为', '所以', '路上'], answer: '因为路上堵车了。', answer_ru: 'Потому что на дороге пробка.', opts: ['因为路上堵车了。', '我买了衣服。', '他是我哥哥。'] },
+      { say: '你怕不怕？', py: 'nǐ pà bu pà?', ru: 'Боишься?', expect: ['不怕', '怕'], answer: '我不怕。', answer_ru: 'Не боюсь.', opts: ['我不怕。', '我要喝水。', '天气很好。'] },
+      { say: '说，你准备好了没有？', py: 'shuō, nǐ zhǔnbèi hǎo le méiyǒu?', ru: 'Говори: готов или нет?', expect: ['准备', '好了', '没有'], answer: '我准备好了。', answer_ru: 'Я готов.', opts: ['我准备好了。', '我不知道他。', '这里有茶。'] },
+      { say: '你的身体怎么样？', py: 'nǐ de shēntǐ zěnmeyàng?', ru: 'Как твоё здоровье?', expect: ['身体', '很好', '不舒服'], answer: '我身体很好。', answer_ru: 'Я здоров.', opts: ['我身体很好。', '我有三本书。', '他去商店了。'] },
+      { say: '一句话，说说你的计划。', py: 'yí jù huà, shuōshuo nǐ de jìhuà.', ru: 'Одной фразой — твой план.', expect: ['我打算', '我想', '计划'], answer: '我打算明年去中国。', answer_ru: 'Собираюсь в следующем году поехать в Китай.', opts: ['我打算明年去中国。', '这个太贵了。', '我在喝茶。'] },
+      { say: '这条路很危险，你还走吗？', py: 'zhè tiáo lù hěn wēixiǎn, nǐ hái zǒu ma?', ru: 'Дорога опасна. Всё равно пойдёшь?', expect: ['还', '走', '不怕', '要'], answer: '我还是要走。', answer_ru: 'Всё равно пойду.', opts: ['我还是要走。', '我吃了饭。', '他很累。'] },
+      { say: '记住我的名字！我是谁？', py: 'jìzhù wǒ de míngzi! wǒ shì shéi?', ru: 'Запомни моё имя! Кто я?', expect: ['将军', '虎'], answer: '你是虎将军。', answer_ru: 'Ты Тигр-Генерал.', opts: ['你是虎将军。', '你是我朋友。', '你是老师。'] },
+    ],
+  };
+
+  function fromBank(bossId, n, avoid) {
+    const bank = BANK[bossId] || BANK.b1;
+    const key = r => r.say.slice(0, 40);
+    const seen = new Set(avoid || []);
+    const fresh = HskReal.shuffle(bank.filter(r => !seen.has(key(r))));
+    const rest = HskReal.shuffle(bank.filter(r => seen.has(key(r))));
+    return [...fresh, ...rest].slice(0, n).map(r => Object.assign({}, r));
+  }
+
+  /* Бой: пробуем Claude Fable, иначе банк */
+  async function rounds(boss, level, n, avoid) {
+    const conf = window.PUSH_CONF || {};
+    if (conf.url) {
+      try {
+        const ctl = new AbortController();
+        const to = setTimeout(() => ctl.abort(), 20000);
+        const r = await fetch(conf.url + '/boss', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal,
+          body: JSON.stringify({ boss: { zh: boss.zh, ru: boss.ru, style: boss.style, topic: boss.topic }, level, rounds: n, avoid }),
+        });
+        clearTimeout(to);
+        const d = await r.json();
+        if (d && d.ok && Array.isArray(d.rounds) && d.rounds.length) {
+          const ok = d.rounds.filter(x => x && x.say && Array.isArray(x.expect) && x.expect.length);
+          if (ok.length >= n) return { src: 'fable', list: ok.slice(0, n) };
+        }
+      } catch (e) { /* сеть или ключ — уходим в банк */ }
+    }
+    return { src: 'bank', list: fromBank(boss.id, n, avoid) };
+  }
+
+  /* ── голос ── */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const canListen = () => !!SR;
+  function listen(ms = 7000) {
+    return new Promise((resolve, reject) => {
+      if (!SR) return reject(new Error('нет распознавания речи'));
+      const r = new SR();
+      r.lang = 'zh-CN'; r.interimResults = false; r.maxAlternatives = 3;
+      let done = false;
+      const finish = (v, err) => { if (done) return; done = true; try { r.stop(); } catch (e) { /* ignore */ } err ? reject(err) : resolve(v); };
+      r.onresult = e => { const alts = []; for (let i = 0; i < e.results[0].length; i++) alts.push(e.results[0][i].transcript); finish(alts); };
+      r.onerror = e => finish(null, new Error(e.error === 'not-allowed' ? 'нет доступа к микрофону' : 'не расслышал'));
+      r.onend = () => finish([]);
+      setTimeout(() => finish([]), ms);
+      try { r.start(); } catch (e) { finish(null, e); }
+    });
+  }
+  const norm = t => String(t || '').replace(/[\s，。！？、,.!?;:'"·]/g, '');
+  function judge(round, said) {
+    const alts = (Array.isArray(said) ? said : [said]).map(norm).filter(Boolean);
+    if (!alts.length) return false;
+    const keys = (round.expect || []).map(norm).filter(Boolean);
+    const ans = norm(round.answer);
+    return alts.some(a => keys.some(k => a.includes(k)) || (ans && (a === ans || (a.length > 2 && ans.includes(a)))));
+  }
+
+  return { BANK, rounds, fromBank, canListen, listen, judge, norm };
+})();
+
+;
+/* Музыка боя: короткий пентатонный мотив на WebAudio, у каждого босса своя тоника и характер. */
+window.BossMusic = (() => {
+  const PENT = { A: 220, C: 261.63, D: 293.66, E: 329.63, G: 392 };
+  let ctx = null, timer = null, gain = null, on = false;
+  const nowCtx = () => { if (!ctx) { const C = window.AudioContext || window.webkitAudioContext; if (C) ctx = new C(); } return ctx; };
+  const enabled = () => Sound && Sound.enabled;
+
+  function blip(f, t, dur, type, vol) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(gain); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function drum(t, vol) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g); g.connect(gain); o.start(t); o.stop(t + 0.26);
+  }
+  function start(boss) {
+    if (!enabled() || !nowCtx()) return;
+    stop();
+    on = true;
+    gain = ctx.createGain(); gain.gain.value = 0.14; gain.connect(ctx.destination);
+    const root = PENT[boss.note] || PENT.A;
+    const scale = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3].map(x => root * x);
+    const fast = boss.lvl >= 3;
+    const step = fast ? 0.28 : 0.36;
+    let k = 0;
+    const loop = () => {
+      if (!on || !ctx) return;
+      const t = ctx.currentTime + 0.05;
+      const bar = [0, 2, 4, 2, 3, 1, 2, 0];
+      for (let i = 0; i < bar.length; i++) {
+        blip(scale[bar[(i + k) % bar.length]], t + i * step, step * 0.9, fast ? 'square' : 'triangle', fast ? 0.16 : 0.2);
+        if (i % 2 === 0) drum(t + i * step, fast ? 0.5 : 0.35);
+      }
+      k++;
+      timer = setTimeout(loop, bar.length * step * 1000);
+    };
+    try { if (ctx.state === 'suspended') ctx.resume(); } catch (e) { /* ignore */ }
+    loop();
+  }
+  function stop() { on = false; if (timer) { clearTimeout(timer); timer = null; } if (gain) { try { gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05); } catch (e) { /* ignore */ } gain = null; } }
+  function finish(won) {
+    stop();
+    if (!enabled() || !nowCtx()) return;
+    gain = ctx.createGain(); gain.gain.value = 0.18; gain.connect(ctx.destination);
+    const t = ctx.currentTime + 0.05;
+    const seq = won ? [261.63, 329.63, 392, 523.25] : [392, 329.63, 261.63, 196];
+    seq.forEach((f, i) => blip(f, t + i * 0.16, 0.3, 'triangle', 0.22));
+    if (won) { drum(t, 0.5); drum(t + 0.5, 0.5); }
+  }
+  return { start, stop, finish };
+})();
+
+;
 /* Программа изучения: карта уровней → лента блока → спринт «Проверить себя». */
 (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, cardsOfDeck, saveAttempt, fmt } = App;
@@ -5521,6 +5841,201 @@ window.PROGRAM = (() => {
       ${r.bonus ? '<div class="panel"><b>+50</b> разовый бонус за первое чистое взятие блока</div>' : ''}
       ${r.back ? `<div class="panel"><div class="hint" style="margin:0">${fmt.plural(r.back, 'слово вернулось', 'слова вернулись', 'слов вернулось')} в ленту — повторите и проверьтесь снова.</div></div>` : ''}
       <div class="btns"><button class="btn btn-primary btn-block" data-go="feed" data-params="${attr({ id: feed ? feed.blockId : '' })}">Вернуться в ленту</button><button class="btn btn-secondary btn-block" data-go="program">К программе</button></div>`;
+    },
+  };
+})();
+
+;
+/* Арена боссов: выбор, бой на пять реплик голосом, три вида подсказок, особый сундук. */
+(() => {
+  const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, saveAttempt, fmt } = App;
+  let fight = null;   /* { boss, rounds, i, hints:{tr,start,opts}, used:0, src, log:[] } */
+  let tick = null;
+
+  const HINTS = [
+    { k: 'tr', ico: '译', t: 'Перевод', d: 'Что сказал босс' },
+    { k: 'start', ico: '首', t: 'Начало', d: 'Первые иероглифы ответа' },
+    { k: 'opts', ico: '三', t: 'Три варианта', d: 'Выбрать из трёх' },
+  ];
+
+  /* ── арена ── */
+  views.boss = {
+    render() {
+      const now = Date.now();
+      const lvl = Boss.levelOf(state);
+      const cd = Boss.tryLeft(state, now);
+      const cards = Boss.LIST.map(b => {
+        const r = Boss.bs(state, b.id);
+        const rs = Boss.respawnLeft(state, b.id, now);
+        const locked = rs > 0 || cd > 0;
+        const why = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
+        return `<div class="panel boss-card ${locked ? 'locked' : 'ready'}">
+          <img class="boss-por" src="${IMG_URL(b.img)}" alt="" draggable="false">
+          <div class="grow">
+            <div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
+            <div class="boss-lore">${esc(b.lore)}</div>
+            <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b></div>
+            <div class="boss-when">${why}</div>
+            <button class="btn ${locked ? 'btn-secondary' : 'btn-danger'} btn-sm" data-action="boss-go" data-id="${b.id}" ${locked ? 'disabled' : ''}>Вызвать на бой</button>
+          </div></div>`;
+      }).join('');
+      return `<div class="vh"><div class="seal">斗</div><div class="grow"><h1 class="title">Боссы</h1><div class="sub">пять реплик голосом · уровень HSK ${lvl}</div></div><button class="icon-btn" data-action="boss-info" aria-label="Правила">i</button></div>
+      ${cd > 0 ? `<div class="panel"><div class="hint" style="margin:0">Вызов доступен раз в 10 минут. Осталось <b>${Boss.fmtLeft(cd)}</b>.</div></div>` : ''}
+      ${cards}`;
+    },
+    mount() { clearInterval(tick); tick = setInterval(() => { if (state.view === 'boss') render(); else clearInterval(tick); }, 1000); },
+  };
+  actions['boss-info'] = () => sheet(`<h3 class="sh-t">Как устроен бой</h3><div class="install-note">
+    <p><b>Пять реплик.</b> Босс говорит — вы отвечаете голосом по-китайски. Ошиблись дважды — бой проигран.</p>
+    <p><b>Три подсказки, по одной каждого вида:</b> 译 перевод реплики, 首 начало ответа, 三 выбор из трёх. Не тронули ни одной — сундук полнее на ${Boss.chestBonusPct}%.</p>
+    <p><b>Таймеры.</b> Вызвать любого босса можно раз в 10 минут. Побеждённый воскресает через 30 минут.</p>
+    <p><b>Уровень</b> подбирается по тому, что вы уже изучили: пока ничего — HSK 1.</p>
+    <p>Вопросы каждый раз сочиняются заново, а то, что уже спрашивали, помнится неделю и не повторяется.</p></div>
+    <button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
+
+  actions['boss-go'] = async el => {
+    const b = Boss.byId(el.dataset.id);
+    if (!b || !Boss.ready(state, b.id)) return;
+    el.disabled = true;
+    toast('Босс готовится…', 1500);
+    const lvl = Boss.levelOf(state);
+    const avoid = Boss.recall(state).map(m => m.t);
+    const res = await BossGen.rounds(b, lvl, Boss.ROUNDS, avoid);
+    Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
+    const bst = Boss.st(state);
+    bst.lastTry = Date.now();
+    Boss.bs(state, b.id).tries++;
+    persist();
+    fight = { boss: b, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl, shown: null, startedAt: Date.now() };
+    BossMusic.start(b);
+    nav('fight');
+  };
+
+  /* ── бой ── */
+  const speak = () => { const r = fight.rounds[fight.i], v = fight.boss.voice; Speech.say(r.say, v); };
+  actions['fight-say'] = () => speak();
+  actions['fight-quit'] = () => {
+    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, а следующий вызов всё равно через 10 минут.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
+      $('#fq', s).onclick = () => { closeSheet(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
+      $('#fc', s).onclick = () => closeSheet();
+    });
+  };
+  actions['fight-hint'] = el => {
+    const k = el.dataset.k;
+    if (!fight || fight.hints[k]) return;
+    fight.hints[k] = 1; fight.used++;
+    fight.shown = k === 'opts' ? { k, opts: HskReal.shuffle(fight.rounds[fight.i].opts || []) } : { k };
+    Sound.click();
+    render();
+  };
+  actions['fight-pick'] = el => { if (fight) answer([el.dataset.v]); };
+  actions['fight-listen'] = async el => {
+    if (!fight || fight.busy) return;
+    fight.busy = true; el.classList.add('rec'); el.textContent = '● Слушаю…';
+    try {
+      const said = await BossGen.listen(7000);
+      fight.busy = false;
+      if (!said || !said.length) { toast('Не расслышал — попробуйте ещё раз или ответьте текстом'); render(); return; }
+      answer(said);
+    } catch (e) { fight.busy = false; toast(e.message + ' — ответьте текстом', 3000); render(); }
+  };
+  actions['fight-text'] = () => {
+    sheet(`<h3 class="sh-t">Ответ текстом</h3><div class="field"><label>По-китайски <span class="muted">· клавиатура 中文</span></label><input class="inp" id="fta" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="汉字"></div><button class="btn btn-primary btn-block" id="ftok">Ответить</button>`, s => {
+      const inp = $('#fta', s); setTimeout(() => inp.focus(), 80);
+      const go = () => { const v = inp.value.trim(); if (!v) return; closeSheet(); answer([v]); };
+      $('#ftok', s).onclick = go;
+      inp.onkeydown = e => { if (e.key === 'Enter') go(); };
+    });
+  };
+  function answer(said) {
+    const r = fight.rounds[fight.i];
+    const ok = BossGen.judge(r, said);
+    r.said = Array.isArray(said) ? said[0] : said;
+    r.ok = ok;
+    if (ok) Sound.ok(); else { fight.wrong++; Sound.fail(); }
+    fight.shown = { k: 'fb', ok };
+    render();
+    setTimeout(() => {
+      if (!fight) return;
+      if (fight.wrong >= 2) return endFight(false);
+      fight.i++;
+      fight.shown = null;
+      if (fight.i >= fight.rounds.length) return endFight(true);
+      render();
+      setTimeout(speak, 350);
+    }, 1600);
+  }
+  views.fight = {
+    render() {
+      if (!fight) return '<div class="empty">Бой не начат</div>';
+      const b = fight.boss, r = fight.rounds[fight.i];
+      const sh = fight.shown || {};
+      const hearts = '❤'.repeat(2 - fight.wrong) + '·'.repeat(fight.wrong);
+      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>
+      <div class="panel ornate fight-card">
+        <img class="boss-por big ${sh.k === 'fb' ? (sh.ok ? 'hit' : 'laugh') : ''}" src="${IMG_URL(b.img)}" alt="" draggable="false">
+        <div class="boss-n"><span class="zh">${esc(b.zh)}</span></div>
+        <div class="fight-say zh" data-action="fight-say">${esc(r.say)}</div>
+        ${sh.k === 'tr' ? `<div class="fight-tr">${esc(r.py || '')}<br>${esc(r.ru || '')}</div>` : ''}
+        ${sh.k === 'start' ? `<div class="fight-tr">Начните так: <b class="zh">${esc((r.answer || '').slice(0, 3))}…</b></div>` : ''}
+        ${sh.k === 'fb' ? `<div class="fight-fb ${sh.ok ? 'ok' : 'bad'}">${sh.ok ? '对！' : '错！'} <span>${esc(r.said || '—')}</span>${sh.ok ? '' : `<div class="fight-tr">Верно: <b class="zh">${esc(r.answer)}</b> — ${esc(r.answer_ru || '')}</div>`}</div>` : ''}
+      </div>
+      ${sh.k === 'opts' ? `<div class="opts">${(sh.opts || []).map(o => `<button class="opt opt-txt" data-action="fight-pick" data-v="${attr(o)}" data-nosound><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>` : ''}
+      ${sh.k === 'fb' ? '' : `<div class="fight-acts">
+        <button class="btn btn-danger btn-block btn-lg" data-action="fight-listen" data-nosound>🎙 Ответить голосом</button>
+        <button class="btn btn-secondary btn-block btn-sm" data-action="fight-text">Ответить текстом</button>
+        <div class="hint-row">${HINTS.map(h => `<button class="hint-btn ${fight.hints[h.k] ? 'used' : ''}" data-action="fight-hint" data-k="${h.k}" ${fight.hints[h.k] ? 'disabled' : ''} data-nosound><span class="zh">${h.ico}</span><small>${h.t}</small></button>`).join('')}</div>
+        <div class="hint" style="text-align:center">${fight.used ? `Подсказок использовано: ${fight.used}` : `Без подсказок сундук полнее на ${Boss.chestBonusPct}%`}</div>
+      </div>`}`;
+    },
+    mount() { if (fight && !fight.spoke) { fight.spoke = true; setTimeout(speak, 400); } },
+  };
+
+  function endFight(won) {
+    const b = fight.boss, r = Boss.bs(state, b.id);
+    const noHints = fight.used === 0;
+    let chest = null;
+    if (won) {
+      r.wins++; if (noHints) r.clean++;
+      r.defeatedAt = Date.now();
+      Campaign.ensureChests(state.campaign);
+      chest = Boss.chest(b, noHints);
+      for (const id of chest) state.campaign.inventory[id] = (state.campaign.inventory[id] || 0) + 1;
+      const entry = { ts: Date.now(), items: chest, boss: b.id, value: chest.reduce((s, id) => s + (Treasures.byId[id] ? Treasures.byId[id].value : 0), 0) };
+      state.campaign.chestLog.push(entry);
+      state.campaign.chests.opened++;
+    }
+    const pts = won ? Math.round((30 + b.lvl * 10) * (noHints ? 1.5 : 1)) : 0;
+    const a = {
+      id: uid(), ts: fight.startedAt, endedAt: Date.now(), durationMs: Date.now() - fight.startedAt,
+      mode: 'boss', boss: b.id, bossName: b.ru, level: fight.lvl, difficulty: 'boss', deckIds: [], deckName: b.ru,
+      show: 'boss', guess: ['voice'], order: 'random', timer: 0,
+      total: fight.rounds.length, planned: fight.rounds.length, aborted: false,
+      correct: fight.rounds.filter(x => x.ok).length, partial: 0, wrong: fight.wrong,
+      percent: Math.round(fight.rounds.filter(x => x.ok).length / fight.rounds.length * 100),
+      points: pts, won, noHints, src: fight.src, questions: [],
+    };
+    persist();
+    BossMusic.finish(won);
+    state.lastFight = { boss: b, won, noHints, chest, pts, rounds: fight.rounds.slice(), src: fight.src };
+    fight = null;
+    saveAttempt(a).then(() => nav('fight-result', {}, { replace: true }));
+  }
+  views['fight-result'] = {
+    render() {
+      const f = state.lastFight;
+      if (!f) return '<div class="empty">Результата нет</div>';
+      const b = f.boss;
+      return `<div class="vh"><div class="seal">${f.won ? '胜' : '败'}</div><div class="grow"><h1 class="title">${f.won ? 'Победа' : 'Поражение'}</h1><div class="sub"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div></div></div>
+      <div class="panel ornate fight-res ${f.won ? 'win' : 'lose'}"><img class="boss-por big" src="${IMG_URL(b.img)}" alt="">
+        <div class="grow"><b>${f.won ? (f.noHints ? 'Повержен без единой подсказки' : 'Повержен') : 'Босс устоял'}</b>
+        <div class="hint" style="margin:4px 0 0">${f.won ? `Встанет через ${Boss.fmtLeft(Boss.RESPAWN)}` : 'Следующий вызов через 10 минут'}</div></div>
+        ${f.pts ? `<div class="sr-pts">+${f.pts}<small>очк.</small></div>` : ''}</div>
+      ${f.chest && f.chest.length ? `<div class="panel"><div class="flabel">Сундук босса${f.noHints ? ' · полнее на ' + Boss.chestBonusPct + '%' : ''}</div>
+        <div class="loot">${f.chest.map(id => { const t = Treasures.byId[id]; return `<div class="loot-it r-${t.rarity}"><img src="${IMG_URL('treasure-' + id)}" alt=""><span>${esc(t.ru)}</span><small>${Treasures.fmtValue(t.value)}</small></div>`; }).join('')}</div></div>` : ''}
+      <div class="panel"><div class="flabel">Как отвечали</div>${f.rounds.map((r, i) => `<div class="fb-row"><span class="fb-p zh">${esc(r.say)}</span><span class="fb-v">${r.ok == null ? '—' : r.ok ? '<b class="ok-t">верно</b>' : '<b class="bad-t">мимо</b>'}</span></div>`).join('')}
+        <div class="hint" style="margin:8px 0 0">Реплики: ${f.src === 'fable' ? 'сочинил Claude Fable' : 'из встроенного банка'}</div></div>
+      <div class="btns"><button class="btn btn-primary btn-block" data-go="boss">К боссам</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
     },
   };
 })();
@@ -6171,11 +6686,29 @@ window.PROGRAM = (() => {
     <div class="hint" style="margin:0 0 6px">${fmt.plural(list.length, 'попытка', 'попытки', 'попыток')} · каждая сохранена с ответами на все вопросы</div>
     ${list.length ? list.slice(0, 300).map(attemptRow).join('') : '<div class="empty">Пусто.</div>'}`;
   }
+  /* Боссы: сколько кого повержено и сколько без подсказок */
+  function bossTab() {
+    const fights = state.attempts.filter(a => a.mode === 'boss');
+    const rows = Boss.LIST.map(b => {
+      const r = Boss.bs(state, b.id);
+      const mine = fights.filter(a => a.boss === b.id);
+      const best = mine.filter(a => a.won).length;
+      return `<div class="panel boss-card"><img class="boss-por" src="${IMG_URL(b.img)}" alt="">
+        <div class="grow"><div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
+        <div class="fb-row"><span class="fb-p">Побед</span><span class="fb-v"><b>${r.wins}</b></span></div>
+        <div class="fb-row"><span class="fb-p">Из них без подсказок</span><span class="fb-v"><b>${r.clean}</b></span></div>
+        <div class="fb-row"><span class="fb-p">Вызовов</span><span class="fb-v">${r.tries}</span></div>
+        <div class="fb-row"><span class="fb-p">Доля побед</span><span class="fb-v">${r.tries ? Math.round(best / r.tries * 100) + '%' : '—'}</span></div>
+        </div></div>`;
+    }).join('');
+    const tot = Boss.LIST.reduce((s2, b) => { const r = Boss.bs(state, b.id); s2.w += r.wins; s2.c += r.clean; s2.t += r.tries; return s2; }, { w: 0, c: 0, t: 0 });
+    return `<div class="tiles t3"><div class="tile"><div class="v">${tot.w}</div><div class="l">${fmt.plural(tot.w, 'победа', 'победы', 'побед').replace(/^\d+ /, '')} всего</div></div><div class="tile"><div class="v">${tot.c}</div><div class="l">без подсказок</div></div><div class="tile"><div class="v">${tot.t}</div><div class="l">${fmt.plural(tot.t, 'вызов', 'вызова', 'вызовов').replace(/^\d+ /, '')}</div></div></div>${rows}`;
+  }
   views.stats = {
     render(p) {
       const tab = p.tab || 'overview';
-      const tabs = `<div class="seg top-seg">${[['overview', 'Обзор'], ['cards', 'Карточки'], ['log', 'Журнал']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-go="stats" data-params="${attr({ tab: k })}" data-replace>${l}</button>`).join('')}</div>`;
-      return `<div class="vh"><div class="seal">计</div><div class="grow"><h1 class="title">Статистика</h1><div class="sub">统计 · всё сохраняется подробно</div></div></div>${tabs}${tab === 'overview' ? overview() : tab === 'cards' ? cardsTab(p) : logTab(p)}`;
+      const tabs = `<div class="seg top-seg">${[['overview', 'Обзор'], ['cards', 'Карточки'], ['boss', 'Боссы'], ['log', 'Журнал']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-go="stats" data-params="${attr({ tab: k })}" data-replace>${l}</button>`).join('')}</div>`;
+      return `<div class="vh"><div class="seal">计</div><div class="grow"><h1 class="title">Статистика</h1><div class="sub">统计 · всё сохраняется подробно</div></div></div>${tabs}${tab === 'overview' ? overview() : tab === 'cards' ? cardsTab(p) : tab === 'boss' ? bossTab() : logTab(p)}`;
     },
     mount(p) {
       const df = $('#deck-filter'); if (df) df.addEventListener('change', () => nav('stats', { ...p, tab: 'cards', deck: df.value }, { replace: true }));
