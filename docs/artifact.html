@@ -541,7 +541,7 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
   <nav id="tabbar" aria-label="Разделы">
     <button class="tab" data-tab="home" data-go="home"><span class="ico">主</span><span>Главная</span></button>
     <button class="tab" data-tab="decks" data-go="decks"><span class="ico">卡</span><span>Колоды</span></button>
-    <button class="tab" data-tab="setup" data-go="setup"><span class="ico">练</span><span>Тест</span></button>
+    <button class="tab" data-tab="setup" data-go="setup"><span class="ico">练</span><span>Тренировка</span></button>
     <button class="tab" data-tab="hsk" data-go="hsk"><span class="ico">考</span><span>HSK</span></button>
     <button class="tab" data-tab="stats" data-go="stats"><span class="ico">计</span><span>Стата</span></button>
   </nav>
@@ -4018,7 +4018,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260824-1757';
+  const VERSION = '20260825-1532';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4034,7 +4034,7 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Карточки', exam: 'Экзамен' },
-    mode: { quiz: 'Тест', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'HSK-тест' },
+    mode: { quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
   const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
@@ -4352,7 +4352,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
-        <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>тест · карточки · письмо</small></button>
+        <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
         <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–3</small></button>
         <button class="big-btn t-cards" data-go="decks"><svg class="deco" viewBox="0 0 100 100"><rect x="30" y="10" width="46" height="64" rx="7" fill="none" stroke="currentColor" stroke-width="6" transform="rotate(12 53 42)"/><rect x="18" y="22" width="46" height="64" rx="7" fill="currentColor" transform="rotate(-6 41 54)"/></svg><span class="bi">卡</span><span>Колоды</span><small>${fmt.plural(state.cards.length, 'своя карточка', 'свои карточки', 'своих карточек')}</small></button>
         <button class="big-btn t-bars" data-go="stats"><svg class="deco" viewBox="0 0 100 100"><rect x="12" y="58" width="16" height="32" rx="3" fill="currentColor"/><rect x="36" y="40" width="16" height="50" rx="3" fill="currentColor"/><rect x="60" y="22" width="16" height="68" rx="3" fill="currentColor"/><path d="M14 50 L44 30 L68 12 L90 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><span class="bi">计</span><span>Статистика</span><small>${fmt.plural(ov.attempts, 'попытка', 'попытки', 'попыток')} · освоено ${mastered}</small></button>
@@ -4564,7 +4564,7 @@ window.App = (() => {
       const seen = cards.filter(c => cs[c.id] && cs[c.id].asked).length, mastered = cards.filter(c => cs[c.id] && cs[c.id].mastered).length;
       return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(d.name)}</h1><div class="sub">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}</div></div>${d.builtin ? '' : `<button class="icon-btn" data-action="deck-menu" data-id="${d.id}" aria-label="Меню">⋯</button>`}</div>
       <div class="tiles t3"><div class="tile"><div class="v">${seen}</div><div class="l">изучено</div></div><div class="tile"><div class="v">${mastered}</div><div class="l">освоено</div></div><div class="tile"><div class="v">${acc == null ? '—' : acc + '%'}</div><div class="l">точность</div></div></div>
-      <div class="btns row2 mt0"><button class="btn btn-primary" data-action="learn-deck" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Учить</button>${d.builtin ? `<button class="btn btn-secondary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>` : `<button class="btn btn-secondary" data-go="card" data-params="${attr({ deckId: d.id })}">＋ Карточка</button>`}</div>
+      <div class="btns row2 mt0"><button class="btn btn-primary" data-action="learn-deck" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Учить</button>${d.builtin ? `<button class="btn btn-secondary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>` : `<button class="btn btn-secondary" data-go="card" data-params="${attr({ deckId: d.id })}">＋ Карточка</button>`}</div>
       ${d.builtin ? '' : `<div class="btns row2"><button class="btn btn-secondary btn-sm" data-go="import" data-params="${attr({ deckId: d.id })}">Импорт текстом</button><button class="btn btn-secondary btn-sm" data-action="deck-export" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Экспорт</button></div>`}
       <input class="inp search" id="q" placeholder="Поиск: иероглиф, пиньинь, перевод" autocomplete="off" autocorrect="off">
       <div id="cardlist">${cardList(cards, d)}</div>`;
@@ -4702,7 +4702,7 @@ window.App = (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, confirm, persist, LABELS, fmt, renderPart, cardsOfDeck, cardsOfDecks, allDecks, deckById, hskCards, cardIndex, saveAttempt, flash, questionRow, render, builtinDecks } = App;
 
   const MODES = ['quiz', 'flip', 'write', 'listen', 'sentence'];
-  const MODE_TITLES = { quiz: 'Тест', flip: 'Карточки', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
+  const MODE_TITLES = { quiz: 'Выбор 选', flip: 'Карточки 卡', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
   const MODE_HINTS = {
     quiz: 'Вопрос — ответ: варианты или ввод, с оценкой.',
     flip: 'Смотрите, переворачивайте, отмечайте «знал / не знал».',
@@ -4791,7 +4791,8 @@ window.App = (() => {
     saveSetup(); render();
   };
   actions['setup-start'] = () => { const s = getSetup(); startSession(s.mode, JSON.parse(JSON.stringify(s.byMode[s.mode]))); };
-  actions['learn-deck'] = el => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [el.dataset.id]; saveSetup(); closeSheet(); nav('setup'); };
+  /* «Учить» = разбор карточек (режим 卡), а не проверка себя. Тесты запускают свои кнопки. */
+  actions['learn-deck'] = el => { const s = getSetup(); s.mode = 'flip'; s.byMode.flip.deckIds = [el.dataset.id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
     <div class="install-note">
@@ -5055,7 +5056,7 @@ window.App = (() => {
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>
-      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 3 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
+      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 3 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>`}</div>
       ${d.level <= 3 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="${d.level}">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
       ${d.level <= 3 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
   }

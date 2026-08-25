@@ -16,7 +16,7 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Карточки', exam: 'Экзамен' },
-    mode: { quiz: 'Тест', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'HSK-тест' },
+    mode: { quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
   const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
@@ -334,7 +334,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
-        <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>тест · карточки · письмо</small></button>
+        <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
         <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–3</small></button>
         <button class="big-btn t-cards" data-go="decks"><svg class="deco" viewBox="0 0 100 100"><rect x="30" y="10" width="46" height="64" rx="7" fill="none" stroke="currentColor" stroke-width="6" transform="rotate(12 53 42)"/><rect x="18" y="22" width="46" height="64" rx="7" fill="currentColor" transform="rotate(-6 41 54)"/></svg><span class="bi">卡</span><span>Колоды</span><small>${fmt.plural(state.cards.length, 'своя карточка', 'свои карточки', 'своих карточек')}</small></button>
         <button class="big-btn t-bars" data-go="stats"><svg class="deco" viewBox="0 0 100 100"><rect x="12" y="58" width="16" height="32" rx="3" fill="currentColor"/><rect x="36" y="40" width="16" height="50" rx="3" fill="currentColor"/><rect x="60" y="22" width="16" height="68" rx="3" fill="currentColor"/><path d="M14 50 L44 30 L68 12 L90 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><span class="bi">计</span><span>Статистика</span><small>${fmt.plural(ov.attempts, 'попытка', 'попытки', 'попыток')} · освоено ${mastered}</small></button>

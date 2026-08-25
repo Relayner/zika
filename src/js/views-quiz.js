@@ -4,7 +4,7 @@
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, confirm, persist, LABELS, fmt, renderPart, cardsOfDeck, cardsOfDecks, allDecks, deckById, hskCards, cardIndex, saveAttempt, flash, questionRow, render, builtinDecks } = App;
 
   const MODES = ['quiz', 'flip', 'write', 'listen', 'sentence'];
-  const MODE_TITLES = { quiz: 'Тест', flip: 'Карточки', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
+  const MODE_TITLES = { quiz: 'Выбор 选', flip: 'Карточки 卡', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
   const MODE_HINTS = {
     quiz: 'Вопрос — ответ: варианты или ввод, с оценкой.',
     flip: 'Смотрите, переворачивайте, отмечайте «знал / не знал».',
@@ -93,7 +93,8 @@
     saveSetup(); render();
   };
   actions['setup-start'] = () => { const s = getSetup(); startSession(s.mode, JSON.parse(JSON.stringify(s.byMode[s.mode]))); };
-  actions['learn-deck'] = el => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [el.dataset.id]; saveSetup(); closeSheet(); nav('setup'); };
+  /* «Учить» = разбор карточек (режим 卡), а не проверка себя. Тесты запускают свои кнопки. */
+  actions['learn-deck'] = el => { const s = getSetup(); s.mode = 'flip'; s.byMode.flip.deckIds = [el.dataset.id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
     <div class="install-note">
@@ -357,7 +358,7 @@
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>
-      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 3 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Тест HSK ${d.level}</button>`}</div>
+      <div class="btns row2 mb"><button class="btn btn-secondary" data-action="learn-deck" data-id="${d.id}">Учить</button>${d.level <= 3 ? `<button class="btn btn-primary" data-action="hsk-real-info" data-level="${d.level}">Экзамен HSK ${d.level}</button>` : `<button class="btn btn-primary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>`}</div>
       ${d.level <= 3 ? `<div class="btns row2 mt0 mb"><button class="btn btn-secondary btn-sm" data-action="hsk-test" data-level="${d.level}">Словарный тест</button><button class="btn btn-secondary btn-sm" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button></div>` : ''}
       ${d.level <= 3 ? '' : `<button class="btn btn-secondary btn-sm btn-block" data-go="deck" data-params="${attr({ id: d.id })}">Список слов</button>`}</div>`;
   }
