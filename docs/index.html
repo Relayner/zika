@@ -549,6 +549,31 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .push-invite .pi-t { font-weight: 700; color: var(--bordeaux, #6d1a24); margin-bottom: 4px; }
 .push-invite .pi-x { color: var(--ink-2, #6b6156); font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
 .push-invite .pi-ico { margin-right: 8px; display: inline-block; }
+/* Программа: карта блоков, лента, спринт */
+.lvl-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.lvl-row { display: flex; align-items: center; gap: 12px; }
+.lvl-badge { width: 38px; height: 38px; border-radius: 10px; background: var(--bordeaux, #6d1a24); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+.blk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.blk-card { position: relative; text-align: left; background: var(--card, #fffdf6); border: 1.5px solid var(--line, #e4d8c2); border-radius: 12px; padding: 10px 12px; font: inherit; color: inherit; display: flex; flex-direction: column; gap: 3px; }
+.blk-card.s-work { border-color: var(--gold, #c9a227); }
+.blk-card.s-done, .blk-card.s-gold { border-color: var(--jade, #2e7d5b); }
+.blk-seal { position: absolute; top: 8px; right: 10px; font-size: 18px; color: var(--ink-2, #6b6156); opacity: .5; }
+.blk-card.s-done .blk-seal, .blk-card.s-gold .blk-seal { color: var(--jade, #2e7d5b); opacity: 1; }
+.blk-zh { font-size: 19px; }
+.blk-ru { font-size: 13px; color: var(--ink-2, #6b6156); line-height: 1.3; }
+.blk-bar { height: 4px; border-radius: 2px; background: var(--line, #e4d8c2); overflow: hidden; margin-top: 4px; }
+.blk-bar i { display: block; height: 100%; background: var(--bordeaux, #6d1a24); }
+.blk-n { font-size: 12px; color: var(--ink-2, #6b6156); }
+.feed-top { display: flex; align-items: center; gap: 10px; }
+.gex { display: flex; flex-direction: column; gap: 1px; margin: 8px 0; }
+.sprint-res { display: flex; align-items: center; gap: 14px; }
+.sr-seal { font-size: 34px; }
+.sprint-res.v-jade .sr-seal { color: var(--jade, #2e7d5b); }
+.sprint-res.v-gold .sr-seal { color: var(--gold, #c9a227); }
+.sprint-res.v-danger .sr-seal { color: var(--danger, #b3392f); }
+.sr-pts { font-family: var(--serif, serif); font-size: 30px; font-weight: 700; color: var(--bordeaux, #6d1a24); white-space: nowrap; }
+.sr-pts small { font-size: 12px; font-weight: 400; margin-left: 3px; }
+.big-btn.t-prog { color: var(--jade, #2e7d5b); }
 
 </style>
 </head>
@@ -4034,7 +4059,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260825-1658';
+  const VERSION = '20260825-2014';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4050,10 +4075,10 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
-    mode: { quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
+    mode: { sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
@@ -4368,6 +4393,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
+        <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
         <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
         <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–3</small></button>
         <button class="big-btn t-cards" data-go="decks"><svg class="deco" viewBox="0 0 100 100"><rect x="30" y="10" width="46" height="64" rx="7" fill="none" stroke="currentColor" stroke-width="6" transform="rotate(12 53 42)"/><rect x="18" y="22" width="46" height="64" rx="7" fill="currentColor" transform="rotate(-6 41 54)"/></svg><span class="bi">卡</span><span>Колоды</span><small>${fmt.plural(state.cards.length, 'своя карточка', 'свои карточки', 'своих карточек')}</small></button>
@@ -5186,6 +5212,281 @@ window.App = (() => {
     },
   };
   actions['learn-to-train'] = el => { App.trainDeck(el.dataset.id); };
+})();
+
+;
+/* Учебная программа: уровни → блоки. Основа — 国际中文教育中文水平等级标准 (GF0025-2021), порядок подачи как в 《汉语教程》. */
+window.PROGRAM = (() => {
+  const LEVELS = [
+    { n: 1, zh: '初级', ru: 'Начальный', hsk: 1, cefr: 'A1', deck: 'hsk1' },
+    { n: 2, zh: '基础', ru: 'Базовый', hsk: 2, cefr: 'A1+ / A2', deck: 'hsk2' },
+    { n: 3, zh: '进阶', ru: 'Продвинутый', hsk: 3, cefr: 'A2 / B1', deck: 'hsk3' },
+    { n: 4, zh: '中级', ru: 'Средний', hsk: 4, cefr: 'B1', deck: 'freq1' },
+  ];
+  /* w — слова блока; g — грамматика (правило, разбор, примеры); can — умение по CEFR */
+  const BLOCKS = [
+    { id: 'b1-01', lvl: 1, zh: '问候', ru: 'Приветствие и вежливость',
+      can: 'Могу поздороваться, поблагодарить и извиниться',
+      w: '你 我 我们 好 请 谢谢 不客气 对不起 没关系 再见 喂 吗',
+      g: { t: 'Вопрос с 吗', d: 'Утверждение превращается в вопрос частицей 吗 в конце. Порядок слов не меняется — ничего переставлять не нужно.', ex: [['你好吗？', 'nǐ hǎo ma?', 'Как ты?'], ['你是学生吗？', 'nǐ shì xuéshēng ma?', 'Ты студент?']] } },
+    { id: 'b1-02', lvl: 1, zh: '家人', ru: 'Семья и люди',
+      can: 'Могу представиться и рассказать, кто есть в моей семье',
+      w: '爸爸 妈妈 儿子 女儿 朋友 老师 学生 同学 医生 先生 小姐 人 家 名字 叫 他',
+      g: { t: 'Связка 是 и принадлежность 的', d: '是 связывает两 существительных: «А есть Б». 的 ставится между владельцем и вещью: 我的书 — моя книга. С родственниками 的 часто опускают: 我妈妈.', ex: [['他是我朋友。', 'tā shì wǒ péngyou.', 'Он мой друг.'], ['这是老师的书。', 'zhè shì lǎoshī de shū.', 'Это книга учителя.']] } },
+    { id: 'b1-03', lvl: 1, zh: '数字', ru: 'Числа и счёт',
+      can: 'Могу назвать число, возраст и спросить «сколько?»',
+      w: '一 二 三 四 五 六 七 八 九 十 几 多少 个 岁',
+      g: { t: '几 и 多少, счётное слово 个', d: '几 — для малых количеств (до десяти), 多少 — для любых. Между числом и предметом обязательно счётное слово: 三个人, а не 三人.', ex: [['你几岁？', 'nǐ jǐ suì?', 'Сколько тебе лет?'], ['多少钱？', 'duōshao qián?', 'Сколько стоит?']] } },
+    { id: 'b1-04', lvl: 1, zh: '时间', ru: 'Время и погода',
+      can: 'Могу сказать, когда что происходит, и описать погоду',
+      w: '今天 明天 昨天 年 月 号 星期 时候 现在 上午 中午 下午 分钟 点 天气 冷 热 下雨',
+      g: { t: 'Время стоит перед глаголом', d: 'В китайском обстоятельство времени идёт до действия, а не после: «я завтра иду», не «иду завтра». Дата пишется от большего к меньшему: год — месяц — число.', ex: [['我明天去。', 'wǒ míngtiān qù.', 'Я завтра пойду.'], ['现在几点？', 'xiànzài jǐ diǎn?', 'Который час?']] } },
+    { id: 'b1-05', lvl: 1, zh: '饮食', ru: 'Еда и напитки',
+      can: 'Могу сказать, что хочу съесть и выпить',
+      w: '吃 喝 菜 茶 米饭 水 水果 苹果 饭店 杯子 想 喜欢',
+      g: { t: '想 + глагол — желание', d: '想 перед глаголом означает «хочу сделать». Отрицание — 不想. Не путать с 喜欢 «нравится»: 想吃 — хочу поесть сейчас, 喜欢吃 — люблю это есть вообще.', ex: [['我想喝茶。', 'wǒ xiǎng hē chá.', 'Я хочу выпить чаю.'], ['他不想吃菜。', 'tā bù xiǎng chī cài.', 'Он не хочет есть овощи.']] } },
+    { id: 'b1-06', lvl: 1, zh: '家里', ru: 'Дом и вещи',
+      can: 'Могу сказать, что где лежит и что у меня есть',
+      w: '桌子 椅子 电脑 电视 书 衣服 东西 本 钱 里 有 没有',
+      g: { t: '有 / 没有 и место с 里', d: 'Наличие — 有, отрицание всегда 没有 (никогда 不有). Место образуется послелогом: 桌子上 — на столе, 家里 — дома.', ex: [['我有电脑。', 'wǒ yǒu diànnǎo.', 'У меня есть компьютер.'], ['桌子上有书。', 'zhuōzi shàng yǒu shū.', 'На столе есть книга.']] } },
+    { id: 'b1-07', lvl: 1, zh: '学习', ru: 'Учёба и язык',
+      can: 'Могу сказать, что умею и что изучаю',
+      w: '学习 学校 汉语 中国 北京 读 写 说 看 听 认识 会 能 字',
+      g: { t: '会 и 能', d: '会 — умею благодаря учёбе (会说汉语). 能 — могу физически или по обстоятельствам (今天不能来). Отрицание — 不会 / 不能.', ex: [['我会说汉语。', 'wǒ huì shuō hànyǔ.', 'Я умею говорить по-китайски.'], ['我今天不能去。', 'wǒ jīntiān bù néng qù.', 'Я сегодня не могу пойти.']] } },
+    { id: 'b1-08', lvl: 1, zh: '出行', ru: 'Город и перемещение',
+      can: 'Могу сказать, куда иду и на чём еду',
+      w: '去 来 回 在 商店 医院 出租车 飞机 坐 住 前面 后面',
+      g: { t: '去 / 来 + место, 坐 + транспорт', d: '去 — движение от говорящего, 来 — к нему. Место ставится сразу после глагола: 去商店. Транспорт вводится глаголом 坐 (сидя: автобус, поезд) — 坐飞机去北京.', ex: [['我去医院。', 'wǒ qù yīyuàn.', 'Я иду в больницу.'], ['他坐出租车回家。', 'tā zuò chūzūchē huí jiā.', 'Он едет домой на такси.']] } },
+    { id: 'b1-09', lvl: 1, zh: '动作', ru: 'Дела и действия',
+      can: 'Могу рассказать, что делал и чего не делал',
+      w: '做 工作 打电话 睡觉 买 开 看见 电影 爱 高兴 漂亮 大 小 多 少 狗 猫 块 一点儿 些',
+      g: { t: '了 — завершённость, 不 и 没', d: '了 после глагола показывает, что действие состоялось: 我买了书. Отрицание настоящего и будущего — 不, отрицание прошлого — 没 (и тогда 了 исчезает): 我没买书.', ex: [['我买了一本书。', 'wǒ mǎi le yì běn shū.', 'Я купил книгу.'], ['他没看电影。', 'tā méi kàn diànyǐng.', 'Он не смотрел фильм.']] } },
+    { id: 'b1-10', lvl: 1, zh: '指代', ru: 'Указания и вопросы',
+      can: 'Могу задать вопрос и указать на предмет',
+      w: '这 那 哪 哪儿 什么 谁 怎么 怎么样 的 是 很 太 都 和 不 了 呢 上 下 她',
+      g: { t: '很 / 太 / 都 и вопросительные слова', d: 'Прилагательное почти всегда идёт с 很: 我很好. 太…了 — «слишком». Вопросительное слово ставится там, где стоял бы ответ, порядок слов не меняется: 你去哪儿？', ex: [['这本书很好。', 'zhè běn shū hěn hǎo.', 'Эта книга хорошая.'], ['你去哪儿？', 'nǐ qù nǎr?', 'Куда ты идёшь?']] } },
+  ].map(b => Object.assign(b, { words: b.w.split(' ') }));
+
+  const byLevel = n => BLOCKS.filter(b => b.lvl === n);
+  const byId = id => BLOCKS.find(b => b.id === id);
+  return { LEVELS, BLOCKS, byLevel, byId };
+})();
+
+;
+/* Программа изучения: карта уровней → лента блока → спринт «Проверить себя». */
+(() => {
+  const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, cardsOfDeck, saveAttempt, fmt } = App;
+  const P = window.PROGRAM;
+  const MIN_SPRINT = 10;                       /* с какого числа просмотренных слов доступна проверка */
+  const SEALS = { new: ['生', 'новый'], work: ['学', 'в работе'], done: ['熟', 'освоен'], gold: ['精', 'закреплён'] };
+  let feed = null;   /* лента: { blockId, order, i, seen:Set } */
+  let sp = null;     /* спринт: { blockId, qs, i, right, wrong, size } */
+
+  const prog = () => (state.settings.program || (state.settings.program = {}));
+  const bstate = id => prog()[id] || (prog()[id] = { seen: [], seal: 'new', clean: 0, revised: 0, firstDone: false });
+  let hmap = null;   /* иероглиф → карточка, по всем встроенным колодам уровней */
+  const hanziMap = () => hmap || (hmap = P.LEVELS.reduce((m, l) => { cardsOfDeck(l.deck).forEach(c => { if (!m[c.hanzi]) m[c.hanzi] = c; }); return m; }, {}));
+  const cardOf = h => hanziMap()[h] || null;
+  const wordsOf = b => b.words.map(cardOf).filter(Boolean);
+
+  /* ── карта уровней ── */
+  views.program = {
+    render() {
+      const lv = P.LEVELS.map(l => {
+        const bs = P.byLevel(l.n);
+        if (!bs.length) return `<div class="panel lvl-row muted"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} — блоки готовятся</div></div></div>`;
+        const done = bs.filter(b => bstate(b.id).seal === 'done' || bstate(b.id).seal === 'gold').length;
+        return `<div class="panel"><div class="lvl-head"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} · ${bs.length} блоков · освоено ${done}</div></div></div>
+        <div class="blk-grid">${bs.map(b => {
+          const st = bstate(b.id);
+          const seen = st.seen.length, tot = b.words.length;
+          const s = SEALS[st.seal];
+          return `<button class="blk-card s-${st.seal}" data-action="prog-open" data-id="${b.id}">
+            <span class="blk-seal zh">${s[0]}</span>
+            <span class="blk-zh zh">${esc(b.zh)}</span>
+            <span class="blk-ru">${esc(b.ru)}</span>
+            <span class="blk-bar"><i style="width:${Math.round(seen / tot * 100)}%"></i></span>
+            <span class="blk-n">${seen} / ${tot}</span></button>`;
+        }).join('')}</div></div>`;
+      }).join('');
+      return `<div class="vh"><div class="seal">学</div><div class="grow"><h1 class="title">Программа</h1><div class="sub">блоки по темам и грамматике · заходите в любой</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}`;
+    },
+  };
+  actions['prog-info'] = () => sheet(`<h3 class="sh-t">Как устроена программа</h3><div class="install-note">
+    <p>Блоки взяты из государственного стандарта <b>国际中文教育中文水平等级标准 (2021)</b> — того же, на котором построен HSK. Порядок подачи — как в базовом курсе Пекинского университета языка и культуры: сначала конструкция, потом лексика вокруг неё.</p>
+    <p><b>Свободный порядок.</b> Любой блок открыт с самого начала — заходите в тот, который нужен сейчас.</p>
+    <p><b>Печати:</b> 生 новый · 学 в работе · 熟 освоен · 精 закреплён повторениями.</p>
+    <p>Листание карточек очков не даёт. Очки платят за «Проверить себя» — от ${MIN_SPRINT} слов.</p></div>
+    <button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
+
+  /* ── лента блока ── */
+  actions['prog-open'] = el => { const b = P.byId(el.dataset.id); if (!b) return; const ws = wordsOf(b); if (!ws.length) return toast('Слова блока не найдены'); feed = { blockId: b.id, i: 0, list: ws }; nav('feed', { id: b.id }); };
+  actions['feed-next'] = () => { if (!feed) return; markSeen(); feed.i = Math.min(feed.list.length - 1, feed.i + 1); render(); };
+  actions['feed-prev'] = () => { if (!feed) return; feed.i = Math.max(0, feed.i - 1); render(); };
+  actions['feed-say'] = () => { if (feed) Speech.say(feed.list[feed.i].hanzi); };
+  actions['feed-grammar'] = () => {
+    const b = P.byId(feed.blockId);
+    sheet(`<h3 class="sh-t">${esc(b.g.t)}</h3><div class="install-note"><p>${esc(b.g.d)}</p>${b.g.ex.map(e => `<p class="gex"><span class="hanzi sm">${esc(e[0])}</span><span class="pinyin sm">${esc(e[1])}</span><span class="ru sm">${esc(e[2])}</span></p>`).join('')}</div><button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
+  };
+  function markSeen() {
+    const b = P.byId(feed.blockId), st = bstate(b.id), h = feed.list[feed.i].hanzi;
+    if (st.seen.indexOf(h) < 0) { st.seen.push(h); if (st.seal === 'new') st.seal = 'work'; persist(); }
+  }
+  views.feed = {
+    render(p) {
+      const b = P.byId(p.id) || (feed && P.byId(feed.blockId));
+      if (!b) return '<div class="empty">Блок не найден</div>';
+      if (!feed || feed.blockId !== b.id) { const ws = wordsOf(b); if (!ws.length) return '<div class="empty">Слова блока не найдены</div>'; feed = { blockId: b.id, i: 0, list: ws }; }
+      const st = bstate(b.id);
+      const c = feed.list[feed.i];
+      const seen = st.seen.length;
+      const ready = seen >= MIN_SPRINT;
+      const long = c.hanzi.replace(/[…\s]/g, '').length >= 5;
+      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(b.ru)}</h1><div class="sub"><span class="zh">${esc(b.zh)}</span> · ${esc(b.can)}</div></div></div>
+      <div class="panel feed-top"><div class="grow"><b>Изучено ${seen} из ${b.words.length}</b><div class="hint" style="margin:2px 0 0">${ready ? 'Проверка доступна' : `Ещё ${MIN_SPRINT - seen} до проверки`}</div></div><button class="btn btn-secondary btn-sm" data-action="feed-grammar">${esc(b.g.t)}</button></div>
+      <div class="panel ornate learn-card">
+        <div class="learn-count">${feed.i + 1} / ${feed.list.length}${st.seen.indexOf(c.hanzi) >= 0 ? ' · <b class="lm">изучено</b>' : ''}</div>
+        <div class="hanzi mid ${long ? 'len5' : ''}">${esc(c.hanzi)}</div>
+        <div class="pinyin">${esc(c.pinyin)}</div>
+        <div class="ru">${esc(c.ru)}</div>
+        <button class="btn btn-secondary btn-sm learn-say" data-action="feed-say" data-nosound>🔊 Произнести</button>
+      </div>
+      <div class="learn-nav"><button class="btn btn-secondary" data-action="feed-prev" data-nosound>‹ Назад</button><button class="btn btn-primary" data-action="feed-next" data-nosound>Дальше ›</button></div>
+      <button class="btn ${ready ? 'btn-jade' : 'btn-secondary'} btn-block" data-action="sprint-start" ${ready ? '' : 'disabled'}>Проверить себя 检验${ready ? ` · ${Math.min(20, Math.round(seen * 1.5))} заданий` : ''}</button>`;
+    },
+    mount() { if (feed) markSeen(); },
+  };
+
+  /* ── спринт ── */
+  const SIZE_MULT = n => (n >= 30 ? 2 : n >= 20 ? 1.5 : n >= 15 ? 1.25 : 1);
+  function buildSprint(b) {
+    const st = bstate(b.id);
+    const pool = st.seen.map(cardOf).filter(Boolean);
+    const n = Math.min(20, Math.round(pool.length * 1.5));
+    const qs = [];
+    const others = wordsOf(b);
+    for (let k = 0; k < n; k++) {
+      const c = pool[k % pool.length];
+      const types = b.lvl >= 2 ? ['audio', 'ru', 'zh', 'type'] : ['audio', 'ru', 'zh'];
+      const t = types[Math.floor(Math.random() * types.length)];
+      const wrong = HskReal.shuffle(others.filter(x => x.hanzi !== c.hanzi)).slice(0, 3);
+      if (t === 'type') qs.push({ t, card: c, points: 6 });
+      else {
+        const opts = HskReal.shuffle([c, ...wrong]);
+        qs.push({ t, card: c, opts, correct: opts.indexOf(c), points: t === 'ru' ? 2 : 3 });
+      }
+    }
+    return { blockId: b.id, qs: HskReal.shuffle(qs), i: 0, right: 0, wrong: 0, size: pool.length, startedAt: Date.now(), bad: [] };
+  }
+  actions['sprint-start'] = () => {
+    const b = P.byId(feed.blockId);
+    if (bstate(b.id).seen.length < MIN_SPRINT) return;
+    sp = buildSprint(b);
+    nav('sprint');
+  };
+  actions['sprint-answer'] = el => {
+    if (!sp) return;
+    const q = sp.qs[sp.i];
+    if (q.ok != null) return;
+    const idx = +el.dataset.idx;
+    q.ok = idx === q.correct;
+    finishQ(q);
+  };
+  function finishQ(q) {
+    if (q.ok) { sp.right++; Sound.ok(); } else { sp.wrong++; sp.bad.push(q.card.hanzi); Sound.fail(); }
+    setTimeout(() => { sp.i++; if (sp.i >= sp.qs.length) endSprint(); else render(); }, 550);
+    render();
+  }
+  actions['sprint-quit'] = () => {
+    sheet(`<h3 class="sh-t">Бросить спринт?</h3><p style="color:var(--ink-2)">Очков за брошенную проверку не будет — так устроено, чтобы нельзя было набирать очки на лёгком начале.</p><div class="btns"><button class="btn btn-danger btn-block" id="sq">Бросить</button><button class="btn btn-secondary btn-block" id="sc">Продолжить</button></div>`, s => {
+      $('#sq', s).onclick = () => { closeSheet(); sp = null; nav('feed', { id: feed.blockId }, { replace: true }); };
+      $('#sc', s).onclick = () => closeSheet();
+    });
+  };
+  function endSprint() {
+    const b = P.byId(sp.blockId), st = bstate(b.id);
+    const total = sp.qs.length;
+    const errRate = sp.wrong / total;
+    const clean = sp.wrong === 0;
+    const half = !clean && sp.wrong <= Math.floor(total / 10);
+    let base = sp.qs.filter(q => q.ok).reduce((s, q) => s + q.points, 0);
+    let mult = SIZE_MULT(sp.size);
+    if (clean) mult *= 1.25;
+    const streakMult = clean ? Math.min(1.5, 1 + 0.1 * (st.clean || 0)) : 1;
+    let points = clean ? base * mult * streakMult : half ? base * mult * 0.5 : 0;
+    let bonus = 0;
+    if (clean && !st.firstDone && st.seen.length >= b.words.length) { bonus = 50; st.firstDone = true; }
+    points = Math.round(points + bonus);
+    /* ошибочные слова возвращаются в ленту */
+    st.seen = st.seen.filter(h => sp.bad.indexOf(h) < 0);
+    st.clean = clean ? (st.clean || 0) + 1 : 0;
+    if (clean && st.seen.length >= b.words.length) st.seal = 'done';
+    const res = { clean, half, zero: !clean && !half, points, bonus, right: sp.right, wrong: sp.wrong, total, mult: mult * streakMult, back: sp.bad.length };
+    const a = {
+      id: uid(), ts: sp.startedAt, endedAt: Date.now(), durationMs: Date.now() - sp.startedAt,
+      mode: 'sprint', block: b.id, deckIds: [], deckName: b.ru, difficulty: 'medium', show: 'program', guess: ['all'], order: 'random', timer: 0,
+      total, planned: total, aborted: false, correct: sp.right, partial: 0, wrong: sp.wrong,
+      percent: Math.round(sp.right / total * 100), points, questions: [],
+    };
+    persist();
+    sp = null;
+    state.lastSprint = res;
+    saveAttempt(a).then(() => { Sound.finish(clean); nav('sprint-result', {}, { replace: true }); });
+  }
+  views.sprint = {
+    render() {
+      if (!sp) return '<div class="empty">Спринт не запущен</div>';
+      const q = sp.qs[sp.i];
+      if (!q) return '';
+      const head = `<div class="qbar"><button class="icon-btn" data-action="sprint-quit">✕</button><div class="progress"><i style="width:${sp.i / sp.qs.length * 100}%"></i></div><div class="qcount">${sp.i + 1}/${sp.qs.length}</div><div class="qtimer" id="sprerr">${sp.wrong} ✕</div></div>`;
+      let prompt, ui = '';
+      if (q.t === 'audio') prompt = `<div class="ex-audio"><span class="say-ico" id="say-ico">🔊</span><div class="hint">Нажмите, чтобы повторить</div></div>`;
+      else if (q.t === 'ru') prompt = `<div class="hanzi mid">${esc(q.card.hanzi)}</div>`;
+      else if (q.t === 'zh') prompt = `<div class="ru" style="font-size:20px;font-weight:600">${esc(q.card.ru)}</div>`;
+      else prompt = `<div class="pinyin" style="font-size:26px">${esc(q.card.pinyin)}</div><div class="ru" style="margin-top:6px">${esc(q.card.ru)}</div>`;
+      if (q.t === 'type') {
+        ui = `<form id="sp-input" class="inputs" autocomplete="off"><div class="field"><label>Напишите иероглиф <span class="muted">· клавиатура 中文</span></label><input class="inp" name="answer" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="汉字"></div><button class="btn btn-primary btn-block" type="submit">Готово</button></form>`;
+      } else {
+        const label = o => (q.t === 'ru' ? o.ru : o.hanzi);
+        ui = `<div class="opts">${q.opts.map((o, i) => {
+          let cls = 'opt opt-txt';
+          if (q.ok != null) { if (i === q.correct) cls += ' ok'; else if (!q.ok && i === q.givenIdx) cls += ' bad'; }
+          return `<button class="${cls}" data-action="sprint-answer" data-idx="${i}" data-nosound ${q.ok != null ? 'disabled' : ''}><span class="${q.t === 'ru' ? '' : 'opt-hanzi'}">${esc(label(o))}</span></button>`;
+        }).join('')}</div>`;
+      }
+      return head + `<div class="panel ornate qcard" style="min-height:auto">${prompt}</div>` + ui;
+    },
+    mount() {
+      if (!sp) return;
+      const q = sp.qs[sp.i];
+      if (!q) return;
+      if (q.t === 'audio' && q.ok == null) { Speech.say(q.card.hanzi); const ico = $('#say-ico'); if (ico) ico.onclick = () => Speech.say(q.card.hanzi); }
+      const f = $('#sp-input');
+      if (f) f.addEventListener('submit', e => {
+        e.preventDefault();
+        if (q.ok != null) return;
+        const v = Quiz.normZh(f.elements.answer.value);
+        if (!v) return toast('Введите иероглиф');
+        q.ok = v === q.card.hanzi;
+        finishQ(q);
+      });
+    },
+  };
+  window.__sprint = () => sp;   /* отладка: состояние текущего спринта */
+  views['sprint-result'] = {
+    render() {
+      const r = state.lastSprint;
+      if (!r) return '<div class="empty">Результат не найден</div>';
+      const verdict = r.clean ? ['净', 'Чистый спринт', 'jade'] : r.half ? ['半', 'Половина очков', 'gold'] : ['零', 'Спринт не засчитан', 'danger'];
+      return `<div class="vh"><div class="seal">检</div><div class="grow"><h1 class="title">Проверка себя</h1><div class="sub">${r.right} из ${r.total} · ошибок ${r.wrong}</div></div></div>
+      <div class="panel ornate sprint-res v-${verdict[2]}"><div class="sr-seal zh">${verdict[0]}</div><div class="grow"><b>${verdict[1]}</b>
+      <div class="hint" style="margin:4px 0 0">${r.clean ? `Множитель ×${r.mult.toFixed(2)} за длину и чистоту` : r.half ? 'До одной ошибки на десять — половина очков' : 'Больше одной ошибки на десять — очки не начисляются'}</div></div>
+      <div class="sr-pts">${r.points > 0 ? '+' + r.points : '0'}<small>очк.</small></div></div>
+      ${r.bonus ? '<div class="panel"><b>+50</b> разовый бонус за первое чистое взятие блока</div>' : ''}
+      ${r.back ? `<div class="panel"><div class="hint" style="margin:0">${fmt.plural(r.back, 'слово вернулось', 'слова вернулись', 'слов вернулось')} в ленту — повторите и проверьтесь снова.</div></div>` : ''}
+      <div class="btns"><button class="btn btn-primary btn-block" data-go="feed" data-params="${attr({ id: feed ? feed.blockId : '' })}">Вернуться в ленту</button><button class="btn btn-secondary btn-block" data-go="program">К программе</button></div>`;
+    },
+  };
 })();
 
 ;
