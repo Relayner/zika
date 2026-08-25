@@ -15,11 +15,11 @@ window.App = (() => {
   const views = {}, actions = {};
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
-    diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Карточки', exam: 'Экзамен' },
+    diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
     mode: { quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));

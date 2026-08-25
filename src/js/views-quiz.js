@@ -4,7 +4,7 @@
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, confirm, persist, LABELS, fmt, renderPart, cardsOfDeck, cardsOfDecks, allDecks, deckById, hskCards, cardIndex, saveAttempt, flash, questionRow, render, builtinDecks } = App;
 
   const MODES = ['quiz', 'flip', 'write', 'listen', 'sentence'];
-  const MODE_TITLES = { quiz: 'Выбор 选', flip: 'Карточки 卡', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
+  const MODE_TITLES = { quiz: 'Выбор 选', flip: 'Самопроверка 卡', write: 'Письмо 写', listen: 'Аудио 听', sentence: 'Фразы 句' };
   const MODE_HINTS = {
     quiz: 'Вопрос — ответ: варианты или ввод, с оценкой.',
     flip: 'Смотрите, переворачивайте, отмечайте «знал / не знал».',
@@ -93,8 +93,8 @@
     saveSetup(); render();
   };
   actions['setup-start'] = () => { const s = getSetup(); startSession(s.mode, JSON.parse(JSON.stringify(s.byMode[s.mode]))); };
-  /* «Учить» = разбор карточек (режим 卡), а не проверка себя. Тесты запускают свои кнопки. */
-  actions['learn-deck'] = el => { const s = getSetup(); s.mode = 'flip'; s.byMode.flip.deckIds = [el.dataset.id]; saveSetup(); closeSheet(); nav('setup'); };
+  /* Открыть тренировку на конкретной колоде (из режима изучения) */
+  App.trainDeck = id => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
     <div class="install-note">
