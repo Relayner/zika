@@ -557,3 +557,4 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .sr-pts { font-family: var(--serif, serif); font-size: 30px; font-weight: 700; color: var(--bordeaux, #6d1a24); white-space: nowrap; }
 .sr-pts small { font-size: 12px; font-weight: 400; margin-left: 3px; }
 .big-btn.t-prog { color: var(--jade, #2e7d5b); }
+.blk-runs { color: var(--gold, #c9a227); font-weight: 700; }

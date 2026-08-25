@@ -8,7 +8,13 @@
   let sp = null;     /* спринт: { blockId, qs, i, right, wrong, size } */
 
   const prog = () => (state.settings.program || (state.settings.program = {}));
-  const bstate = id => prog()[id] || (prog()[id] = { seen: [], seal: 'new', clean: 0, revised: 0, firstDone: false });
+  const BL_TTL = 30 * 60 * 1000;   /* задание не повторяется 30 минут */
+  const bstate = id => {
+    const st = prog()[id] || (prog()[id] = { seen: [], seal: 'new', clean: 0, revised: 0, firstDone: false });
+    if (!st.bl) st.bl = {};        /* чёрный список: «слово|тип» → до какого времени занято */
+    if (st.runs == null) st.runs = 0;
+    return st;
+  };
   let hmap = null;   /* иероглиф → карточка, по всем встроенным колодам уровней */
   const hanziMap = () => hmap || (hmap = P.LEVELS.reduce((m, l) => { cardsOfDeck(l.deck).forEach(c => { if (!m[c.hanzi]) m[c.hanzi] = c; }); return m; }, {}));
   const cardOf = h => hanziMap()[h] || null;
@@ -31,7 +37,7 @@
             <span class="blk-zh zh">${esc(b.zh)}</span>
             <span class="blk-ru">${esc(b.ru)}</span>
             <span class="blk-bar"><i style="width:${Math.round(seen / tot * 100)}%"></i></span>
-            <span class="blk-n">${seen} / ${tot}</span></button>`;
+            <span class="blk-n">${seen} / ${tot}${st.runs ? ` <b class="blk-runs">×${st.runs}</b>` : ''}</span></button>`;
         }).join('')}</div></div>`;
       }).join('');
       return `<div class="vh"><div class="seal">学</div><div class="grow"><h1 class="title">Программа</h1><div class="sub">блоки по темам и грамматике · заходите в любой</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}`;
@@ -68,7 +74,7 @@
       const ready = seen >= MIN_SPRINT;
       const long = c.hanzi.replace(/[…\s]/g, '').length >= 5;
       return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(b.ru)}</h1><div class="sub"><span class="zh">${esc(b.zh)}</span> · ${esc(b.can)}</div></div></div>
-      <div class="panel feed-top"><div class="grow"><b>Изучено ${seen} из ${b.words.length}</b><div class="hint" style="margin:2px 0 0">${ready ? 'Проверка доступна' : `Ещё ${MIN_SPRINT - seen} до проверки`}</div></div><button class="btn btn-secondary btn-sm" data-action="feed-grammar">${esc(b.g.t)}</button></div>
+      <div class="panel feed-top"><div class="grow"><b>Изучено ${seen} из ${b.words.length}${st.runs ? ` · пройден ${st.runs} ${st.runs === 1 ? 'раз' : 'раза'}` : ''}</b><div class="hint" style="margin:2px 0 0">${ready ? 'Проверка доступна' : `Ещё ${MIN_SPRINT - seen} до проверки`}</div></div><button class="btn btn-secondary btn-sm" data-action="feed-grammar">${esc(b.g.t)}</button></div>
       <div class="panel ornate learn-card">
         <div class="learn-count">${feed.i + 1} / ${feed.list.length}${st.seen.indexOf(c.hanzi) >= 0 ? ' · <b class="lm">изучено</b>' : ''}</div>
         <div class="hanzi mid ${long ? 'len5' : ''}">${esc(c.hanzi)}</div>
@@ -88,20 +94,47 @@
     const st = bstate(b.id);
     const pool = st.seen.map(cardOf).filter(Boolean);
     const n = Math.min(20, Math.round(pool.length * 1.5));
-    const qs = [];
-    const others = wordsOf(b);
-    for (let k = 0; k < n; k++) {
-      const c = pool[k % pool.length];
-      const types = b.lvl >= 2 ? ['audio', 'ru', 'zh', 'type'] : ['audio', 'ru', 'zh'];
-      const t = types[Math.floor(Math.random() * types.length)];
-      const wrong = HskReal.shuffle(others.filter(x => x.hanzi !== c.hanzi)).slice(0, 3);
-      if (t === 'type') qs.push({ t, card: c, points: 6 });
-      else {
-        const opts = HskReal.shuffle([c, ...wrong]);
-        qs.push({ t, card: c, opts, correct: opts.indexOf(c), points: t === 'ru' ? 2 : 3 });
+    const types = b.lvl >= 2 ? ['audio', 'ru', 'zh', 'type'] : ['audio', 'ru', 'zh'];
+    const now = Date.now();
+    for (const k in st.bl) if (st.bl[k] <= now) delete st.bl[k];   /* просроченное освобождаем */
+    /* всё, что вообще можно спросить: слово × тип задания */
+    const combos = [];
+    pool.forEach(c => types.forEach(t => combos.push({ c, t, key: c.hanzi + '|' + t })));
+    let free = combos.filter(x => !st.bl[x.key]);
+    let reset = false;
+    if (free.length < n) {
+      /* весь контент выбран — обнуляем список, но прошлый заход переносим: он не должен вернуться сразу */
+      reset = true;
+      const last = st.last || [];
+      st.bl = {};
+      last.forEach(k => { st.bl[k] = Date.now() + BL_TTL; });
+      free = combos.filter(x => !st.bl[x.key]);
+      if (free.length < n) {
+        /* если и так не хватает — добираем из прошлого захода, но не больше 5% спринта */
+        const cap = Math.max(1, Math.floor(n * 0.05));
+        free = free.concat(HskReal.shuffle(combos.filter(x => st.bl[x.key])).slice(0, Math.min(cap, n - free.length)));
       }
     }
-    return { blockId: b.id, qs: HskReal.shuffle(qs), i: 0, right: 0, wrong: 0, size: pool.length, startedAt: Date.now(), bad: [] };
+    /* раскладываем кругами: пока не пройдены все слова, второй раз слово не берём */
+    const byWord = {};
+    HskReal.shuffle(free).forEach(x => (byWord[x.c.hanzi] || (byWord[x.c.hanzi] = [])).push(x));
+    const picked = [];
+    while (picked.length < n) {
+      const words = HskReal.shuffle(Object.keys(byWord).filter(h => byWord[h].length));
+      if (!words.length) break;
+      for (const h of words) { if (picked.length >= n) break; picked.push(byWord[h].shift()); }
+    }
+    const others = wordsOf(b);
+    const qs = picked.map(x => {
+      st.bl[x.key] = Date.now() + BL_TTL;
+      const wrong = HskReal.shuffle(others.filter(y => y.hanzi !== x.c.hanzi)).slice(0, 3);
+      if (x.t === 'type') return { t: x.t, key: x.key, card: x.c, points: 6 };
+      const opts = HskReal.shuffle([x.c, ...wrong]);
+      return { t: x.t, key: x.key, card: x.c, opts, correct: opts.indexOf(x.c), points: x.t === 'ru' ? 2 : 3 };
+    });
+    st.last = qs.map(x => x.key);
+    persist();
+    return { blockId: b.id, qs: HskReal.shuffle(qs), i: 0, right: 0, wrong: 0, size: pool.length, startedAt: Date.now(), bad: [], reset };
   }
   actions['sprint-start'] = () => {
     const b = P.byId(feed.blockId);
@@ -145,6 +178,7 @@
     /* ошибочные слова возвращаются в ленту */
     st.seen = st.seen.filter(h => sp.bad.indexOf(h) < 0);
     st.clean = clean ? (st.clean || 0) + 1 : 0;
+    st.runs = (st.runs || 0) + 1;
     if (clean && st.seen.length >= b.words.length) st.seal = 'done';
     const res = { clean, half, zero: !clean && !half, points, bonus, right: sp.right, wrong: sp.wrong, total, mult: mult * streakMult, back: sp.bad.length };
     const a = {
@@ -198,6 +232,7 @@
     },
   };
   window.__sprint = () => sp;   /* отладка: состояние текущего спринта */
+  window.__buildSprint = id => buildSprint(P.byId(id));   /* отладка: собрать спринт без запуска */
   views['sprint-result'] = {
     render() {
       const r = state.lastSprint;
