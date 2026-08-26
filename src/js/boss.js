@@ -10,27 +10,32 @@ window.Boss = (() => {
       lore: 'Панда-начётчик из башни свитков. Тысячу лет он переписывает одни и те же строки и уверен, что помнит больше всех на свете. Говорит медленно и снисходительно, любит переспрашивать простое.',
       style: 'дотошный, снисходительный, говорит короткими простыми фразами, придирается к мелочам',
       topic: 'приветствия, имена, семья, числа, простые бытовые вопросы',
-      voice: { rate: 0.75, pitch: 0.9 }, lvl: 1, note: 'A' },
+      voice: { rate: 0.75, pitch: 0.9 }, lvl: 1, note: 'A',
+      offset: -1, rounds: 4, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0 },
     { id: 'b2', img: 'boss-2', zh: '茶博士', py: 'Chá bóshì', ru: 'Чайный Доктор',
       lore: 'Барсук держит чайную у горной дороги. Наливает всем, но платы просит словами: пока не расскажешь о себе — чашка не опустеет. Хитрый и радушный одновременно.',
       style: 'радушный, хитрый, задаёт бытовые вопросы про еду, время и погоду, поддакивает',
       topic: 'еда и напитки, время суток, погода, дом, привычки',
-      voice: { rate: 0.85, pitch: 1.05 }, lvl: 1, note: 'C' },
+      voice: { rate: 0.85, pitch: 1.05 }, lvl: 1, note: 'C',
+      offset: 0, rounds: 5, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0 },
     { id: 'b3', img: 'boss-3', zh: '市井狐', py: 'Shìjǐng hú', ru: 'Базарная Лиса',
       lore: 'Торгует всем и сразу, считает быстрее счётов. Если запнёшься — тут же поднимет цену. Говорит скороговоркой, обожает торговаться.',
       style: 'быстрый, напористый, торгуется, спрашивает про цены, количества, покупки',
       topic: 'покупки, деньги, цены, счёт, магазин, торг',
-      voice: { rate: 1.15, pitch: 1.15 }, lvl: 2, note: 'E' },
+      voice: { rate: 1.15, pitch: 1.15 }, lvl: 2, note: 'E',
+      offset: 0, rounds: 5, lives: 2, hints: ['tr', 'start', 'opts'], sec: 25 },
     { id: 'b4', img: 'boss-4', zh: '笔吏', py: 'Bǐ lì', ru: 'Писарь-Журавль',
       lore: 'Чиновник с кистью наперевес. Проверяет не тебя, а твою грамматику, и ставит красную печать при первой же ошибке в порядке слов. Сух, точен, безжалостен.',
       style: 'сухой, официальный, придирается к грамматике и порядку слов, требует полных ответов',
       topic: 'учёба, работа, документы, грамматические конструкции, объяснения причин',
-      voice: { rate: 0.9, pitch: 0.8 }, lvl: 3, note: 'G' },
+      voice: { rate: 0.9, pitch: 0.8 }, lvl: 3, note: 'G',
+      offset: 1, rounds: 6, lives: 2, hints: ['tr', 'start'], sec: 20 },
     { id: 'b5', img: 'boss-5', zh: '虎将军', py: 'Hǔ jiāngjūn', ru: 'Тигр-Генерал',
       lore: 'Последний страж заставы. Не спрашивает — требует. Отвечать надо быстро и по существу, иначе гуаньдао опускается, и разговор окончен.',
       style: 'громкий, властный, рубит фразы, требует быстрых чётких ответов, давит',
       topic: 'планы, решения, путь и дорога, здоровье, воля и характер',
-      voice: { rate: 1.0, pitch: 0.7 }, lvl: 4, note: 'D' },
+      voice: { rate: 1.0, pitch: 0.7 }, lvl: 4, note: 'D',
+      offset: 1, rounds: 7, lives: 1, hints: ['tr'], sec: 15 },
   ];
   const byId = id => LIST.find(b => b.id === id);
 
@@ -96,5 +101,28 @@ window.Boss = (() => {
   }
   const chestBonusPct = 30;   /* «полнее на 30%», если не тронул ни одной подсказки */
 
-  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest };
+  /* Параметры конкретного боя: уровень речи считается от вашего, но каждый босс держит свою планку */
+  function setup(state, boss, now = Date.now()) {
+    const my = levelOf(state);
+    const lvl = Math.max(1, Math.min(4, my + (boss.offset || 0)));
+    return {
+      my, lvl,
+      rounds: boss.rounds || ROUNDS,
+      lives: boss.lives || 2,
+      hints: boss.hints || ['tr', 'start', 'opts'],
+      sec: boss.sec || 0,                                  /* 0 — без таймера на ответ */
+      hard: (boss.offset || 0) > 0,
+    };
+  }
+  /* Насколько бой тяжелее прогулки — на это же множится награда */
+  function weight(sp) {
+    let w = 1;
+    w += (sp.rounds - 5) * 0.08;              /* больше реплик */
+    w += (3 - sp.lives) * 0.12;               /* меньше права на ошибку */
+    w += (3 - sp.hints.length) * 0.1;         /* меньше подсказок */
+    if (sp.sec) w += (30 - sp.sec) / 100;     /* жёстче время */
+    if (sp.hard) w += 0.15;                   /* речь выше вашего уровня */
+    return Math.round(w * 100) / 100;
+  }
+  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest, setup, weight };
 })();

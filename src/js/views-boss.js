@@ -18,6 +18,7 @@
       const cd = Boss.tryLeft(state, now);
       const cards = Boss.LIST.map(b => {
         const r = Boss.bs(state, b.id);
+        const sp = Boss.setup(state, b);
         const rs = Boss.respawnLeft(state, b.id, now);
         const locked = rs > 0 || cd > 0;
         const why = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
@@ -26,7 +27,8 @@
           <div class="grow">
             <div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
             <div class="boss-lore">${esc(b.lore)}</div>
-            <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b></div>
+            <div class="boss-terms">речь <b>HSK ${sp.lvl}</b> · ${fmt.plural(sp.rounds, 'реплика', 'реплики', 'реплик')} · ${fmt.plural(sp.lives, 'ошибка', 'ошибки', 'ошибок')} · ${fmt.plural(sp.hints.length, 'подсказка', 'подсказки', 'подсказок')}${sp.sec ? ' · ' + sp.sec + ' с на ответ' : ''}</div>
+            <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b> · награда ×${Boss.weight(sp)}</div>
             <div class="boss-when">${why}</div>
             <button class="btn ${locked ? 'btn-secondary' : 'btn-danger'} btn-sm" data-action="boss-go" data-id="${b.id}" ${locked ? 'disabled' : ''}>Вызвать на бой</button>
           </div></div>`;
@@ -83,25 +85,41 @@
     if (!b || !Boss.ready(state, b.id)) return;
     el.disabled = true;
     toast('Босс готовится…', 1500);
-    const lvl = Boss.levelOf(state);
+    const sp = Boss.setup(state, b);
     const avoid = Boss.recall(state).map(m => m.t);
-    const res = await BossGen.rounds(b, lvl, Boss.ROUNDS, avoid);
+    const res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
     Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
     const bst = Boss.st(state);
     bst.lastTry = Date.now();
     Boss.bs(state, b.id).tries++;
     persist();
-    fight = { boss: b, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl, shown: null, startedAt: Date.now() };
+    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now() };
     BossMusic.start(b);
     nav('fight');
   };
 
   /* ── бой ── */
+  let clock = null;
+  function stopClock() { if (clock) { clearInterval(clock); clock = null; } }
+  function startClock() {
+    stopClock();
+    if (!fight || !fight.sp.sec) return;
+    const deadline = Date.now() + fight.sp.sec * 1000;
+    const tick = () => {
+      if (!fight || fight.shown) return;                      /* во время подсказки и разбора не тикаем */
+      const left = Math.ceil((deadline - Date.now()) / 1000);
+      const el = $('#fclock');
+      if (el) { el.textContent = left + ' с'; el.classList.toggle('urgent', left <= 5); }
+      if (left <= 0) { stopClock(); answer([]); }              /* не успел — мимо */
+    };
+    clock = setInterval(tick, 250);
+    tick();
+  }
   const speak = () => { const r = fight.rounds[fight.i], v = fight.boss.voice; Speech.say(r.say, v); };
   actions['fight-say'] = () => speak();
   actions['fight-quit'] = () => {
     sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, а следующий вызов всё равно через 10 минут.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
-      $('#fq', s).onclick = () => { closeSheet(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
+      $('#fq', s).onclick = () => { closeSheet(); stopClock(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
       $('#fc', s).onclick = () => closeSheet();
     });
   };
@@ -133,6 +151,7 @@
     });
   };
   function answer(said) {
+    stopClock();
     const r = fight.rounds[fight.i];
     const ok = BossGen.judge(r, said);
     r.said = Array.isArray(said) ? said[0] : said;
@@ -142,7 +161,7 @@
     render();
     setTimeout(() => {
       if (!fight) return;
-      if (fight.wrong >= 2) return endFight(false);
+      if (fight.wrong >= fight.sp.lives) return endFight(false);
       fight.i++;
       fight.shown = null;
       if (fight.i >= fight.rounds.length) return endFight(true);
@@ -155,8 +174,8 @@
       if (!fight) return '<div class="empty">Бой не начат</div>';
       const b = fight.boss, r = fight.rounds[fight.i];
       const sh = fight.shown || {};
-      const hearts = '❤'.repeat(2 - fight.wrong) + '·'.repeat(fight.wrong);
-      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>
+      const hearts = '❤'.repeat(Math.max(0, fight.sp.lives - fight.wrong)) + '·'.repeat(Math.min(fight.sp.lives, fight.wrong));
+      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>${fight.sp.sec ? `<div class="fight-clock" id="fclock">${fight.sp.sec} с</div>` : ''}
       <div class="panel ornate fight-card">
         <img class="boss-por big ${sh.k === 'fb' ? (sh.ok ? 'hit' : 'laugh') : ''}" src="${IMG_URL(b.img)}" alt="" draggable="false">
         <div class="boss-n"><span class="zh">${esc(b.zh)}</span></div>
@@ -169,14 +188,20 @@
       ${sh.k === 'fb' ? '' : `<div class="fight-acts">
         <button class="btn btn-danger btn-block btn-lg" data-action="fight-listen" data-nosound>🎙 Ответить голосом</button>
         <button class="btn btn-secondary btn-block btn-sm" data-action="fight-text">Ответить текстом</button>
-        <div class="hint-row">${HINTS.map(h => `<button class="hint-btn ${fight.hints[h.k] ? 'used' : ''}" data-action="fight-hint" data-k="${h.k}" ${fight.hints[h.k] ? 'disabled' : ''} data-nosound><span class="zh">${h.ico}</span><small>${h.t}</small></button>`).join('')}</div>
+        <div class="hint-row">${HINTS.filter(h => fight.sp.hints.indexOf(h.k) >= 0).map(h => `<button class="hint-btn ${fight.hints[h.k] ? 'used' : ''}" data-action="fight-hint" data-k="${h.k}" ${fight.hints[h.k] ? 'disabled' : ''} data-nosound><span class="zh">${h.ico}</span><small>${h.t}</small></button>`).join('')}</div>
         <div class="hint" style="text-align:center">${fight.used ? `Подсказок использовано: ${fight.used}` : `Без подсказок сундук полнее на ${Boss.chestBonusPct}%`}</div>
       </div>`}`;
     },
-    mount() { if (fight && !fight.spoke) { fight.spoke = true; setTimeout(speak, 400); } },
+    mount() {
+      if (!fight) return;
+      if (!fight.spoke) { fight.spoke = true; setTimeout(speak, 400); }
+      if (fight.shown && fight.shown.k === 'fb') stopClock();
+      else if (fight.sp.sec && fight.clockFor !== fight.i) { fight.clockFor = fight.i; startClock(); }
+    },
   };
 
   function endFight(won) {
+    stopClock();
     const b = fight.boss, r = Boss.bs(state, b.id);
     const noHints = fight.used === 0;
     let chest = null;
@@ -190,7 +215,7 @@
       state.campaign.chestLog.push(entry);
       state.campaign.chests.opened++;
     }
-    const pts = won ? Math.round((30 + b.lvl * 10) * (noHints ? 1.5 : 1)) : 0;
+    const pts = won ? Math.round((25 + fight.sp.lvl * 12) * Boss.weight(fight.sp) * (noHints ? 1.5 : 1)) : 0;
     const a = {
       id: uid(), ts: fight.startedAt, endedAt: Date.now(), durationMs: Date.now() - fight.startedAt,
       mode: 'boss', boss: b.id, bossName: b.ru, level: fight.lvl, difficulty: 'boss', deckIds: [], deckName: b.ru,

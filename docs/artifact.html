@@ -597,6 +597,9 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .loot-it span { display: block; margin-top: 4px; }
 .loot-it small { color: var(--ink-2, #6b6156); }
 .big-btn.t-boss { color: var(--danger, #b3392f); }
+.fight-clock { text-align: center; font-family: var(--serif, serif); font-weight: 700; color: var(--ink-2, #6b6156); margin: -2px 0 8px; font-variant-numeric: tabular-nums; }
+.fight-clock.urgent { color: var(--danger, #b3392f); }
+.boss-terms { font-size: 12.5px; color: var(--ink-2, #6b6156); margin-bottom: 3px; }
 
 </style>
 <div id="app">
@@ -4608,7 +4611,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260826-1531';
+  const VERSION = '20260826-2005';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -6053,27 +6056,32 @@ window.Boss = (() => {
       lore: 'Панда-начётчик из башни свитков. Тысячу лет он переписывает одни и те же строки и уверен, что помнит больше всех на свете. Говорит медленно и снисходительно, любит переспрашивать простое.',
       style: 'дотошный, снисходительный, говорит короткими простыми фразами, придирается к мелочам',
       topic: 'приветствия, имена, семья, числа, простые бытовые вопросы',
-      voice: { rate: 0.75, pitch: 0.9 }, lvl: 1, note: 'A' },
+      voice: { rate: 0.75, pitch: 0.9 }, lvl: 1, note: 'A',
+      offset: -1, rounds: 4, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0 },
     { id: 'b2', img: 'boss-2', zh: '茶博士', py: 'Chá bóshì', ru: 'Чайный Доктор',
       lore: 'Барсук держит чайную у горной дороги. Наливает всем, но платы просит словами: пока не расскажешь о себе — чашка не опустеет. Хитрый и радушный одновременно.',
       style: 'радушный, хитрый, задаёт бытовые вопросы про еду, время и погоду, поддакивает',
       topic: 'еда и напитки, время суток, погода, дом, привычки',
-      voice: { rate: 0.85, pitch: 1.05 }, lvl: 1, note: 'C' },
+      voice: { rate: 0.85, pitch: 1.05 }, lvl: 1, note: 'C',
+      offset: 0, rounds: 5, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0 },
     { id: 'b3', img: 'boss-3', zh: '市井狐', py: 'Shìjǐng hú', ru: 'Базарная Лиса',
       lore: 'Торгует всем и сразу, считает быстрее счётов. Если запнёшься — тут же поднимет цену. Говорит скороговоркой, обожает торговаться.',
       style: 'быстрый, напористый, торгуется, спрашивает про цены, количества, покупки',
       topic: 'покупки, деньги, цены, счёт, магазин, торг',
-      voice: { rate: 1.15, pitch: 1.15 }, lvl: 2, note: 'E' },
+      voice: { rate: 1.15, pitch: 1.15 }, lvl: 2, note: 'E',
+      offset: 0, rounds: 5, lives: 2, hints: ['tr', 'start', 'opts'], sec: 25 },
     { id: 'b4', img: 'boss-4', zh: '笔吏', py: 'Bǐ lì', ru: 'Писарь-Журавль',
       lore: 'Чиновник с кистью наперевес. Проверяет не тебя, а твою грамматику, и ставит красную печать при первой же ошибке в порядке слов. Сух, точен, безжалостен.',
       style: 'сухой, официальный, придирается к грамматике и порядку слов, требует полных ответов',
       topic: 'учёба, работа, документы, грамматические конструкции, объяснения причин',
-      voice: { rate: 0.9, pitch: 0.8 }, lvl: 3, note: 'G' },
+      voice: { rate: 0.9, pitch: 0.8 }, lvl: 3, note: 'G',
+      offset: 1, rounds: 6, lives: 2, hints: ['tr', 'start'], sec: 20 },
     { id: 'b5', img: 'boss-5', zh: '虎将军', py: 'Hǔ jiāngjūn', ru: 'Тигр-Генерал',
       lore: 'Последний страж заставы. Не спрашивает — требует. Отвечать надо быстро и по существу, иначе гуаньдао опускается, и разговор окончен.',
       style: 'громкий, властный, рубит фразы, требует быстрых чётких ответов, давит',
       topic: 'планы, решения, путь и дорога, здоровье, воля и характер',
-      voice: { rate: 1.0, pitch: 0.7 }, lvl: 4, note: 'D' },
+      voice: { rate: 1.0, pitch: 0.7 }, lvl: 4, note: 'D',
+      offset: 1, rounds: 7, lives: 1, hints: ['tr'], sec: 15 },
   ];
   const byId = id => LIST.find(b => b.id === id);
 
@@ -6139,7 +6147,30 @@ window.Boss = (() => {
   }
   const chestBonusPct = 30;   /* «полнее на 30%», если не тронул ни одной подсказки */
 
-  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest };
+  /* Параметры конкретного боя: уровень речи считается от вашего, но каждый босс держит свою планку */
+  function setup(state, boss, now = Date.now()) {
+    const my = levelOf(state);
+    const lvl = Math.max(1, Math.min(4, my + (boss.offset || 0)));
+    return {
+      my, lvl,
+      rounds: boss.rounds || ROUNDS,
+      lives: boss.lives || 2,
+      hints: boss.hints || ['tr', 'start', 'opts'],
+      sec: boss.sec || 0,                                  /* 0 — без таймера на ответ */
+      hard: (boss.offset || 0) > 0,
+    };
+  }
+  /* Насколько бой тяжелее прогулки — на это же множится награда */
+  function weight(sp) {
+    let w = 1;
+    w += (sp.rounds - 5) * 0.08;              /* больше реплик */
+    w += (3 - sp.lives) * 0.12;               /* меньше права на ошибку */
+    w += (3 - sp.hints.length) * 0.1;         /* меньше подсказок */
+    if (sp.sec) w += (30 - sp.sec) / 100;     /* жёстче время */
+    if (sp.hard) w += 0.15;                   /* речь выше вашего уровня */
+    return Math.round(w * 100) / 100;
+  }
+  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest, setup, weight };
 })();
 
 ;
@@ -6594,6 +6625,7 @@ window.BossMusic = (() => {
       const cd = Boss.tryLeft(state, now);
       const cards = Boss.LIST.map(b => {
         const r = Boss.bs(state, b.id);
+        const sp = Boss.setup(state, b);
         const rs = Boss.respawnLeft(state, b.id, now);
         const locked = rs > 0 || cd > 0;
         const why = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
@@ -6602,7 +6634,8 @@ window.BossMusic = (() => {
           <div class="grow">
             <div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
             <div class="boss-lore">${esc(b.lore)}</div>
-            <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b></div>
+            <div class="boss-terms">речь <b>HSK ${sp.lvl}</b> · ${fmt.plural(sp.rounds, 'реплика', 'реплики', 'реплик')} · ${fmt.plural(sp.lives, 'ошибка', 'ошибки', 'ошибок')} · ${fmt.plural(sp.hints.length, 'подсказка', 'подсказки', 'подсказок')}${sp.sec ? ' · ' + sp.sec + ' с на ответ' : ''}</div>
+            <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b> · награда ×${Boss.weight(sp)}</div>
             <div class="boss-when">${why}</div>
             <button class="btn ${locked ? 'btn-secondary' : 'btn-danger'} btn-sm" data-action="boss-go" data-id="${b.id}" ${locked ? 'disabled' : ''}>Вызвать на бой</button>
           </div></div>`;
@@ -6659,25 +6692,41 @@ window.BossMusic = (() => {
     if (!b || !Boss.ready(state, b.id)) return;
     el.disabled = true;
     toast('Босс готовится…', 1500);
-    const lvl = Boss.levelOf(state);
+    const sp = Boss.setup(state, b);
     const avoid = Boss.recall(state).map(m => m.t);
-    const res = await BossGen.rounds(b, lvl, Boss.ROUNDS, avoid);
+    const res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
     Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
     const bst = Boss.st(state);
     bst.lastTry = Date.now();
     Boss.bs(state, b.id).tries++;
     persist();
-    fight = { boss: b, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl, shown: null, startedAt: Date.now() };
+    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now() };
     BossMusic.start(b);
     nav('fight');
   };
 
   /* ── бой ── */
+  let clock = null;
+  function stopClock() { if (clock) { clearInterval(clock); clock = null; } }
+  function startClock() {
+    stopClock();
+    if (!fight || !fight.sp.sec) return;
+    const deadline = Date.now() + fight.sp.sec * 1000;
+    const tick = () => {
+      if (!fight || fight.shown) return;                      /* во время подсказки и разбора не тикаем */
+      const left = Math.ceil((deadline - Date.now()) / 1000);
+      const el = $('#fclock');
+      if (el) { el.textContent = left + ' с'; el.classList.toggle('urgent', left <= 5); }
+      if (left <= 0) { stopClock(); answer([]); }              /* не успел — мимо */
+    };
+    clock = setInterval(tick, 250);
+    tick();
+  }
   const speak = () => { const r = fight.rounds[fight.i], v = fight.boss.voice; Speech.say(r.say, v); };
   actions['fight-say'] = () => speak();
   actions['fight-quit'] = () => {
     sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, а следующий вызов всё равно через 10 минут.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
-      $('#fq', s).onclick = () => { closeSheet(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
+      $('#fq', s).onclick = () => { closeSheet(); stopClock(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
       $('#fc', s).onclick = () => closeSheet();
     });
   };
@@ -6709,6 +6758,7 @@ window.BossMusic = (() => {
     });
   };
   function answer(said) {
+    stopClock();
     const r = fight.rounds[fight.i];
     const ok = BossGen.judge(r, said);
     r.said = Array.isArray(said) ? said[0] : said;
@@ -6718,7 +6768,7 @@ window.BossMusic = (() => {
     render();
     setTimeout(() => {
       if (!fight) return;
-      if (fight.wrong >= 2) return endFight(false);
+      if (fight.wrong >= fight.sp.lives) return endFight(false);
       fight.i++;
       fight.shown = null;
       if (fight.i >= fight.rounds.length) return endFight(true);
@@ -6731,8 +6781,8 @@ window.BossMusic = (() => {
       if (!fight) return '<div class="empty">Бой не начат</div>';
       const b = fight.boss, r = fight.rounds[fight.i];
       const sh = fight.shown || {};
-      const hearts = '❤'.repeat(2 - fight.wrong) + '·'.repeat(fight.wrong);
-      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>
+      const hearts = '❤'.repeat(Math.max(0, fight.sp.lives - fight.wrong)) + '·'.repeat(Math.min(fight.sp.lives, fight.wrong));
+      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>${fight.sp.sec ? `<div class="fight-clock" id="fclock">${fight.sp.sec} с</div>` : ''}
       <div class="panel ornate fight-card">
         <img class="boss-por big ${sh.k === 'fb' ? (sh.ok ? 'hit' : 'laugh') : ''}" src="${IMG_URL(b.img)}" alt="" draggable="false">
         <div class="boss-n"><span class="zh">${esc(b.zh)}</span></div>
@@ -6745,14 +6795,20 @@ window.BossMusic = (() => {
       ${sh.k === 'fb' ? '' : `<div class="fight-acts">
         <button class="btn btn-danger btn-block btn-lg" data-action="fight-listen" data-nosound>🎙 Ответить голосом</button>
         <button class="btn btn-secondary btn-block btn-sm" data-action="fight-text">Ответить текстом</button>
-        <div class="hint-row">${HINTS.map(h => `<button class="hint-btn ${fight.hints[h.k] ? 'used' : ''}" data-action="fight-hint" data-k="${h.k}" ${fight.hints[h.k] ? 'disabled' : ''} data-nosound><span class="zh">${h.ico}</span><small>${h.t}</small></button>`).join('')}</div>
+        <div class="hint-row">${HINTS.filter(h => fight.sp.hints.indexOf(h.k) >= 0).map(h => `<button class="hint-btn ${fight.hints[h.k] ? 'used' : ''}" data-action="fight-hint" data-k="${h.k}" ${fight.hints[h.k] ? 'disabled' : ''} data-nosound><span class="zh">${h.ico}</span><small>${h.t}</small></button>`).join('')}</div>
         <div class="hint" style="text-align:center">${fight.used ? `Подсказок использовано: ${fight.used}` : `Без подсказок сундук полнее на ${Boss.chestBonusPct}%`}</div>
       </div>`}`;
     },
-    mount() { if (fight && !fight.spoke) { fight.spoke = true; setTimeout(speak, 400); } },
+    mount() {
+      if (!fight) return;
+      if (!fight.spoke) { fight.spoke = true; setTimeout(speak, 400); }
+      if (fight.shown && fight.shown.k === 'fb') stopClock();
+      else if (fight.sp.sec && fight.clockFor !== fight.i) { fight.clockFor = fight.i; startClock(); }
+    },
   };
 
   function endFight(won) {
+    stopClock();
     const b = fight.boss, r = Boss.bs(state, b.id);
     const noHints = fight.used === 0;
     let chest = null;
@@ -6766,7 +6822,7 @@ window.BossMusic = (() => {
       state.campaign.chestLog.push(entry);
       state.campaign.chests.opened++;
     }
-    const pts = won ? Math.round((30 + b.lvl * 10) * (noHints ? 1.5 : 1)) : 0;
+    const pts = won ? Math.round((25 + fight.sp.lvl * 12) * Boss.weight(fight.sp) * (noHints ? 1.5 : 1)) : 0;
     const a = {
       id: uid(), ts: fight.startedAt, endedAt: Date.now(), durationMs: Date.now() - fight.startedAt,
       mode: 'boss', boss: b.id, bossName: b.ru, level: fight.lvl, difficulty: 'boss', deckIds: [], deckName: b.ru,
