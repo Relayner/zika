@@ -22,8 +22,10 @@
       ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {
-    const n = Campaign.TOTAL_DAYS, per = Campaign.DAYS_PER_RANK;
-    return `<div class="dbar">${Array.from({ length: n }, (_, i) => `<i class="${i < days ? 'on' : ''}${i === days ? ' cur' : ''}${i % per === 0 && i ? ' tick' : ''}${Math.floor(i / per) === idx ? ' rank' : ''}"></i>`).join('')}</div>`;
+    const n = Campaign.TOTAL_DAYS, at = Campaign.RANK_AT;
+    const bound = new Set(at.slice(1, -1));                       /* дни, где начинается новый ранг */
+    const of = i => { let k = 0; while (k < at.length - 1 && i >= at[k + 1]) k++; return k; };
+    return `<div class="dbar">${Array.from({ length: n }, (_, i) => `<i class="${i < days ? 'on' : ''}${i === days ? ' cur' : ''}${bound.has(i) ? ' tick' : ''}${of(i) === idx ? ' rank' : ''}"></i>`).join('')}</div>`;
   }
   function dots(list) {
     return `<div class="dots">${list.map(d => `<i class="${d.r}${d.r === 'today' ? (d.ultra ? ' ultra' : d.done ? ' done' : '') : ''}" title="${d.d}"></i>`).join('')}</div>`;
@@ -49,7 +51,7 @@
       <div class="panel">
         <div class="flabel">Поход · ${Campaign.TOTAL_DAYS} дней</div>
         ${dayBar(days, idx)}
-        <div class="hint" style="margin-top:8px">${rp.complete ? `Все ${Campaign.TOTAL_DAYS} дней пройдены${rp.extra ? ' · сверх похода: ' + rp.extra : ''}. Держите строй — пропуски по-прежнему откатывают.` : `До ранга «${esc(next.ru)}» — ${fmt.plural(rp.toNext, 'день', 'дня', 'дней')}. Каждые ${Campaign.DAYS_PER_RANK} зачтённых дня — новый ранг.`}</div>
+        <div class="hint" style="margin-top:8px">${rp.complete ? `Все ${Campaign.TOTAL_DAYS} дней пройдены${rp.extra ? ' · сверх похода: ' + rp.extra : ''}. Держите строй — пропуски по-прежнему откатывают.` : `До ранга «${esc(next.ru)}» — ${fmt.plural(rp.toNext, 'день', 'дня', 'дней')} из ${rp.need}. Каждый следующий ранг дороже предыдущего: от ${Campaign.RANK_DAYS[0]} до ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]} зачтённых дней.`}</div>
         <div class="level-stats"><span>Зачтено: <b>${(c.stats && c.stats.done) || 0}</b></span><span>Марш-бросков: <b>${(c.stats && c.stats.ultra) || 0}</b></span><span>Пропусков: <b>${(c.stats && c.stats.miss) || 0}</b></span></div>
       </div>
       <div class="panel">
@@ -128,7 +130,7 @@
       <div class="panel" style="margin-bottom:12px">${todayBar(today)}</div>
       <div class="install-note">
         <p><b>Сейчас:</b> ${left}</p>
-        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Новый ранг — каждые ${Campaign.DAYS_PER_RANK} зачтённых дня; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
+        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Ранги дорожают: на первый нужно ${Campaign.RANK_DAYS[0]} зачтённых дня, на последний — ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]}; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
         <p><b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два и сундук с сокровищами.</p>
         <p>День без перехода откатывает поход на день. Очки — за верные ответы: сложнее режим — больше очков.</p>
       </div>

@@ -1230,7 +1230,7 @@ window.HSK = {
 };
 
 ;
-/* Частотные слова за пределами HSK 1–3 (≈ уровень HSK 4): четвёртая встроенная колода, вместе с HSK — банк 1000 слов. */
+/* Лексика HSK 4 (581 слово): четвёртая встроенная колода. Вместе с HSK 1–3 — банк на 1181 слово. */
 window.FREQ = [
 ["爱情","àiqíng","любовь (романтическая)"],
 ["安排","ānpái","устраивать, планировать"],
@@ -4153,6 +4153,8 @@ window.HskReal = (() => {
   const itemKey = it => [
     Array.isArray(it.say) ? it.say.join('|') : (it.say || ''),
     it.q || '', it.t || '', it.text || '', it.star || '',
+    it.a || '', it.b || '', it.ans || '',                       /* диалоги {a,b} и пропуски {ans} тоже должны различаться */
+    Array.isArray(it.parts) ? it.parts.join('') : '',
     Array.isArray(it.chunks) ? it.chunks.join('') : '',
   ].join('\u00a7');
   let pendingSeen = null;
@@ -4195,9 +4197,12 @@ window.HskReal = (() => {
     const qs = [];
     /* Слушание ч.1: слово + картинка → 对/错 (смесь гарантирована) */
     const truths1 = shuffle([true, true, false, false, Math.random() < 0.5]);
-    takePics(5).forEach((p, ti) => {
+    const l1pics = takePics(5);
+    const l1others = shuffle(pics.filter(x => !l1pics.some(y => y.id === x.id)));   /* подмены не повторяются */
+    let l1k = 0;
+    l1pics.forEach((p, ti) => {
       const truth = truths1[ti];
-      const other = pics[picCursor + rnd(pics.length - picCursor - 1)] || pics[0];
+      const other = truth ? null : (l1others[l1k++] || pics[0]);   /* подмену берём только для ложных */
       qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? p.h : other.h, pic: p.id, correct: truth ? 0 : 1 });
     });
     /* Слушание ч.2: предложение → выбрать картинку из 3 */
@@ -4220,10 +4225,12 @@ window.HskReal = (() => {
     }
     /* Чтение ч.1: картинка + слово → 对/错 (смесь гарантирована) */
     const truthsR = shuffle([true, true, false, false, Math.random() < 0.5]);
-    takePics(5).forEach((p, ti) => {
+    const r1pics = takePics(5);
+    const r1others = shuffle(pics.filter(x => !r1pics.some(y => y.id === x.id)));   /* подмены не повторяются */
+    let r1k = 0;
+    r1pics.forEach((p, ti) => {
       const truth = truthsR[ti];
-      const other = pics[rnd(picCursor - 5)] || pics[0];
-      const w = truth ? p : (other.id === p.id ? pics[(pics.indexOf(p) + 1) % pics.length] : other);
+      const w = truth ? p : (r1others[r1k++] || pics[0]);   /* подмену берём только для ложных */
       qs.push({ sec: 'reading', part: 1, type: 'tf', text: w.h, textPy: w.py, pic: p.id, correct: truth ? 0 : 1 });
     });
     /* Чтение ч.2: предложение (текстом) → картинка */
@@ -4256,9 +4263,12 @@ window.HskReal = (() => {
     const qs = [];
     /* 听力 ч.1 (10): предложение + картинка → 对/错 (5 верных + 5 неверных) */
     const truths2 = shuffle([true, true, true, true, true, false, false, false, false, false]);
-    sentPool.slice(0, 10).forEach((it, ti) => {
+    const l1set = sentPool.slice(0, 10);
+    const l1alt = pick(B.SENT.filter(x => !l1set.some(y => y.say === x.say) && !sentPool.slice(10, 15).some(y => y.say === x.say)), 5, 'e2:ALT');
+    let l2k = 0;
+    l1set.forEach((it, ti) => {
       const truth = truths2[ti];
-      const other = sentPool[10 + rnd(Math.max(1, sentPool.length - 10))] || sentPool[0];
+      const other = truth ? null : (l1alt[l2k++] || l1alt[0]);   /* подмену берём только для ложных: без повторов и не из чтения */
       qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? it.say : other.say, pic: it.pic, correct: truth ? 0 : 1 });
     });
     /* 听力 ч.2 (10 = 2 блока по 5): диалог → картинка из пула 6 */
@@ -4572,7 +4582,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260826-1219';
+  const VERSION = '20260826-1330';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -6091,12 +6101,12 @@ window.Boss = (() => {
   /* ── сундук босса: скромнее ультра-дневного, но с разбросом ── */
   function chest(boss, noHints, rnd = Math.random) {
     const base = 1 + (rnd() < 0.45 ? 1 : 0) + (boss.lvl >= 3 && rnd() < 0.35 ? 1 : 0);   /* 1–3 предмета против 3 в ультра-сундуке */
-    const n = noHints ? base + (rnd() < 0.3 ? 1 : 0) : base;
+    const n = noHints ? base + (rnd() < 0.42 ? 1 : 0) : base;
     const items = [];
     for (let i = 0; i < n; i++) {
       let it = Treasures.rollItem(rnd);
-      /* без подсказок — шанс на предмет получше */
-      if (noHints && rnd() < 0.3 && it.rarity === 'common') { const pool = Treasures.ITEMS.filter(x => x.rarity === 'uncommon'); it = pool[Math.floor(rnd() * pool.length)]; }
+      /* без подсказок — шанс, что предмет окажется ступенью выше */
+      if (noHints && rnd() < 0.42 && it.rarity === 'common') { const pool = Treasures.ITEMS.filter(x => x.rarity === 'uncommon'); it = pool[Math.floor(rnd() * pool.length)]; }
       items.push(it.id);
     }
     return items;
@@ -7171,8 +7181,10 @@ window.BossMusic = (() => {
       ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {
-    const n = Campaign.TOTAL_DAYS, per = Campaign.DAYS_PER_RANK;
-    return `<div class="dbar">${Array.from({ length: n }, (_, i) => `<i class="${i < days ? 'on' : ''}${i === days ? ' cur' : ''}${i % per === 0 && i ? ' tick' : ''}${Math.floor(i / per) === idx ? ' rank' : ''}"></i>`).join('')}</div>`;
+    const n = Campaign.TOTAL_DAYS, at = Campaign.RANK_AT;
+    const bound = new Set(at.slice(1, -1));                       /* дни, где начинается новый ранг */
+    const of = i => { let k = 0; while (k < at.length - 1 && i >= at[k + 1]) k++; return k; };
+    return `<div class="dbar">${Array.from({ length: n }, (_, i) => `<i class="${i < days ? 'on' : ''}${i === days ? ' cur' : ''}${bound.has(i) ? ' tick' : ''}${of(i) === idx ? ' rank' : ''}"></i>`).join('')}</div>`;
   }
   function dots(list) {
     return `<div class="dots">${list.map(d => `<i class="${d.r}${d.r === 'today' ? (d.ultra ? ' ultra' : d.done ? ' done' : '') : ''}" title="${d.d}"></i>`).join('')}</div>`;
@@ -7198,7 +7210,7 @@ window.BossMusic = (() => {
       <div class="panel">
         <div class="flabel">Поход · ${Campaign.TOTAL_DAYS} дней</div>
         ${dayBar(days, idx)}
-        <div class="hint" style="margin-top:8px">${rp.complete ? `Все ${Campaign.TOTAL_DAYS} дней пройдены${rp.extra ? ' · сверх похода: ' + rp.extra : ''}. Держите строй — пропуски по-прежнему откатывают.` : `До ранга «${esc(next.ru)}» — ${fmt.plural(rp.toNext, 'день', 'дня', 'дней')}. Каждые ${Campaign.DAYS_PER_RANK} зачтённых дня — новый ранг.`}</div>
+        <div class="hint" style="margin-top:8px">${rp.complete ? `Все ${Campaign.TOTAL_DAYS} дней пройдены${rp.extra ? ' · сверх похода: ' + rp.extra : ''}. Держите строй — пропуски по-прежнему откатывают.` : `До ранга «${esc(next.ru)}» — ${fmt.plural(rp.toNext, 'день', 'дня', 'дней')} из ${rp.need}. Каждый следующий ранг дороже предыдущего: от ${Campaign.RANK_DAYS[0]} до ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]} зачтённых дней.`}</div>
         <div class="level-stats"><span>Зачтено: <b>${(c.stats && c.stats.done) || 0}</b></span><span>Марш-бросков: <b>${(c.stats && c.stats.ultra) || 0}</b></span><span>Пропусков: <b>${(c.stats && c.stats.miss) || 0}</b></span></div>
       </div>
       <div class="panel">
@@ -7277,7 +7289,7 @@ window.BossMusic = (() => {
       <div class="panel" style="margin-bottom:12px">${todayBar(today)}</div>
       <div class="install-note">
         <p><b>Сейчас:</b> ${left}</p>
-        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Новый ранг — каждые ${Campaign.DAYS_PER_RANK} зачтённых дня; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
+        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Ранги дорожают: на первый нужно ${Campaign.RANK_DAYS[0]} зачтённых дня, на последний — ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]}; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
         <p><b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два и сундук с сокровищами.</p>
         <p>День без перехода откатывает поход на день. Очки — за верные ответы: сложнее режим — больше очков.</p>
       </div>

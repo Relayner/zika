@@ -28,6 +28,8 @@ window.HskReal = (() => {
   const itemKey = it => [
     Array.isArray(it.say) ? it.say.join('|') : (it.say || ''),
     it.q || '', it.t || '', it.text || '', it.star || '',
+    it.a || '', it.b || '', it.ans || '',                       /* диалоги {a,b} и пропуски {ans} тоже должны различаться */
+    Array.isArray(it.parts) ? it.parts.join('') : '',
     Array.isArray(it.chunks) ? it.chunks.join('') : '',
   ].join('\u00a7');
   let pendingSeen = null;
@@ -70,9 +72,12 @@ window.HskReal = (() => {
     const qs = [];
     /* Слушание ч.1: слово + картинка → 对/错 (смесь гарантирована) */
     const truths1 = shuffle([true, true, false, false, Math.random() < 0.5]);
-    takePics(5).forEach((p, ti) => {
+    const l1pics = takePics(5);
+    const l1others = shuffle(pics.filter(x => !l1pics.some(y => y.id === x.id)));   /* подмены не повторяются */
+    let l1k = 0;
+    l1pics.forEach((p, ti) => {
       const truth = truths1[ti];
-      const other = pics[picCursor + rnd(pics.length - picCursor - 1)] || pics[0];
+      const other = truth ? null : (l1others[l1k++] || pics[0]);   /* подмену берём только для ложных */
       qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? p.h : other.h, pic: p.id, correct: truth ? 0 : 1 });
     });
     /* Слушание ч.2: предложение → выбрать картинку из 3 */
@@ -95,10 +100,12 @@ window.HskReal = (() => {
     }
     /* Чтение ч.1: картинка + слово → 对/错 (смесь гарантирована) */
     const truthsR = shuffle([true, true, false, false, Math.random() < 0.5]);
-    takePics(5).forEach((p, ti) => {
+    const r1pics = takePics(5);
+    const r1others = shuffle(pics.filter(x => !r1pics.some(y => y.id === x.id)));   /* подмены не повторяются */
+    let r1k = 0;
+    r1pics.forEach((p, ti) => {
       const truth = truthsR[ti];
-      const other = pics[rnd(picCursor - 5)] || pics[0];
-      const w = truth ? p : (other.id === p.id ? pics[(pics.indexOf(p) + 1) % pics.length] : other);
+      const w = truth ? p : (r1others[r1k++] || pics[0]);   /* подмену берём только для ложных */
       qs.push({ sec: 'reading', part: 1, type: 'tf', text: w.h, textPy: w.py, pic: p.id, correct: truth ? 0 : 1 });
     });
     /* Чтение ч.2: предложение (текстом) → картинка */
@@ -131,9 +138,12 @@ window.HskReal = (() => {
     const qs = [];
     /* 听力 ч.1 (10): предложение + картинка → 对/错 (5 верных + 5 неверных) */
     const truths2 = shuffle([true, true, true, true, true, false, false, false, false, false]);
-    sentPool.slice(0, 10).forEach((it, ti) => {
+    const l1set = sentPool.slice(0, 10);
+    const l1alt = pick(B.SENT.filter(x => !l1set.some(y => y.say === x.say) && !sentPool.slice(10, 15).some(y => y.say === x.say)), 5, 'e2:ALT');
+    let l2k = 0;
+    l1set.forEach((it, ti) => {
       const truth = truths2[ti];
-      const other = sentPool[10 + rnd(Math.max(1, sentPool.length - 10))] || sentPool[0];
+      const other = truth ? null : (l1alt[l2k++] || l1alt[0]);   /* подмену берём только для ложных: без повторов и не из чтения */
       qs.push({ sec: 'listening', part: 1, type: 'tf', say: truth ? it.say : other.say, pic: it.pic, correct: truth ? 0 : 1 });
     });
     /* 听力 ч.2 (10 = 2 блока по 5): диалог → картинка из пула 6 */

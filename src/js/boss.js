@@ -84,12 +84,12 @@ window.Boss = (() => {
   /* ── сундук босса: скромнее ультра-дневного, но с разбросом ── */
   function chest(boss, noHints, rnd = Math.random) {
     const base = 1 + (rnd() < 0.45 ? 1 : 0) + (boss.lvl >= 3 && rnd() < 0.35 ? 1 : 0);   /* 1–3 предмета против 3 в ультра-сундуке */
-    const n = noHints ? base + (rnd() < 0.3 ? 1 : 0) : base;
+    const n = noHints ? base + (rnd() < 0.42 ? 1 : 0) : base;
     const items = [];
     for (let i = 0; i < n; i++) {
       let it = Treasures.rollItem(rnd);
-      /* без подсказок — шанс на предмет получше */
-      if (noHints && rnd() < 0.3 && it.rarity === 'common') { const pool = Treasures.ITEMS.filter(x => x.rarity === 'uncommon'); it = pool[Math.floor(rnd() * pool.length)]; }
+      /* без подсказок — шанс, что предмет окажется ступенью выше */
+      if (noHints && rnd() < 0.42 && it.rarity === 'common') { const pool = Treasures.ITEMS.filter(x => x.rarity === 'uncommon'); it = pool[Math.floor(rnd() * pool.length)]; }
       items.push(it.id);
     }
     return items;

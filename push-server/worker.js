@@ -84,14 +84,14 @@ export default {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-fable-5', max_tokens: 2000, system: sys, messages: [{ role: 'user', content: 'Сгенерируй бой. Отвечай только JSON.' }] }),
+        body: JSON.stringify({ model: 'claude-fable-5', max_tokens: 4000, system: sys, messages: [{ role: 'user', content: 'Сгенерируй бой. Отвечай только JSON, без пояснений и без markdown.' }] }),
       });
       if (!r.ok) return json({ error: 'upstream', status: r.status, detail: (await r.text()).slice(0, 300) }, 502);
       const data = await r.json();
       const text = (data.content || []).map(c => c.text || '').join('').trim();
       const m = text.match(/\{[\s\S]*\}/);
-      if (!m) return json({ error: 'bad_json' }, 502);
-      try { return json({ ok: true, ...JSON.parse(m[0]) }); } catch (e) { return json({ error: 'bad_json' }, 502); }
+      if (!m) return json({ error: 'bad_json', stop: data.stop_reason }, 502);
+      try { return json({ ok: true, ...JSON.parse(m[0]) }); } catch (e) { return json({ error: 'bad_json', stop: data.stop_reason, len: text.length }, 502); }
     }
     if (url.pathname === '/test') {
       if (!body.endpoint) return json({ error: 'no endpoint' }, 400);
