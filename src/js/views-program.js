@@ -187,6 +187,7 @@
       mode: 'sprint', block: b.id, deckIds: [], deckName: b.ru, difficulty: 'medium', show: 'program', guess: ['all'], order: 'random', timer: 0,
       total, planned: total, aborted: false, correct: sp.right, partial: 0, wrong: sp.wrong,
       percent: Math.round(sp.right / total * 100), points, questions: [],
+      words: [...new Set(sp.qs.map(q => q.card.hanzi))],   /* для расчёта новизны */
     };
     persist();
     sp = null;

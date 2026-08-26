@@ -166,6 +166,7 @@
       correct: fight.rounds.filter(x => x.ok).length, partial: 0, wrong: fight.wrong,
       percent: Math.round(fight.rounds.filter(x => x.ok).length / fight.rounds.length * 100),
       points: pts, won, noHints, src: fight.src, questions: [],
+      lines: fight.rounds.map(r => r.say),   /* для расчёта новизны */
     };
     persist();
     BossMusic.finish(won);

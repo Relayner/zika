@@ -412,28 +412,58 @@ t('simulate always-first-answer', () => {
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'balance/simulation group passed');
 
 
-/* ── деградация очков ── */
-t('points decay', () => {
+/* ── деградация очков: считаем новизну, а не число заходов ── */
+t('decay pays for new content', () => {
   const st = { settings: {}, cardStats: {} };
-  const a1 = { mode: 'hsk', format: 'real', level: 1, deckIds: ['hsk1'], points: 100 };
-  const d0 = Campaign.decay(st, a1);
-  assert.equal(d0.mult, 1, 'первый заход на своём уровне — без скидки');
+  const exam = n => ({ mode: 'hsk', format: 'real', level: 1, deckIds: ['hsk1'], points: 100,
+    questions: Array.from({ length: 20 }, (_, i) => ({ hanzi: 'q' + (n * 20 + i) })) });
+  const a1 = exam(0);
+  assert.equal(Campaign.decay(st, a1).novelty, 100);
+  assert.equal(Campaign.decay(st, a1).mult, 1, 'новый материал — без скидки');
   Campaign.noteUnit(st, a1);
-  assert.equal(Campaign.decay(st, a1).mult, 0.7, 'второй заход за неделю');
-  Campaign.noteUnit(st, a1);
-  assert.equal(Campaign.decay(st, a1).mult, 0.5, 'третий заход');
-  Campaign.noteUnit(st, a1); Campaign.noteUnit(st, a1); Campaign.noteUnit(st, a1);
-  assert.ok(Campaign.decay(st, a1).mult <= 0.25, 'пол деградации');
-  /* разные единицы контента не мешают друг другу */
-  const a2 = { mode: 'hsk', format: 'real', level: 2, deckIds: ['hsk2'], points: 100 };
-  assert.equal(Campaign.decay(st, a2).mult, 1.25, 'уровень выше изученного — надбавка, и свой счёт повторов');
-  /* блоки программы считаются отдельно */
-  const b1 = { mode: 'sprint', block: 'b1-03', points: 50 };
-  assert.equal(Campaign.decay(st, b1).mult, 1);
-  Campaign.noteUnit(st, b1);
-  assert.equal(Campaign.decay(st, b1).nth, 2);
-  assert.equal(Campaign.unitKey(b1), 'blk:b1-03');
+  /* второй заход целиком из нового материала — скидки быть не должно */
+  const a2 = exam(1);
+  assert.equal(Campaign.decay(st, a2).novelty, 100);
+  assert.equal(Campaign.decay(st, a2).mult, 1, 'другой материал того же экзамена платит полностью');
+  Campaign.noteUnit(st, a2);
+  /* повтор ровно того же — минимальная ставка */
+  const rep = Campaign.decay(st, a1);
+  assert.equal(rep.novelty, 0);
+  assert.equal(rep.mult, 0.3, 'уже виденное платит 30%');
+  /* половина нового — середина */
+  const half = { mode: 'hsk', format: 'real', level: 1, deckIds: ['hsk1'], points: 100,
+    questions: [...a1.questions.slice(0, 10), ...Array.from({ length: 10 }, (_, i) => ({ hanzi: 'new' + i }))] };
+  assert.equal(Campaign.decay(st, half).novelty, 50);
+  assert.equal(Campaign.decay(st, half).mult, 0.65);
+});
+t('decay units by mode', () => {
+  const st = { settings: {}, cardStats: {} };
+  const words = ['你', '我', '好'];
+  const sprint = { mode: 'sprint', block: 'b1-01', points: 60, questions: [], words };
+  assert.equal(Campaign.decay(st, sprint).mult, 1);
+  Campaign.noteUnit(st, sprint);
+  assert.equal(Campaign.decay(st, sprint).mult, 0.3, 'те же слова — сниженная ставка');
+  /* другой блок не задет */
+  const other = { mode: 'sprint', block: 'b1-05', points: 60, questions: [], words: ['吃', '喝', '茶'] };
+  assert.equal(Campaign.decay(st, other).mult, 1);
+  /* босс: свежие реплики платят полностью */
+  const boss = n => ({ mode: 'boss', boss: 'b1', level: 1, points: 60, questions: [], lines: ['s' + n + 'a', 's' + n + 'b'] });
+  assert.equal(Campaign.decay(st, boss(1)).mult, 1);
+  Campaign.noteUnit(st, boss(1));
+  assert.equal(Campaign.decay(st, boss(2)).mult, 1, 'новые реплики — без скидки');
+  assert.equal(Campaign.decay(st, boss(1)).mult, 0.3, 'те же реплики — скидка');
+  assert.equal(Campaign.unitKey(sprint), 'blk:b1-01');
   assert.equal(Campaign.contentLevel({ deckIds: ['hsk3'] }), 3);
   assert.equal(Campaign.contentLevel({ deckIds: ['freq1'] }), 4);
+  assert.deepEqual(Campaign.contentKeys(sprint), ['w:你', 'w:我', 'w:好']);
+});
+t('decay by level gap', () => {
+  if (!global.Boss) { require('../src/js/boss.js'); }
+  const st = { settings: {}, cardStats: {} };
+  for (let i = 0; i < 25; i++) st.cardStats['hsk3:x' + i] = { asked: 3, right: 2 };
+  const low = Campaign.decay(st, { mode: 'hsk', format: 'real', level: 1, deckIds: ['hsk1'], points: 100, questions: [{ hanzi: 'z1' }] });
+  assert.ok(low.mult < 0.7, 'контент на два уровня ниже сильно дешевле: ' + low.mult);
+  const up = Campaign.decay(st, { mode: 'hsk', format: 'real', level: 4, deckIds: ['freq1'], points: 100, questions: [{ hanzi: 'z2' }] });
+  assert.ok(up.mult > 1, 'контент выше уровня — надбавка: ' + up.mult);
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'decay group passed');

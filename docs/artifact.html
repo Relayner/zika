@@ -2835,18 +2835,25 @@ window.Campaign = (() => {
   const pts = a => (a.points != null ? a.points : attemptPoints(a));
 
   /* ── Деградация очков ──
-     Низкоуровневый и уже отработанный материал платит меньше: иначе выгодно бесконечно гонять лёгкое. */
-  const LVL_MULT = { 0: 1, 1: 0.6, 2: 0.35, 3: 0.2 };   /* насколько контент ниже твоего рабочего уровня */
-  const REPEAT_MULT = [1, 0.7, 0.5, 0.35, 0.25];        /* какой это раз за неделю */
-  const REPEAT_WINDOW = 7 * 24 * 3600e3;
-  /* Из чего складывается единица контента: блок, уровень экзамена, колода+режим */
-  function unitKey(a) {
-    if (a.block) return 'blk:' + a.block;
-    if (a.mode === 'boss') return 'boss:' + a.boss;
-    if (a.mode === 'hsk') return 'hsk:' + (a.format === 'real' ? 'exam' : 'test') + a.level;
-    return 'deck:' + (a.deckIds || []).join('+') + ':' + a.mode;
+     Платим за новое, а не за число заходов: если материал каждый раз другой, скидки нет.
+     Уже виденное за неделю оплачивается по сниженной ставке. */
+  const LVL_MULT = { 0: 1, 1: 0.6, 2: 0.35, 3: 0.2 };   /* насколько контент ниже рабочего уровня */
+  const SEEN_WINDOW = 7 * 24 * 3600e3;
+  const OLD_RATE = 0.3;                                  /* сколько платит повторённый материал */
+  const SEEN_CAP = 4000;
+
+  /* Единицы содержания попытки: то, что нужно было знать */
+  function contentKeys(a) {
+    if (Array.isArray(a.lines) && a.lines.length) return a.lines.map(x => 'l:' + String(x).slice(0, 40));         /* реплики босса */
+    if (Array.isArray(a.words) && a.words.length) return a.words.map(x => 'w:' + x);                              /* слова спринта */
+    const qs = a.questions || [];
+    const out = [];
+    for (const q of qs) {
+      if (q.cardId) out.push('c:' + q.cardId);
+      else if (q.hanzi) out.push('q:' + String(q.hanzi).slice(0, 40));
+    }
+    return out;
   }
-  /* Уровень контента: 1..4, если определим */
   function contentLevel(a) {
     if (a.level) return a.level;
     if (a.block) return +String(a.block).slice(1, 2) || null;
@@ -2855,7 +2862,22 @@ window.Campaign = (() => {
     if (/^freq/.test(d)) return 4;
     return null;
   }
-  /* Итоговый множитель + человеческое объяснение */
+  function unitKey(a) {
+    if (a.block) return 'blk:' + a.block;
+    if (a.mode === 'boss') return 'boss:' + a.boss;
+    if (a.mode === 'hsk') return 'hsk:' + (a.format === 'real' ? 'exam' : 'test') + a.level;
+    return 'deck:' + (a.deckIds || []).join('+') + ':' + a.mode;
+  }
+  const seenStore = state => (state.settings.seenContent || (state.settings.seenContent = {}));
+  /* Доля материала, которого не было за последнюю неделю */
+  function novelty(state, a, now = Date.now()) {
+    const keys = [...new Set(contentKeys(a))];
+    if (!keys.length) return null;
+    const seen = seenStore(state);
+    let fresh = 0;
+    for (const k of keys) if (!seen[k] || now - seen[k] > SEEN_WINDOW) fresh++;
+    return { share: fresh / keys.length, fresh, total: keys.length };
+  }
   function decay(state, a, now = Date.now()) {
     const parts = [];
     let m = 1;
@@ -2866,20 +2888,24 @@ window.Campaign = (() => {
       if (gap > 0) { const k = LVL_MULT[Math.min(3, gap)]; m *= k; parts.push(`уровень ниже вашего на ${gap} — ×${k}`); }
       else if (gap < 0) { m *= 1.25; parts.push('уровень выше вашего — ×1.25'); }
     }
-    const log = (state.settings.unitLog || (state.settings.unitLog = {}));
-    const key = unitKey(a);
-    const hist = (log[key] || []).filter(t => now - t < REPEAT_WINDOW);
-    const nth = hist.length;
-    if (nth > 0) { const k = REPEAT_MULT[Math.min(REPEAT_MULT.length - 1, nth)]; m *= k; parts.push(`${nth + 1}-е прохождение за неделю — ×${k}`); }
-    return { mult: Math.round(m * 100) / 100, why: parts, key, nth: nth + 1 };
+    const nov = novelty(state, a, now);
+    if (nov) {
+      const k = Math.round((OLD_RATE + (1 - OLD_RATE) * nov.share) * 100) / 100;
+      m *= k;
+      const pct = Math.round(nov.share * 100);
+      if (pct >= 95) parts.push(`материал новый (${pct}%) — без скидки`);
+      else parts.push(`новизна ${pct}% — ×${k}: уже виденное платит ${Math.round(OLD_RATE * 100)}%`);
+    }
+    return { mult: Math.round(m * 100) / 100, why: parts, novelty: nov ? Math.round(nov.share * 100) : null, key: unitKey(a) };
   }
-  /* Записываем прохождение — вызывать один раз при сохранении попытки */
+  /* Помечаем содержание как виденное — один раз при сохранении попытки */
   function noteUnit(state, a, now = Date.now()) {
-    const log = (state.settings.unitLog || (state.settings.unitLog = {}));
-    const key = unitKey(a);
-    log[key] = (log[key] || []).filter(t => now - t < REPEAT_WINDOW);
-    log[key].push(now);
-    if (Object.keys(log).length > 200) { const old = Object.entries(log).sort((x, y) => Math.max(...x[1]) - Math.max(...y[1])).slice(0, 50); old.forEach(([k]) => delete log[k]); }
+    const seen = seenStore(state);
+    for (const k of contentKeys(a)) seen[k] = now;
+    const ks = Object.keys(seen);
+    if (ks.length > SEEN_CAP) {
+      ks.sort((x, y) => seen[x] - seen[y]).slice(0, ks.length - SEEN_CAP).forEach(k => delete seen[k]);
+    }
   }
 
   const key = ts => Stats.dayKey(ts);
@@ -2963,7 +2989,7 @@ window.Campaign = (() => {
     c.chestLog.push(entry); if (c.chestLog.length > 200) c.chestLog = c.chestLog.slice(-200);
     return entry;
   }
-  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, RANK_DAYS, RANK_AT, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
+  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, contentKeys, novelty, RANK_DAYS, RANK_AT, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
 })();
 
 ;
@@ -4582,7 +4608,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260826-1330';
+  const VERSION = '20260826-1447';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -6482,6 +6508,7 @@ window.BossMusic = (() => {
       mode: 'sprint', block: b.id, deckIds: [], deckName: b.ru, difficulty: 'medium', show: 'program', guess: ['all'], order: 'random', timer: 0,
       total, planned: total, aborted: false, correct: sp.right, partial: 0, wrong: sp.wrong,
       percent: Math.round(sp.right / total * 100), points, questions: [],
+      words: [...new Set(sp.qs.map(q => q.card.hanzi))],   /* для расчёта новизны */
     };
     persist();
     sp = null;
@@ -6715,6 +6742,7 @@ window.BossMusic = (() => {
       correct: fight.rounds.filter(x => x.ok).length, partial: 0, wrong: fight.wrong,
       percent: Math.round(fight.rounds.filter(x => x.ok).length / fight.rounds.length * 100),
       points: pts, won, noHints, src: fight.src, questions: [],
+      lines: fight.rounds.map(r => r.say),   /* для расчёта новизны */
     };
     persist();
     BossMusic.finish(won);
