@@ -72,6 +72,14 @@ window.App = (() => {
   }
   async function saveAttempt(a) {
     if (a.points == null) a.points = Campaign.attemptPoints(a);
+    /* Деградация: низкоуровневый и уже отработанный за неделю материал платит меньше */
+    if (!a.aborted && a.points > 0) {
+      const d = Campaign.decay(state, a);
+      a.decay = d;
+      a.pointsRaw = a.points;
+      a.points = Math.round(a.points * d.mult);
+    }
+    Campaign.noteUnit(state, a);
     if (!state.campaign) state.campaign = Campaign.create();
     const c = state.campaign;
     const before = Campaign.todayState(c, state.attempts), rb = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));

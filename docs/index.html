@@ -2822,7 +2822,12 @@ window.Treasures = (() => {
    30 дней похода, 10 рангов — ранг каждые 3 зачтённых дня. Состояние хранится как контрольная точка
    (days + processedThrough) и продвигается только вперёд по календарю; очки каждой попытки зафиксированы в ней самой. */
 window.Campaign = (() => {
-  const CAP = 400, ULTRA_MULT = 5, ULTRA = CAP * ULTRA_MULT, TOTAL_DAYS = 30, RANKS = 10, DAYS_PER_RANK = TOTAL_DAYS / RANKS;
+  const CAP = 400, ULTRA_MULT = 5, ULTRA = CAP * ULTRA_MULT, RANKS = 10;
+  /* Дней на переход к следующему рангу: первые даются легко, дальше всё дороже */
+  const RANK_DAYS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const RANK_AT = RANK_DAYS.reduce((acc, d) => (acc.push(acc[acc.length - 1] + d), acc), [0]);   /* дней к началу каждого ранга */
+  const TOTAL_DAYS = RANK_AT[RANK_AT.length - 1];   /* 63 дня до высшего ранга */
+  const DAYS_PER_RANK = RANK_DAYS[0];
   const BASE = { quiz: { easy: 2, medium: 4, hard: 8 }, write: { easy: 5, medium: 7, hard: 10 }, listen: { easy: 3, medium: 5, hard: 9 }, sentence: { easy: 4, medium: 7, hard: 12 }, flip: 1, hsk: 4 };
   const BONUS = { finish: 5, perfect: 10, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
@@ -2844,6 +2849,54 @@ window.Campaign = (() => {
     return Math.round(p * 10) / 10;
   }
   const pts = a => (a.points != null ? a.points : attemptPoints(a));
+
+  /* ── Деградация очков ──
+     Низкоуровневый и уже отработанный материал платит меньше: иначе выгодно бесконечно гонять лёгкое. */
+  const LVL_MULT = { 0: 1, 1: 0.6, 2: 0.35, 3: 0.2 };   /* насколько контент ниже твоего рабочего уровня */
+  const REPEAT_MULT = [1, 0.7, 0.5, 0.35, 0.25];        /* какой это раз за неделю */
+  const REPEAT_WINDOW = 7 * 24 * 3600e3;
+  /* Из чего складывается единица контента: блок, уровень экзамена, колода+режим */
+  function unitKey(a) {
+    if (a.block) return 'blk:' + a.block;
+    if (a.mode === 'boss') return 'boss:' + a.boss;
+    if (a.mode === 'hsk') return 'hsk:' + (a.format === 'real' ? 'exam' : 'test') + a.level;
+    return 'deck:' + (a.deckIds || []).join('+') + ':' + a.mode;
+  }
+  /* Уровень контента: 1..4, если определим */
+  function contentLevel(a) {
+    if (a.level) return a.level;
+    if (a.block) return +String(a.block).slice(1, 2) || null;
+    const d = (a.deckIds || [])[0] || '';
+    if (/^hsk([123])$/.test(d)) return +d.slice(3);
+    if (/^freq/.test(d)) return 4;
+    return null;
+  }
+  /* Итоговый множитель + человеческое объяснение */
+  function decay(state, a, now = Date.now()) {
+    const parts = [];
+    let m = 1;
+    const my = (window.Boss && Boss.levelOf) ? Boss.levelOf(state) : 1;
+    const cl = contentLevel(a);
+    if (cl) {
+      const gap = my - cl;
+      if (gap > 0) { const k = LVL_MULT[Math.min(3, gap)]; m *= k; parts.push(`уровень ниже вашего на ${gap} — ×${k}`); }
+      else if (gap < 0) { m *= 1.25; parts.push('уровень выше вашего — ×1.25'); }
+    }
+    const log = (state.settings.unitLog || (state.settings.unitLog = {}));
+    const key = unitKey(a);
+    const hist = (log[key] || []).filter(t => now - t < REPEAT_WINDOW);
+    const nth = hist.length;
+    if (nth > 0) { const k = REPEAT_MULT[Math.min(REPEAT_MULT.length - 1, nth)]; m *= k; parts.push(`${nth + 1}-е прохождение за неделю — ×${k}`); }
+    return { mult: Math.round(m * 100) / 100, why: parts, key, nth: nth + 1 };
+  }
+  /* Записываем прохождение — вызывать один раз при сохранении попытки */
+  function noteUnit(state, a, now = Date.now()) {
+    const log = (state.settings.unitLog || (state.settings.unitLog = {}));
+    const key = unitKey(a);
+    log[key] = (log[key] || []).filter(t => now - t < REPEAT_WINDOW);
+    log[key].push(now);
+    if (Object.keys(log).length > 200) { const old = Object.entries(log).sort((x, y) => Math.max(...x[1]) - Math.max(...y[1])).slice(0, 50); old.forEach(([k]) => delete log[k]); }
+  }
 
   const key = ts => Stats.dayKey(ts);
   function addDays(k, n) { const [y, m, d] = k.split('-').map(Number); return key(new Date(y, m - 1, d + n, 12).getTime()); }
@@ -2882,12 +2935,18 @@ window.Campaign = (() => {
     return { key: k, points: p, done: p >= CAP, ultra: p >= ULTRA, bonus: p >= ULTRA ? 2 : p >= CAP ? 1 : 0, toCap: Math.max(0, CAP - p), toUltra: Math.max(0, ULTRA - p) };
   }
   const effectiveDays = (c, attempts, now) => ((c && c.days) || 0) + todayState(c, attempts, now).bonus;
-  const rankIndex = days => Math.min(RANKS - 1, Math.floor(Math.max(0, days) / DAYS_PER_RANK));
+  function rankIndex(days) {
+    const d = Math.max(0, days);
+    let i = 0;
+    while (i < RANKS - 1 && d >= RANK_AT[i + 1]) i++;
+    return i;
+  }
   function rankProgress(days) {
     days = Math.max(0, days);
-    if (days >= TOTAL_DAYS) return { idx: RANKS - 1, inRank: DAYS_PER_RANK, need: DAYS_PER_RANK, complete: true, extra: days - TOTAL_DAYS, toNext: 0 };
+    if (days >= TOTAL_DAYS) { const n = RANK_DAYS[RANKS - 2]; return { idx: RANKS - 1, inRank: n, need: n, complete: true, extra: days - TOTAL_DAYS, toNext: 0 }; }
     const idx = rankIndex(days);
-    return { idx, inRank: days - idx * DAYS_PER_RANK, need: DAYS_PER_RANK, complete: false, extra: 0, toNext: (idx + 1) * DAYS_PER_RANK - days };
+    const need = RANK_DAYS[idx] || RANK_DAYS[RANK_DAYS.length - 1];
+    return { idx, inRank: days - RANK_AT[idx], need, complete: false, extra: 0, toNext: RANK_AT[idx + 1] - days };
   }
   /* Последние n календарных дней: r = 'done' | 'ultra' | 'miss' | 'today' | 'none' */
   function recent(c, attempts, n = 30, now = Date.now()) {
@@ -2920,7 +2979,7 @@ window.Campaign = (() => {
     c.chestLog.push(entry); if (c.chestLog.length > 200) c.chestLog = c.chestLog.slice(-200);
     return entry;
   }
-  return { ensureChests, grantChests, openChest, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
+  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, RANK_DAYS, RANK_AT, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
 })();
 
 ;
@@ -4101,7 +4160,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260825-2232';
+  const VERSION = '20260826-1150';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4173,6 +4232,14 @@ window.App = (() => {
   }
   async function saveAttempt(a) {
     if (a.points == null) a.points = Campaign.attemptPoints(a);
+    /* Деградация: низкоуровневый и уже отработанный за неделю материал платит меньше */
+    if (!a.aborted && a.points > 0) {
+      const d = Campaign.decay(state, a);
+      a.decay = d;
+      a.pointsRaw = a.points;
+      a.points = Math.round(a.points * d.mult);
+    }
+    Campaign.noteUnit(state, a);
     if (!state.campaign) state.campaign = Campaign.create();
     const c = state.campaign;
     const before = Campaign.todayState(c, state.attempts), rb = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));
@@ -5214,7 +5281,14 @@ window.App = (() => {
     ln = { deckId, order: ord, list: orderList(cards, ord), i: 0 };
     nav('learn', { id: deckId });
   }
-  actions['learn-deck'] = el => { App.closeSheet(); open(el.dataset.id); };
+  /* «Учить» ведёт в программу, если для этой колоды есть блоки: занимаемся уроками, а не всей сотней слов сразу */
+  actions['learn-deck'] = el => {
+    App.closeSheet();
+    const id = el.dataset.id;
+    const lvl = window.PROGRAM && (PROGRAM.LEVELS.find(l => l.deck === id) || {}).n;
+    if (lvl && PROGRAM.byLevel(lvl).length) return nav('program', { lvl });
+    open(id);
+  };
   actions['learn-order'] = el => { if (!ln) return; ln.order = el.dataset.v; ln.list = orderList(cardsOfDeck(ln.deckId), ln.order); ln.i = 0; render(); };
   actions['learn-prev'] = () => { if (!ln) return; ln.i = (ln.i - 1 + ln.list.length) % ln.list.length; render(); };
   actions['learn-next'] = () => { if (!ln) return; ln.i = (ln.i + 1) % ln.list.length; render(); };
@@ -5308,6 +5382,46 @@ window.PROGRAM = (() => {
       can: 'Могу задать вопрос и указать на предмет',
       w: '这 那 哪 哪儿 什么 谁 怎么 怎么样 的 是 很 太 都 和 不 了 呢 上 下 她',
       g: { t: '很 / 太 / 都 и вопросительные слова', d: 'Прилагательное почти всегда идёт с 很: 我很好. 太…了 — «слишком». Вопросительное слово ставится там, где стоял бы ответ, порядок слов не меняется: 你去哪儿？', ex: [['这本书很好。', 'zhè běn shū hěn hǎo.', 'Эта книга хорошая.'], ['你去哪儿？', 'nǐ qù nǎr?', 'Куда ты идёшь?']] } },
+    { id: 'b2-01', lvl: 2, zh: '家人', ru: 'Родня и знакомство',
+      can: 'Могу представить семью и познакомить людей',
+      w: '哥哥 姐姐 弟弟 妹妹 妻子 丈夫 孩子 男 女 大家 您 它 姓 介绍',
+      g: { t: 'Вежливое 您 и представление', d: '您 — уважительное «вы», с ним не говорят 你. 介绍 вводит знакомство: 我介绍一下 — «позвольте представить». 姓 отвечает на вопрос о фамилии: 我姓王.', ex: [['我给您介绍一下。', 'wǒ gěi nín jièshào yíxià.', 'Позвольте вам представить.'], ['他姓张，是我哥哥。', 'tā xìng Zhāng, shì wǒ gēge.', 'Его фамилия Чжан, это мой старший брат.']] } },
+    { id: 'b2-02', lvl: 2, zh: '比较', ru: 'Сравнение и признаки',
+      can: 'Могу сравнить две вещи и оценить их',
+      w: '比 高 长 快 慢 新 白 黑 红 颜色 真 最 非常',
+      g: { t: 'Сравнение с 比', d: 'A 比 B + признак: 我比他高 — «я выше него». Перед признаком не ставят 很. Разницу добавляют в конец: 高一点儿, 高得多.', ex: [['今天比昨天冷。', 'jīntiān bǐ zuótiān lěng.', 'Сегодня холоднее вчерашнего.'], ['这个比那个贵一点儿。', 'zhège bǐ nàge guì yìdiǎnr.', 'Это немного дороже того.']] } },
+    { id: 'b2-03', lvl: 2, zh: '饭馆', ru: 'Еда и ресторан',
+      can: 'Могу заказать еду и сказать, что вкусно',
+      w: '服务员 好吃 鸡蛋 面条 牛奶 咖啡 西瓜 羊肉 鱼 要 送 卖 便宜 贵',
+      g: { t: '一点儿 и 有点儿', d: '有点儿 стоит перед признаком и всегда о неприятном: 有点儿贵 — «дороговато». 一点儿 идёт после признака и смягчает просьбу: 便宜一点儿 — «чуть подешевле».', ex: [['这个菜有点儿咸。', 'zhège cài yǒudiǎnr xián.', 'Это блюдо солоновато.'], ['请给我一点儿水。', 'qǐng gěi wǒ yìdiǎnr shuǐ.', 'Дайте мне немного воды.']] } },
+    { id: 'b2-04', lvl: 2, zh: '房间', ru: 'Дом и комната',
+      can: 'Могу описать комнату и сказать, где что находится',
+      w: '房间 门 旁边 外 左边 右边 离 近 远 洗 铅笔 报纸 手机 手表',
+      g: { t: '离 — расстояние между точками', d: 'A 离 B + 远/近: 我家离学校很近. 离 говорит о расстоянии, а 从 — о начале движения: 从家到学校.', ex: [['学校离这儿不远。', 'xuéxiào lí zhèr bù yuǎn.', 'Школа отсюда недалеко.'], ['门旁边有一把椅子。', 'mén pángbiān yǒu yì bǎ yǐzi.', 'Рядом с дверью стул.']] } },
+    { id: 'b2-05', lvl: 2, zh: '买卖', ru: 'Покупки и деньги',
+      can: 'Могу спросить цену и поторговаться',
+      w: '百 千 零 两 件 次 票 帮助 给 让 等 忙',
+      g: { t: '两 против 二, счётное 件', d: 'Перед счётным словом «два» — это 两, а не 二: 两个, 两件. 二 остаётся в числах и датах: 十二, 二月. 件 считает одежду и дела.', ex: [['我买两件衣服。', 'wǒ mǎi liǎng jiàn yīfu.', 'Я куплю две вещи одежды.'], ['这件事很重要。', 'zhè jiàn shì hěn zhòngyào.', 'Это дело важное.']] } },
+    { id: 'b2-06', lvl: 2, zh: '日程', ru: 'Время и планы',
+      can: 'Могу рассказать распорядок и что уже сделал',
+      w: '早上 晚上 小时 时间 日 去年 每 已经 就 再 正在 开始 起床 休息',
+      g: { t: '正在 и 已经', d: '正在 + глагол — действие идёт прямо сейчас: 他正在吃饭. 已经…了 — уже произошло: 我已经吃了. Отрицание для 已经 — 还没.', ex: [['我正在看书。', 'wǒ zhèngzài kàn shū.', 'Я сейчас читаю книгу.'], ['他已经起床了。', 'tā yǐjīng qǐchuáng le.', 'Он уже встал.']] } },
+    { id: 'b2-07', lvl: 2, zh: '路上', ru: 'Дорога и транспорт',
+      can: 'Могу объяснить, как добраться',
+      w: '公共汽车 火车站 机场 自行车 路 往 走 到 出 进 从 旅游 宾馆',
+      g: { t: '从…到… и 往', d: '从 A 到 B — от и до: 从家到公司. 往 задаёт направление перед глаголом движения: 往前走, 往右拐.', ex: [['从这儿到机场很远。', 'cóng zhèr dào jīchǎng hěn yuǎn.', 'Отсюда до аэропорта далеко.'], ['一直往前走。', 'yìzhí wǎng qián zǒu.', 'Идите всё время прямо.']] } },
+    { id: 'b2-08', lvl: 2, zh: '学习', ru: 'Учёба и работа',
+      can: 'Могу объяснить причину и рассказать про учёбу',
+      w: '教室 课 考试 题 问题 问 懂 知道 觉得 意思 告诉 公司 上班 准备 因为…所以…',
+      g: { t: '因为…所以…', d: 'Причина идёт первой: 因为下雨，所以我没去. В китайском обе части остаются, в отличие от русского, где «потому что» одно.', ex: [['因为有考试，所以我在学习。', 'yīnwèi yǒu kǎoshì, suǒyǐ wǒ zài xuéxí.', 'Так как экзамен, я занимаюсь.'], ['我不懂这个问题。', 'wǒ bù dǒng zhège wèntí.', 'Я не понимаю этот вопрос.']] } },
+    { id: 'b2-09', lvl: 2, zh: '身体', ru: 'Здоровье и самочувствие',
+      can: 'Могу сказать, что заболел и как себя чувствую',
+      w: '身体 生病 药 眼睛 累 快乐 笑 希望 虽然…但是… 可能 可以 别',
+      g: { t: '虽然…但是… и 别', d: 'Уступка держится на паре: 虽然很累，但是很高兴. 别 — запрет: 别走 «не уходи», мягче, чем 不要.', ex: [['虽然生病了，但是他还在工作。', 'suīrán shēngbìng le, dànshì tā hái zài gōngzuò.', 'Хотя заболел, он всё ещё работает.'], ['别看手机了。', 'bié kàn shǒujī le.', 'Хватит смотреть в телефон.']] } },
+    { id: 'b2-10', lvl: 2, zh: '爱好', ru: 'Досуг и погода',
+      can: 'Могу рассказать об увлечениях и о погоде',
+      w: '唱歌 跳舞 游泳 跑步 打篮球 踢足球 运动 玩 晴 阴 雪 生日 一起 一下 完 找 得 着 也 吧 还 对 错 事情 说话 穿 第一 为什么 过',
+      g: { t: 'Оценка действия через 得', d: 'Глагол + 得 + признак оценивает, как делают: 他跑得很快. Если есть дополнение, глагол повторяют: 他说汉语说得很好.', ex: [['她唱歌唱得很好。', 'tā chànggē chàng de hěn hǎo.', 'Она хорошо поёт.'], ['你跑得太慢了。', 'nǐ pǎo de tài màn le.', 'Ты бежишь слишком медленно.']] } },
   ].map(b => Object.assign(b, { words: b.w.split(' ') }));
 
   const byLevel = n => BLOCKS.filter(b => b.lvl === n);
@@ -5618,8 +5732,9 @@ window.BossMusic = (() => {
 
   /* ── карта уровней ── */
   views.program = {
-    render() {
-      const lv = P.LEVELS.map(l => {
+    render(p) {
+      const only = p && p.lvl ? +p.lvl : null;
+      const lv = P.LEVELS.filter(l => !only || l.n === only).map(l => {
         const bs = P.byLevel(l.n);
         if (!bs.length) return `<div class="panel lvl-row muted"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} — блоки готовятся</div></div></div>`;
         const done = bs.filter(b => bstate(b.id).seal === 'done' || bstate(b.id).seal === 'gold').length;
@@ -5636,7 +5751,7 @@ window.BossMusic = (() => {
             <span class="blk-n">${seen} / ${tot}${st.runs ? ` <b class="blk-runs">×${st.runs}</b>` : ''}</span></button>`;
         }).join('')}</div></div>`;
       }).join('');
-      return `<div class="vh"><div class="seal">学</div><div class="grow"><h1 class="title">Программа</h1><div class="sub">блоки по темам и грамматике · заходите в любой</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}`;
+      return `<div class="vh">${only ? '<button class="icon-btn" data-back>‹</button>' : '<div class="seal">学</div>'}<div class="grow"><h1 class="title">${only ? 'Уроки HSK ' + only : 'Программа'}</h1><div class="sub">${only ? 'учите по одному блоку — проверка идёт по пройденному' : 'блоки по темам и грамматике · заходите в любой'}</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}${only ? '<button class="btn btn-secondary btn-block" data-go="program">Все уровни</button>' : ''}`;
     },
   };
   actions['prog-info'] = () => sheet(`<h3 class="sh-t">Как устроена программа</h3><div class="install-note">
@@ -5786,7 +5901,7 @@ window.BossMusic = (() => {
     persist();
     sp = null;
     state.lastSprint = res;
-    saveAttempt(a).then(() => { Sound.finish(clean); nav('sprint-result', {}, { replace: true }); });
+    saveAttempt(a).then(() => { state.lastSprint.points = a.points; state.lastSprint.decay = a.decay; Sound.finish(clean); nav('sprint-result', {}, { replace: true }); });
   }
   views.sprint = {
     render() {
@@ -5838,6 +5953,7 @@ window.BossMusic = (() => {
       <div class="panel ornate sprint-res v-${verdict[2]}"><div class="sr-seal zh">${verdict[0]}</div><div class="grow"><b>${verdict[1]}</b>
       <div class="hint" style="margin:4px 0 0">${r.clean ? `Множитель ×${r.mult.toFixed(2)} за длину и чистоту` : r.half ? 'До одной ошибки на десять — половина очков' : 'Больше одной ошибки на десять — очки не начисляются'}</div></div>
       <div class="sr-pts">${r.points > 0 ? '+' + r.points : '0'}<small>очк.</small></div></div>
+      ${r.decay && r.decay.why && r.decay.why.length ? `<div class="panel"><div class="flabel">Множитель очков ×${r.decay.mult}</div><div class="hint" style="margin:0">${r.decay.why.map(esc).join(' · ')}</div></div>` : ''}
       ${r.bonus ? '<div class="panel"><b>+50</b> разовый бонус за первое чистое взятие блока</div>' : ''}
       ${r.back ? `<div class="panel"><div class="hint" style="margin:0">${fmt.plural(r.back, 'слово вернулось', 'слова вернулись', 'слов вернулось')} в ленту — повторите и проверьтесь снова.</div></div>` : ''}
       <div class="btns"><button class="btn btn-primary btn-block" data-go="feed" data-params="${attr({ id: feed ? feed.blockId : '' })}">Вернуться в ленту</button><button class="btn btn-secondary btn-block" data-go="program">К программе</button></div>`;
@@ -6019,7 +6135,7 @@ window.BossMusic = (() => {
     BossMusic.finish(won);
     state.lastFight = { boss: b, won, noHints, chest, pts, rounds: fight.rounds.slice(), src: fight.src };
     fight = null;
-    saveAttempt(a).then(() => nav('fight-result', {}, { replace: true }));
+    saveAttempt(a).then(() => { state.lastFight.pts = a.points; state.lastFight.decay = a.decay; nav('fight-result', {}, { replace: true }); });
   }
   views['fight-result'] = {
     render() {
@@ -6031,6 +6147,7 @@ window.BossMusic = (() => {
         <div class="grow"><b>${f.won ? (f.noHints ? 'Повержен без единой подсказки' : 'Повержен') : 'Босс устоял'}</b>
         <div class="hint" style="margin:4px 0 0">${f.won ? `Встанет через ${Boss.fmtLeft(Boss.RESPAWN)}` : 'Следующий вызов через 10 минут'}</div></div>
         ${f.pts ? `<div class="sr-pts">+${f.pts}<small>очк.</small></div>` : ''}</div>
+      ${f.decay && f.decay.why && f.decay.why.length ? `<div class="panel"><div class="flabel">Множитель очков ×${f.decay.mult}</div><div class="hint" style="margin:0">${f.decay.why.map(esc).join(' · ')}</div></div>` : ''}
       ${f.chest && f.chest.length ? `<div class="panel"><div class="flabel">Сундук босса${f.noHints ? ' · полнее на ' + Boss.chestBonusPct + '%' : ''}</div>
         <div class="loot">${f.chest.map(id => { const t = Treasures.byId[id]; return `<div class="loot-it r-${t.rarity}"><img src="${IMG_URL('treasure-' + id)}" alt=""><span>${esc(t.ru)}</span><small>${Treasures.fmtValue(t.value)}</small></div>`; }).join('')}</div></div>` : ''}
       <div class="panel"><div class="flabel">Как отвечали</div>${f.rounds.map((r, i) => `<div class="fb-row"><span class="fb-p zh">${esc(r.say)}</span><span class="fb-v">${r.ok == null ? '—' : r.ok ? '<b class="ok-t">верно</b>' : '<b class="bad-t">мимо</b>'}</span></div>`).join('')}

@@ -2,7 +2,12 @@
    30 дней похода, 10 рангов — ранг каждые 3 зачтённых дня. Состояние хранится как контрольная точка
    (days + processedThrough) и продвигается только вперёд по календарю; очки каждой попытки зафиксированы в ней самой. */
 window.Campaign = (() => {
-  const CAP = 400, ULTRA_MULT = 5, ULTRA = CAP * ULTRA_MULT, TOTAL_DAYS = 30, RANKS = 10, DAYS_PER_RANK = TOTAL_DAYS / RANKS;
+  const CAP = 400, ULTRA_MULT = 5, ULTRA = CAP * ULTRA_MULT, RANKS = 10;
+  /* Дней на переход к следующему рангу: первые даются легко, дальше всё дороже */
+  const RANK_DAYS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const RANK_AT = RANK_DAYS.reduce((acc, d) => (acc.push(acc[acc.length - 1] + d), acc), [0]);   /* дней к началу каждого ранга */
+  const TOTAL_DAYS = RANK_AT[RANK_AT.length - 1];   /* 63 дня до высшего ранга */
+  const DAYS_PER_RANK = RANK_DAYS[0];
   const BASE = { quiz: { easy: 2, medium: 4, hard: 8 }, write: { easy: 5, medium: 7, hard: 10 }, listen: { easy: 3, medium: 5, hard: 9 }, sentence: { easy: 4, medium: 7, hard: 12 }, flip: 1, hsk: 4 };
   const BONUS = { finish: 5, perfect: 10, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
@@ -24,6 +29,54 @@ window.Campaign = (() => {
     return Math.round(p * 10) / 10;
   }
   const pts = a => (a.points != null ? a.points : attemptPoints(a));
+
+  /* ── Деградация очков ──
+     Низкоуровневый и уже отработанный материал платит меньше: иначе выгодно бесконечно гонять лёгкое. */
+  const LVL_MULT = { 0: 1, 1: 0.6, 2: 0.35, 3: 0.2 };   /* насколько контент ниже твоего рабочего уровня */
+  const REPEAT_MULT = [1, 0.7, 0.5, 0.35, 0.25];        /* какой это раз за неделю */
+  const REPEAT_WINDOW = 7 * 24 * 3600e3;
+  /* Из чего складывается единица контента: блок, уровень экзамена, колода+режим */
+  function unitKey(a) {
+    if (a.block) return 'blk:' + a.block;
+    if (a.mode === 'boss') return 'boss:' + a.boss;
+    if (a.mode === 'hsk') return 'hsk:' + (a.format === 'real' ? 'exam' : 'test') + a.level;
+    return 'deck:' + (a.deckIds || []).join('+') + ':' + a.mode;
+  }
+  /* Уровень контента: 1..4, если определим */
+  function contentLevel(a) {
+    if (a.level) return a.level;
+    if (a.block) return +String(a.block).slice(1, 2) || null;
+    const d = (a.deckIds || [])[0] || '';
+    if (/^hsk([123])$/.test(d)) return +d.slice(3);
+    if (/^freq/.test(d)) return 4;
+    return null;
+  }
+  /* Итоговый множитель + человеческое объяснение */
+  function decay(state, a, now = Date.now()) {
+    const parts = [];
+    let m = 1;
+    const my = (window.Boss && Boss.levelOf) ? Boss.levelOf(state) : 1;
+    const cl = contentLevel(a);
+    if (cl) {
+      const gap = my - cl;
+      if (gap > 0) { const k = LVL_MULT[Math.min(3, gap)]; m *= k; parts.push(`уровень ниже вашего на ${gap} — ×${k}`); }
+      else if (gap < 0) { m *= 1.25; parts.push('уровень выше вашего — ×1.25'); }
+    }
+    const log = (state.settings.unitLog || (state.settings.unitLog = {}));
+    const key = unitKey(a);
+    const hist = (log[key] || []).filter(t => now - t < REPEAT_WINDOW);
+    const nth = hist.length;
+    if (nth > 0) { const k = REPEAT_MULT[Math.min(REPEAT_MULT.length - 1, nth)]; m *= k; parts.push(`${nth + 1}-е прохождение за неделю — ×${k}`); }
+    return { mult: Math.round(m * 100) / 100, why: parts, key, nth: nth + 1 };
+  }
+  /* Записываем прохождение — вызывать один раз при сохранении попытки */
+  function noteUnit(state, a, now = Date.now()) {
+    const log = (state.settings.unitLog || (state.settings.unitLog = {}));
+    const key = unitKey(a);
+    log[key] = (log[key] || []).filter(t => now - t < REPEAT_WINDOW);
+    log[key].push(now);
+    if (Object.keys(log).length > 200) { const old = Object.entries(log).sort((x, y) => Math.max(...x[1]) - Math.max(...y[1])).slice(0, 50); old.forEach(([k]) => delete log[k]); }
+  }
 
   const key = ts => Stats.dayKey(ts);
   function addDays(k, n) { const [y, m, d] = k.split('-').map(Number); return key(new Date(y, m - 1, d + n, 12).getTime()); }
@@ -62,12 +115,18 @@ window.Campaign = (() => {
     return { key: k, points: p, done: p >= CAP, ultra: p >= ULTRA, bonus: p >= ULTRA ? 2 : p >= CAP ? 1 : 0, toCap: Math.max(0, CAP - p), toUltra: Math.max(0, ULTRA - p) };
   }
   const effectiveDays = (c, attempts, now) => ((c && c.days) || 0) + todayState(c, attempts, now).bonus;
-  const rankIndex = days => Math.min(RANKS - 1, Math.floor(Math.max(0, days) / DAYS_PER_RANK));
+  function rankIndex(days) {
+    const d = Math.max(0, days);
+    let i = 0;
+    while (i < RANKS - 1 && d >= RANK_AT[i + 1]) i++;
+    return i;
+  }
   function rankProgress(days) {
     days = Math.max(0, days);
-    if (days >= TOTAL_DAYS) return { idx: RANKS - 1, inRank: DAYS_PER_RANK, need: DAYS_PER_RANK, complete: true, extra: days - TOTAL_DAYS, toNext: 0 };
+    if (days >= TOTAL_DAYS) { const n = RANK_DAYS[RANKS - 2]; return { idx: RANKS - 1, inRank: n, need: n, complete: true, extra: days - TOTAL_DAYS, toNext: 0 }; }
     const idx = rankIndex(days);
-    return { idx, inRank: days - idx * DAYS_PER_RANK, need: DAYS_PER_RANK, complete: false, extra: 0, toNext: (idx + 1) * DAYS_PER_RANK - days };
+    const need = RANK_DAYS[idx] || RANK_DAYS[RANK_DAYS.length - 1];
+    return { idx, inRank: days - RANK_AT[idx], need, complete: false, extra: 0, toNext: RANK_AT[idx + 1] - days };
   }
   /* Последние n календарных дней: r = 'done' | 'ultra' | 'miss' | 'today' | 'none' */
   function recent(c, attempts, n = 30, now = Date.now()) {
@@ -100,5 +159,5 @@ window.Campaign = (() => {
     c.chestLog.push(entry); if (c.chestLog.length > 200) c.chestLog = c.chestLog.slice(-200);
     return entry;
   }
-  return { ensureChests, grantChests, openChest, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
+  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, RANK_DAYS, RANK_AT, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
 })();

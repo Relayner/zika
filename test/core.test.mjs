@@ -167,8 +167,10 @@ t('campaign days', () => {
   assert.equal(Campaign.effectiveDays(c, attempts, now), 3);
   assert.equal(Campaign.process(c, attempts, now).length, 0, 'today is never finalized');
   assert.equal(c.days, 2);
-  assert.equal(Campaign.rankIndex(3), 1); assert.equal(Campaign.rankIndex(0), 0); assert.equal(Campaign.rankIndex(29), 9); assert.equal(Campaign.rankIndex(300), 9);
-  assert.equal(Campaign.rankProgress(4).toNext, 2); assert.equal(Campaign.rankProgress(30).complete, true);
+  /* прогрессивные ранги: 3,4,5,6,7,8,9,10,11 дней — до высшего 63 дня */
+  assert.equal(Campaign.rankIndex(3), 1); assert.equal(Campaign.rankIndex(0), 0); assert.equal(Campaign.rankIndex(29), 5); assert.equal(Campaign.rankIndex(300), 9);
+  assert.equal(Campaign.rankProgress(4).toNext, 3); assert.equal(Campaign.rankProgress(63).complete, true);
+  assert.equal(Campaign.TOTAL_DAYS, 63);
   const rec = Campaign.recent(c, attempts, 7, now);
   assert.equal(rec.length, 7); assert.equal(rec.at(-1).r, 'today'); assert.equal(rec.at(-2).r, 'done'); assert.equal(rec[0].r, 'none');
   // back-dated clock: nothing breaks
@@ -408,3 +410,30 @@ t('simulate always-first-answer', () => {
   }
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'balance/simulation group passed');
+
+
+/* ── деградация очков ── */
+t('points decay', () => {
+  const st = { settings: {}, cardStats: {} };
+  const a1 = { mode: 'hsk', format: 'real', level: 1, deckIds: ['hsk1'], points: 100 };
+  const d0 = Campaign.decay(st, a1);
+  assert.equal(d0.mult, 1, 'первый заход на своём уровне — без скидки');
+  Campaign.noteUnit(st, a1);
+  assert.equal(Campaign.decay(st, a1).mult, 0.7, 'второй заход за неделю');
+  Campaign.noteUnit(st, a1);
+  assert.equal(Campaign.decay(st, a1).mult, 0.5, 'третий заход');
+  Campaign.noteUnit(st, a1); Campaign.noteUnit(st, a1); Campaign.noteUnit(st, a1);
+  assert.ok(Campaign.decay(st, a1).mult <= 0.25, 'пол деградации');
+  /* разные единицы контента не мешают друг другу */
+  const a2 = { mode: 'hsk', format: 'real', level: 2, deckIds: ['hsk2'], points: 100 };
+  assert.equal(Campaign.decay(st, a2).mult, 1.25, 'уровень выше изученного — надбавка, и свой счёт повторов');
+  /* блоки программы считаются отдельно */
+  const b1 = { mode: 'sprint', block: 'b1-03', points: 50 };
+  assert.equal(Campaign.decay(st, b1).mult, 1);
+  Campaign.noteUnit(st, b1);
+  assert.equal(Campaign.decay(st, b1).nth, 2);
+  assert.equal(Campaign.unitKey(b1), 'blk:b1-03');
+  assert.equal(Campaign.contentLevel({ deckIds: ['hsk3'] }), 3);
+  assert.equal(Campaign.contentLevel({ deckIds: ['freq1'] }), 4);
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'decay group passed');

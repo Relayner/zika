@@ -171,7 +171,7 @@
     BossMusic.finish(won);
     state.lastFight = { boss: b, won, noHints, chest, pts, rounds: fight.rounds.slice(), src: fight.src };
     fight = null;
-    saveAttempt(a).then(() => nav('fight-result', {}, { replace: true }));
+    saveAttempt(a).then(() => { state.lastFight.pts = a.points; state.lastFight.decay = a.decay; nav('fight-result', {}, { replace: true }); });
   }
   views['fight-result'] = {
     render() {
@@ -183,6 +183,7 @@
         <div class="grow"><b>${f.won ? (f.noHints ? 'Повержен без единой подсказки' : 'Повержен') : 'Босс устоял'}</b>
         <div class="hint" style="margin:4px 0 0">${f.won ? `Встанет через ${Boss.fmtLeft(Boss.RESPAWN)}` : 'Следующий вызов через 10 минут'}</div></div>
         ${f.pts ? `<div class="sr-pts">+${f.pts}<small>очк.</small></div>` : ''}</div>
+      ${f.decay && f.decay.why && f.decay.why.length ? `<div class="panel"><div class="flabel">Множитель очков ×${f.decay.mult}</div><div class="hint" style="margin:0">${f.decay.why.map(esc).join(' · ')}</div></div>` : ''}
       ${f.chest && f.chest.length ? `<div class="panel"><div class="flabel">Сундук босса${f.noHints ? ' · полнее на ' + Boss.chestBonusPct + '%' : ''}</div>
         <div class="loot">${f.chest.map(id => { const t = Treasures.byId[id]; return `<div class="loot-it r-${t.rarity}"><img src="${IMG_URL('treasure-' + id)}" alt=""><span>${esc(t.ru)}</span><small>${Treasures.fmtValue(t.value)}</small></div>`; }).join('')}</div></div>` : ''}
       <div class="panel"><div class="flabel">Как отвечали</div>${f.rounds.map((r, i) => `<div class="fb-row"><span class="fb-p zh">${esc(r.say)}</span><span class="fb-v">${r.ok == null ? '—' : r.ok ? '<b class="ok-t">верно</b>' : '<b class="bad-t">мимо</b>'}</span></div>`).join('')}

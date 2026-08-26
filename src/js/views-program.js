@@ -22,8 +22,9 @@
 
   /* ── карта уровней ── */
   views.program = {
-    render() {
-      const lv = P.LEVELS.map(l => {
+    render(p) {
+      const only = p && p.lvl ? +p.lvl : null;
+      const lv = P.LEVELS.filter(l => !only || l.n === only).map(l => {
         const bs = P.byLevel(l.n);
         if (!bs.length) return `<div class="panel lvl-row muted"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} — блоки готовятся</div></div></div>`;
         const done = bs.filter(b => bstate(b.id).seal === 'done' || bstate(b.id).seal === 'gold').length;
@@ -40,7 +41,7 @@
             <span class="blk-n">${seen} / ${tot}${st.runs ? ` <b class="blk-runs">×${st.runs}</b>` : ''}</span></button>`;
         }).join('')}</div></div>`;
       }).join('');
-      return `<div class="vh"><div class="seal">学</div><div class="grow"><h1 class="title">Программа</h1><div class="sub">блоки по темам и грамматике · заходите в любой</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}`;
+      return `<div class="vh">${only ? '<button class="icon-btn" data-back>‹</button>' : '<div class="seal">学</div>'}<div class="grow"><h1 class="title">${only ? 'Уроки HSK ' + only : 'Программа'}</h1><div class="sub">${only ? 'учите по одному блоку — проверка идёт по пройденному' : 'блоки по темам и грамматике · заходите в любой'}</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}${only ? '<button class="btn btn-secondary btn-block" data-go="program">Все уровни</button>' : ''}`;
     },
   };
   actions['prog-info'] = () => sheet(`<h3 class="sh-t">Как устроена программа</h3><div class="install-note">
@@ -190,7 +191,7 @@
     persist();
     sp = null;
     state.lastSprint = res;
-    saveAttempt(a).then(() => { Sound.finish(clean); nav('sprint-result', {}, { replace: true }); });
+    saveAttempt(a).then(() => { state.lastSprint.points = a.points; state.lastSprint.decay = a.decay; Sound.finish(clean); nav('sprint-result', {}, { replace: true }); });
   }
   views.sprint = {
     render() {
@@ -242,6 +243,7 @@
       <div class="panel ornate sprint-res v-${verdict[2]}"><div class="sr-seal zh">${verdict[0]}</div><div class="grow"><b>${verdict[1]}</b>
       <div class="hint" style="margin:4px 0 0">${r.clean ? `Множитель ×${r.mult.toFixed(2)} за длину и чистоту` : r.half ? 'До одной ошибки на десять — половина очков' : 'Больше одной ошибки на десять — очки не начисляются'}</div></div>
       <div class="sr-pts">${r.points > 0 ? '+' + r.points : '0'}<small>очк.</small></div></div>
+      ${r.decay && r.decay.why && r.decay.why.length ? `<div class="panel"><div class="flabel">Множитель очков ×${r.decay.mult}</div><div class="hint" style="margin:0">${r.decay.why.map(esc).join(' · ')}</div></div>` : ''}
       ${r.bonus ? '<div class="panel"><b>+50</b> разовый бонус за первое чистое взятие блока</div>' : ''}
       ${r.back ? `<div class="panel"><div class="hint" style="margin:0">${fmt.plural(r.back, 'слово вернулось', 'слова вернулись', 'слов вернулось')} в ленту — повторите и проверьтесь снова.</div></div>` : ''}
       <div class="btns"><button class="btn btn-primary btn-block" data-go="feed" data-params="${attr({ id: feed ? feed.blockId : '' })}">Вернуться в ленту</button><button class="btn btn-secondary btn-block" data-go="program">К программе</button></div>`;

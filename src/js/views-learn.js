@@ -21,7 +21,14 @@
     ln = { deckId, order: ord, list: orderList(cards, ord), i: 0 };
     nav('learn', { id: deckId });
   }
-  actions['learn-deck'] = el => { App.closeSheet(); open(el.dataset.id); };
+  /* «Учить» ведёт в программу, если для этой колоды есть блоки: занимаемся уроками, а не всей сотней слов сразу */
+  actions['learn-deck'] = el => {
+    App.closeSheet();
+    const id = el.dataset.id;
+    const lvl = window.PROGRAM && (PROGRAM.LEVELS.find(l => l.deck === id) || {}).n;
+    if (lvl && PROGRAM.byLevel(lvl).length) return nav('program', { lvl });
+    open(id);
+  };
   actions['learn-order'] = el => { if (!ln) return; ln.order = el.dataset.v; ln.list = orderList(cardsOfDeck(ln.deckId), ln.order); ln.i = 0; render(); };
   actions['learn-prev'] = () => { if (!ln) return; ln.i = (ln.i - 1 + ln.list.length) % ln.list.length; render(); };
   actions['learn-next'] = () => { if (!ln) return; ln.i = (ln.i + 1) % ln.list.length; render(); };
