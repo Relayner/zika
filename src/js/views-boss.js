@@ -21,7 +21,7 @@
         const rs = Boss.respawnLeft(state, b.id, now);
         const locked = rs > 0 || cd > 0;
         const why = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
-        return `<div class="panel boss-card ${locked ? 'locked' : 'ready'}">
+        return `<div class="panel boss-card ${locked ? 'locked' : 'ready'}" data-boss="${b.id}">
           <img class="boss-por" src="${IMG_URL(b.img)}" alt="" draggable="false">
           <div class="grow">
             <div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
@@ -32,10 +32,43 @@
           </div></div>`;
       }).join('');
       return `<div class="vh"><div class="seal">斗</div><div class="grow"><h1 class="title">Боссы</h1><div class="sub">пять реплик голосом · уровень HSK ${lvl}</div></div><button class="icon-btn" data-action="boss-info" aria-label="Правила">i</button></div>
-      ${cd > 0 ? `<div class="panel"><div class="hint" style="margin:0">Вызов доступен раз в 10 минут. Осталось <b>${Boss.fmtLeft(cd)}</b>.</div></div>` : ''}
+      <div class="panel" id="boss-cd" style="${cd > 0 ? '' : 'display:none'}"><div class="hint" style="margin:0">Вызов доступен раз в 10 минут. Осталось <b>${Boss.fmtLeft(cd)}</b>.</div></div>
       ${cards}`;
     },
-    mount() { clearInterval(tick); tick = setInterval(() => { if (state.view === 'boss') render(); else clearInterval(tick); }, 1000); },
+    /* Таймеры обновляем точечно: полная перерисовка каждую секунду сбрасывала прокрутку и мигала */
+    mount() {
+      clearInterval(tick);
+      const step = () => {
+        if (state.view !== 'boss') { clearInterval(tick); tick = null; return; }
+        const now = Date.now();
+        const cd = Boss.tryLeft(state, now);
+        const cdBox = $('#boss-cd');
+        if (cdBox) {
+          cdBox.style.display = cd > 0 ? '' : 'none';
+          if (cd > 0) { const b = cdBox.querySelector('b'); if (b) b.textContent = Boss.fmtLeft(cd); }
+        }
+        for (const b of Boss.LIST) {
+          const card = document.querySelector(`.boss-card[data-boss="${b.id}"]`);
+          if (!card) continue;
+          const rs = Boss.respawnLeft(state, b.id, now);
+          const locked = rs > 0 || cd > 0;
+          const when = card.querySelector('.boss-when');
+          if (when) {
+            const html = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
+            if (when.innerHTML !== html) when.innerHTML = html;
+          }
+          const btn = card.querySelector('[data-action=boss-go]');
+          if (btn && btn.disabled !== locked) {
+            btn.disabled = locked;
+            btn.className = 'btn ' + (locked ? 'btn-secondary' : 'btn-danger') + ' btn-sm';
+          }
+          card.classList.toggle('locked', locked);
+          card.classList.toggle('ready', !locked);
+        }
+      };
+      tick = setInterval(step, 1000);
+      step();
+    },
   };
   actions['boss-info'] = () => sheet(`<h3 class="sh-t">Как устроен бой</h3><div class="install-note">
     <p><b>Пять реплик.</b> Босс говорит — вы отвечаете голосом по-китайски. Ошиблись дважды — бой проигран.</p>
