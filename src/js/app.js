@@ -23,7 +23,7 @@ window.App = (() => {
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
-  builtinDecks.push({ id: 'freq1', name: 'Частотные слова', builtin: true, level: null, desc: 'сверх HSK 1–3' });
+  builtinDecks.push({ id: 'freq1', name: 'HSK 4', builtin: true, level: 4, desc: 'средний уровень · 中级' });
   const hskCards = [];
   [1, 2, 3].forEach(l => window.HSK[l].forEach(e => hskCards.push({ id: 'hsk' + l + ':' + e[0], hanzi: e[0], pinyin: e[1], ru: e[2], note: '', deckId: 'hsk' + l, builtin: true })));
   const freqCards = window.FREQ.map(e => ({ id: 'freq1:' + e[0], hanzi: e[0], pinyin: e[1], ru: e[2], note: '', deckId: 'freq1', builtin: true }));

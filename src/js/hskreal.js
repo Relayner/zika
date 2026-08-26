@@ -279,7 +279,49 @@ window.HskReal = (() => {
       'writing-2': 'Впишите иероглиф по пиньиню (нужна китайская клавиатура 中文).',
     },
   };
-  const SPECS = { 1: SPEC1, 2: SPEC2, 3: SPEC3 };
-  const BUILDERS = { 1: buildExam1, 2: buildExam2, 3: buildExam3 };
-  return { buildExam1, buildExam2, buildExam3, SPEC1, SPEC2, SPEC3, SPECS, BUILDERS, score, availPics, picById, shuffle };
+  /* Экзамен HSK 4: 听力 45 + 阅读 40 + 书写 15, четыре варианта в выборе */
+  function buildExam4() {
+    const B = window.HSK4EXAM;
+    const qs = [];
+    /* 听力 ч.1 (10): высказывание + суждение ★ */
+    const tfl = [...pick(B.TFL.filter(x => x.truth), 5, 'e4:TFLy'), ...pick(B.TFL.filter(x => !x.truth), 5, 'e4:TFLn')];
+    for (const it of shuffle(tfl)) qs.push({ sec: 'listening', part: 1, type: 'tf', say: it.say, star: it.star, correct: it.truth ? 0 : 1 });
+    /* 听力 ч.2 (15) и ч.3 (20): диалоги с вопросом */
+    for (const it of pick(B.Q2, 15, 'e4:Q2')) { const o = shuffle([0, 1, 2, 3]); qs.push({ sec: 'listening', part: 2, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    for (const it of pick(B.Q3, 20, 'e4:Q3')) { const o = shuffle([0, 1, 2, 3]); qs.push({ sec: 'listening', part: 3, type: 'opts', say: it.say, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    /* 阅读 ч.1 (10 = 2 блока по 5): пропуск ↔ слово из пула 6 */
+    const fills = pick(B.FILL, 12, 'e4:FILL', x => x.ans);
+    for (let b = 0; b < 2; b++) {
+      const block = fills.slice(b * 6, b * 6 + 6);
+      const pool = shuffle(block.map(x => x.ans));
+      block.slice(0, 5).forEach(it => qs.push({ sec: 'reading', part: 1, type: 'pool', block: 'e4r1' + b, text: it.t, pool, answer: it.ans }));
+    }
+    /* 阅读 ч.2 (10): расставить три предложения по порядку */
+    for (const it of pick(B.ORDER, 10, 'e4:ORDER')) qs.push({ sec: 'reading', part: 2, type: 'arrange', chunks: shuffle(it.parts.slice()), answers: [it.parts.join('')] });
+    /* 阅读 ч.3 (20): текст + вопрос */
+    for (const it of pick(B.READ, 20, 'e4:READ')) { const o = shuffle([0, 1, 2, 3]); qs.push({ sec: 'reading', part: 3, type: 'opts', text: it.t, sub: it.q, opts: o.map(i => it.opts[i]), correct: o.indexOf(0) }); }
+    /* 书写 ч.1 (10): собрать предложение; ч.2 (5): вписать иероглиф */
+    for (const it of pick(B.ARRANGE, 10, 'e4:ARRANGE')) qs.push({ sec: 'writing', part: 1, type: 'arrange', chunks: shuffle(it.chunks.slice()), answers: it.a });
+    for (const it of pick(B.WRITE, 5, 'e4:WRITE')) qs.push({ sec: 'writing', part: 2, type: 'input', text: it.t, py: it.py, answer: it.ans });
+    flushSeen();
+    return qs;
+  }
+  const SPEC4 = {
+    level: 4, max: 300, pass: 180, readingSec: 40 * 60, answerSec: 15,
+    sectionSec: { reading: 40 * 60, writing: 25 * 60 },
+    sections: { listening: { zh: '听力', ru: 'Аудирование', total: 45 }, reading: { zh: '阅读', ru: 'Чтение', total: 40 }, writing: { zh: '书写', ru: 'Письмо', total: 15 } },
+    partRules: {
+      'listening-1': 'Вы услышите высказывание. Верно ли суждение со звездой ★?',
+      'listening-2': 'Вы услышите короткий диалог и вопрос. Выберите правильный ответ из четырёх.',
+      'listening-3': 'Вы услышите длинный диалог и вопрос. Выберите правильный ответ из четырёх.',
+      'reading-1': 'В предложениях пропущено слово — подберите его из списка A–F, один лишний.' + ' Все вопросы части — на одном экране: выберите строку, затем букву; менять можно до кнопки «Готово».',
+      'reading-2': 'Три предложения перепутаны — расставьте их по порядку, нажимая по очереди.',
+      'reading-3': 'Прочитайте текст и ответьте на вопрос — четыре варианта.',
+      'writing-1': 'Составьте предложение из данных слов — нажимайте их в правильном порядке.',
+      'writing-2': 'Впишите иероглиф по пиньиню (нужна китайская клавиатура 中文).',
+    },
+  };
+  const SPECS = { 1: SPEC1, 2: SPEC2, 3: SPEC3, 4: SPEC4 };
+  const BUILDERS = { 1: buildExam1, 2: buildExam2, 3: buildExam3, 4: buildExam4 };
+  return { buildExam1, buildExam2, buildExam3, buildExam4, SPEC1, SPEC2, SPEC3, SPEC4, SPECS, BUILDERS, score, availPics, picById, shuffle };
 })();
