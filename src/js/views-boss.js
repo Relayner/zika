@@ -1,7 +1,8 @@
 /* Арена боссов: выбор, бой на пять реплик голосом, три вида подсказок, особый сундук. */
 (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, saveAttempt, fmt } = App;
-  let fight = null;   /* { boss, rounds, i, hints:{tr,start,opts}, used:0, src, log:[] } */
+  let fight = null;   /* { boss, sp, rounds, i, hints, used, wrong, heard } */
+  let unfinished = null;   /* брошенный бой: реплики придержим, чтобы не генерировать заново */
   let tick = null;
 
   const HINTS = [
@@ -86,14 +87,17 @@
     el.disabled = true;
     toast('Босс готовится…', 1500);
     const sp = Boss.setup(state, b);
-    const avoid = Boss.recall(state).map(m => m.t);
-    const res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
-    Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
-    const bst = Boss.st(state);
-    bst.lastTry = Date.now();
+    let res = unfinished && unfinished.id === b.id ? { list: unfinished.rounds, src: unfinished.src } : null;
+    if (!res) {
+      const avoid = Boss.recall(state).map(m => m.t);
+      res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
+      Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
+    }
+    unfinished = null;
+    res.list.forEach(r => { delete r.ok; delete r.said; });
     Boss.bs(state, b.id).tries++;
     persist();
-    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now() };
+    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now(), heard: null };
     BossMusic.start(b);
     nav('fight');
   };
@@ -111,7 +115,7 @@
       const left = Math.ceil((deadline - Date.now()) / 1000);
       const el = $('#fclock');
       if (el) { el.textContent = left + ' с'; el.classList.toggle('urgent', left <= 5); }
-      if (left <= 0) { stopClock(); answer([]); }              /* не успел — мимо */
+      if (left <= 0) { stopClock(); BossGen.stopListening(); answer([], fight.i); }   /* не успел — мимо */
     };
     clock = setInterval(tick, 250);
     tick();
@@ -120,8 +124,14 @@
   const speak = () => { const r = fight.rounds[fight.i]; Speech.say(r.say, fight.raged ? Boss.ragedVoice(fight.boss) : fight.boss.voice); };
   actions['fight-say'] = () => speak();
   actions['fight-quit'] = () => {
-    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, а следующий вызов всё равно через 10 минут.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
-      $('#fq', s).onclick = () => { closeSheet(); stopClock(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
+    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, но и время не сгорит: вызвать снова можно сразу, реплики останутся те же.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
+      $('#fq', s).onclick = () => {
+        closeSheet(); stopClock(); BossGen.stopListening(); BossMusic.stop();
+        unfinished = { id: fight.boss.id, rounds: fight.rounds, src: fight.src };
+        fight = null;
+        toast('Бой не засчитан — вызвать снова можно сразу', 2600);
+        nav('boss', {}, { replace: true });
+      };
       $('#fc', s).onclick = () => closeSheet();
     });
   };
@@ -136,13 +146,15 @@
   actions['fight-pick'] = el => { if (fight) answer([el.dataset.v]); };
   actions['fight-listen'] = async el => {
     if (!fight || fight.busy) return;
-    fight.busy = true; el.classList.add('rec'); el.textContent = '● Слушаю…';
-    try {
-      const said = await BossGen.listen(7000);
-      fight.busy = false;
-      if (!said || !said.length) { toast('Не расслышал — попробуйте ещё раз или ответьте текстом'); render(); return; }
-      answer(said);
-    } catch (e) { fight.busy = false; toast(e.message + ' — ответьте текстом', 3000); render(); }
+    const round = fight.i;
+    fight.busy = true; fight.heard = null;
+    el.classList.add('rec'); el.textContent = '● Слушаю…';
+    const res = await BossGen.listen(8000);
+    if (!fight || fight.i !== round) return;                 /* раунд успел смениться — молча выходим */
+    fight.busy = false;
+    fight.heard = { text: (res.alts && res.alts[0]) || '', error: res.error };
+    if (!res.alts || !res.alts.length) { render(); return; } /* показываем, что услышано (или что не услышано) */
+    answer(res.alts, round);
   };
   actions['fight-text'] = () => {
     sheet(`<h3 class="sh-t">Ответ текстом</h3><div class="field"><label>По-китайски <span class="muted">· клавиатура 中文</span></label><input class="inp" id="fta" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="汉字"></div><button class="btn btn-primary btn-block" id="ftok">Ответить</button>`, s => {
@@ -152,7 +164,9 @@
       inp.onkeydown = e => { if (e.key === 'Enter') go(); };
     });
   };
-  function answer(said) {
+  function answer(said, forRound) {
+    if (!fight || fight.shown) return;                       /* бой окончен или уже показываем разбор */
+    if (forRound != null && forRound !== fight.i) return;    /* ответ опоздал и относится к прошлой реплике */
     stopClock();
     const r = fight.rounds[fight.i];
     const ok = BossGen.judge(r, said);
@@ -190,6 +204,7 @@
         <div class="fight-say zh" data-action="fight-say">${esc(r.say)}</div>
         ${sh.k === 'tr' ? `<div class="fight-tr">${esc(r.py || '')}<br>${esc(r.ru || '')}</div>` : ''}
         ${sh.k === 'start' ? `<div class="fight-tr">Начните так: <b class="zh">${esc((r.answer || '').slice(0, 3))}…</b></div>` : ''}
+        ${fight.heard && sh.k !== 'fb' ? `<div class="heard ${fight.heard.text ? '' : 'none'}">${fight.heard.text ? 'Услышано: <b class="zh">' + esc(fight.heard.text) + '</b>' : esc(fight.heard.error || 'ничего не услышал')}</div>` : ''}
         ${sh.k === 'fb' ? `<div class="fight-fb ${sh.ok ? 'ok' : 'bad'}">${sh.ok ? '对！' : '错！'} <span>${esc(r.said || '—')}</span>${sh.ok ? '' : `<div class="fight-tr">Верно: <b class="zh">${esc(r.answer)}</b> — ${esc(r.answer_ru || '')}</div>`}</div>` : ''}
       </div>
       ${sh.k === 'opts' ? `<div class="opts">${(sh.opts || []).map(o => `<button class="opt opt-txt" data-action="fight-pick" data-v="${attr(o)}" data-nosound><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>` : ''}
@@ -211,6 +226,8 @@
 
   function endFight(won) {
     stopClock();
+    BossGen.stopListening();
+    Boss.st(state).lastTry = Date.now();   /* время между вызовами считается от завершённого боя */
     const b = fight.boss, r = Boss.bs(state, b.id);
     const noHints = fight.used === 0;
     let chest = null;

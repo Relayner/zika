@@ -4,7 +4,7 @@
 
   function deckRow(d) {
     const cards = cardsOfDeck(d.id), acc = deckAccuracy(cards);
-    return `<button class="row tap" data-go="deck" data-params="${attr({ id: d.id })}"><div><div class="row-t">${esc(d.name)}</div><div class="row-s">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}</div></div><div class="row-r">${acc == null ? '' : `<span class="badge ${accClass(acc)}">${acc}%</span>`}<span class="chev">›</span></div></button>`;
+    return `<button class="row tap" data-go="deck" data-params="${attr({ id: d.id })}"><div><div class="row-t">${esc(d.name)}</div><div class="row-s">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}${d.builtin && window.PROGRAM ? ' · ' + PROGRAM.byLevel(d.level).length + ' уроков' : ''}</div></div><div class="row-r">${acc == null ? '' : `<span class="badge ${accClass(acc)}">${acc}%</span>`}<span class="chev">›</span></div></button>`;
   }
   views.decks = {
     render() {
@@ -36,10 +36,11 @@
       if (!d) return '<div class="empty">Колода не найдена</div>';
       const cards = cardsOfDeck(d.id), cs = state.cardStats, acc = deckAccuracy(cards);
       const seen = cards.filter(c => cs[c.id] && cs[c.id].asked).length, mastered = cards.filter(c => cs[c.id] && cs[c.id].mastered).length;
-      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(d.name)}</h1><div class="sub">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}</div></div>${d.builtin ? '' : `<button class="icon-btn" data-action="deck-menu" data-id="${d.id}" aria-label="Меню">⋯</button>`}</div>
+      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(d.name)}</h1><div class="sub">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.builtin ? ' · справочный список' : d.desc ? ' · ' + esc(d.desc) : ''}</div></div>${d.builtin ? '' : `<button class="icon-btn" data-action="deck-menu" data-id="${d.id}" aria-label="Меню">⋯</button>`}</div>
       <div class="tiles t3"><div class="tile"><div class="v">${seen}</div><div class="l">изучено</div></div><div class="tile"><div class="v">${mastered}</div><div class="l">освоено</div></div><div class="tile"><div class="v">${acc == null ? '—' : acc + '%'}</div><div class="l">точность</div></div></div>
-      <div class="btns row2 mt0"><button class="btn btn-primary" data-action="learn-deck" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Учить</button>${d.builtin ? `<button class="btn btn-secondary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>` : `<button class="btn btn-secondary" data-go="card" data-params="${attr({ deckId: d.id })}">＋ Карточка</button>`}</div>
+      <div class="btns row2 mt0"><button class="btn btn-primary" data-action="learn-deck" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>${d.builtin ? 'К урокам 学' : 'Учить'}</button>${d.builtin ? `<button class="btn btn-secondary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>` : `<button class="btn btn-secondary" data-go="card" data-params="${attr({ deckId: d.id })}">＋ Карточка</button>`}</div>
       ${d.builtin ? '' : `<div class="btns row2"><button class="btn btn-secondary btn-sm" data-go="import" data-params="${attr({ deckId: d.id })}">Импорт текстом</button><button class="btn btn-secondary btn-sm" data-action="deck-export" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Экспорт</button></div>`}
+      ${d.builtin ? '<div class="hint" style="margin:0 0 10px">Это полный список слов уровня для поиска и повторения. Учиться — в уроках: они поделены на темы с грамматикой.</div>' : ''}
       <input class="inp search" id="q" placeholder="Поиск: иероглиф, пиньинь, перевод" autocomplete="off" autocorrect="off">
       <div id="cardlist">${cardList(cards, d)}</div>`;
     },

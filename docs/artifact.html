@@ -608,6 +608,9 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .rage-cry { margin: 8px auto 0; max-width: 92%; border: 1.5px solid var(--danger, #b3392f); border-radius: 12px; padding: 8px 12px; background: color-mix(in srgb, var(--danger, #b3392f) 8%, transparent); }
 .rage-cry .zh { display: block; font-size: 19px; }
 .rage-cry small { color: var(--ink-2, #6b6156); }
+.heard { margin-top: 10px; font-size: 15px; color: var(--ink-2, #6b6156); border: 1px dashed var(--line, #e4d8c2); border-radius: 10px; padding: 7px 10px; }
+.heard b { color: var(--ink, #2c2620); font-size: 18px; }
+.heard.none { color: var(--danger, #b3392f); }
 
 </style>
 <div id="app">
@@ -4619,7 +4622,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260827-2006';
+  const VERSION = '20260827-2035';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5147,7 +5150,7 @@ window.App = (() => {
 
   function deckRow(d) {
     const cards = cardsOfDeck(d.id), acc = deckAccuracy(cards);
-    return `<button class="row tap" data-go="deck" data-params="${attr({ id: d.id })}"><div><div class="row-t">${esc(d.name)}</div><div class="row-s">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}</div></div><div class="row-r">${acc == null ? '' : `<span class="badge ${accClass(acc)}">${acc}%</span>`}<span class="chev">›</span></div></button>`;
+    return `<button class="row tap" data-go="deck" data-params="${attr({ id: d.id })}"><div><div class="row-t">${esc(d.name)}</div><div class="row-s">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}${d.builtin && window.PROGRAM ? ' · ' + PROGRAM.byLevel(d.level).length + ' уроков' : ''}</div></div><div class="row-r">${acc == null ? '' : `<span class="badge ${accClass(acc)}">${acc}%</span>`}<span class="chev">›</span></div></button>`;
   }
   views.decks = {
     render() {
@@ -5179,10 +5182,11 @@ window.App = (() => {
       if (!d) return '<div class="empty">Колода не найдена</div>';
       const cards = cardsOfDeck(d.id), cs = state.cardStats, acc = deckAccuracy(cards);
       const seen = cards.filter(c => cs[c.id] && cs[c.id].asked).length, mastered = cards.filter(c => cs[c.id] && cs[c.id].mastered).length;
-      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(d.name)}</h1><div class="sub">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.desc ? ' · ' + esc(d.desc) : ''}</div></div>${d.builtin ? '' : `<button class="icon-btn" data-action="deck-menu" data-id="${d.id}" aria-label="Меню">⋯</button>`}</div>
+      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(d.name)}</h1><div class="sub">${fmt.plural(cards.length, 'карточка', 'карточки', 'карточек')}${d.builtin ? ' · справочный список' : d.desc ? ' · ' + esc(d.desc) : ''}</div></div>${d.builtin ? '' : `<button class="icon-btn" data-action="deck-menu" data-id="${d.id}" aria-label="Меню">⋯</button>`}</div>
       <div class="tiles t3"><div class="tile"><div class="v">${seen}</div><div class="l">изучено</div></div><div class="tile"><div class="v">${mastered}</div><div class="l">освоено</div></div><div class="tile"><div class="v">${acc == null ? '—' : acc + '%'}</div><div class="l">точность</div></div></div>
-      <div class="btns row2 mt0"><button class="btn btn-primary" data-action="learn-deck" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Учить</button>${d.builtin ? `<button class="btn btn-secondary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>` : `<button class="btn btn-secondary" data-go="card" data-params="${attr({ deckId: d.id })}">＋ Карточка</button>`}</div>
+      <div class="btns row2 mt0"><button class="btn btn-primary" data-action="learn-deck" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>${d.builtin ? 'К урокам 学' : 'Учить'}</button>${d.builtin ? `<button class="btn btn-secondary" data-action="hsk-test" data-level="${d.level}">Словарный тест</button>` : `<button class="btn btn-secondary" data-go="card" data-params="${attr({ deckId: d.id })}">＋ Карточка</button>`}</div>
       ${d.builtin ? '' : `<div class="btns row2"><button class="btn btn-secondary btn-sm" data-go="import" data-params="${attr({ deckId: d.id })}">Импорт текстом</button><button class="btn btn-secondary btn-sm" data-action="deck-export" data-id="${d.id}" ${cards.length ? '' : 'disabled'}>Экспорт</button></div>`}
+      ${d.builtin ? '<div class="hint" style="margin:0 0 10px">Это полный список слов уровня для поиска и повторения. Учиться — в уроках: они поделены на темы с грамматикой.</div>' : ''}
       <input class="inp search" id="q" placeholder="Поиск: иероглиф, пиньинь, перевод" autocomplete="off" autocorrect="off">
       <div id="cardlist">${cardList(cards, d)}</div>`;
     },
@@ -6291,18 +6295,43 @@ window.BossGen = (() => {
   /* ── голос ── */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const canListen = () => !!SR;
+  let active = null;                       /* текущая сессия распознавания — держим, чтобы гасить перед новой */
+  function stopListening() {
+    if (!active) return;
+    try { active.abort(); } catch (e) { try { active.stop(); } catch (e2) { /* ignore */ } }
+    active = null;
+  }
+  /* Никогда не падает: всегда отдаёт { alts, error } — вызывающему не нужно ловить исключения */
   function listen(ms = 7000) {
-    return new Promise((resolve, reject) => {
-      if (!SR) return reject(new Error('нет распознавания речи'));
-      const r = new SR();
-      r.lang = 'zh-CN'; r.interimResults = false; r.maxAlternatives = 3;
-      let done = false;
-      const finish = (v, err) => { if (done) return; done = true; try { r.stop(); } catch (e) { /* ignore */ } err ? reject(err) : resolve(v); };
-      r.onresult = e => { const alts = []; for (let i = 0; i < e.results[0].length; i++) alts.push(e.results[0][i].transcript); finish(alts); };
-      r.onerror = e => finish(null, new Error(e.error === 'not-allowed' ? 'нет доступа к микрофону' : 'не расслышал'));
+    return new Promise(resolve => {
+      if (!SR) return resolve({ alts: [], error: 'на этом устройстве нет распознавания речи' });
+      stopListening();                     /* прошлая сессия могла держать микрофон */
+      let r;
+      try { r = new SR(); } catch (e) { return resolve({ alts: [], error: 'микрофон занят, попробуйте ещё раз' }); }
+      active = r;
+      r.lang = 'zh-CN'; r.interimResults = true; r.maxAlternatives = 3;
+      let done = false, best = [], timer = null;
+      const finish = (alts, error) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (active === r) active = null;
+        try { r.stop(); } catch (e) { /* ignore */ }
+        resolve({ alts: alts && alts.length ? alts : best, error: error || null });
+      };
+      r.onresult = e => {
+        const alts = [];
+        const res = e.results[e.results.length - 1];
+        for (let i = 0; i < res.length; i++) alts.push(res[i].transcript);
+        if (res.isFinal) finish(alts);
+        else best = alts;                  /* промежуточный результат сохраняем: пригодится, если финала не будет */
+      };
+      r.onerror = e => finish([], e.error === 'not-allowed' || e.error === 'service-not-allowed'
+        ? 'нет доступа к микрофону — разрешите его в настройках'
+        : e.error === 'no-speech' ? 'ничего не услышал' : 'не расслышал');
       r.onend = () => finish([]);
-      setTimeout(() => finish([]), ms);
-      try { r.start(); } catch (e) { finish(null, e); }
+      timer = setTimeout(() => finish([]), ms);
+      try { r.start(); } catch (e) { finish([], 'микрофон занят, попробуйте ещё раз'); }
     });
   }
   const norm = t => String(t || '').replace(/[\s，。！？、,.!?;:'"·]/g, '');
@@ -6314,7 +6343,7 @@ window.BossGen = (() => {
     return alts.some(a => keys.some(k => a.includes(k)) || (ans && (a === ans || (a.length > 2 && ans.includes(a)))));
   }
 
-  return { BANK, rounds, fromBank, canListen, listen, judge, norm };
+  return { BANK, rounds, fromBank, canListen, listen, stopListening, judge, norm };
 })();
 
 ;
@@ -6643,7 +6672,8 @@ window.BossMusic = (() => {
 /* Арена боссов: выбор, бой на пять реплик голосом, три вида подсказок, особый сундук. */
 (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, saveAttempt, fmt } = App;
-  let fight = null;   /* { boss, rounds, i, hints:{tr,start,opts}, used:0, src, log:[] } */
+  let fight = null;   /* { boss, sp, rounds, i, hints, used, wrong, heard } */
+  let unfinished = null;   /* брошенный бой: реплики придержим, чтобы не генерировать заново */
   let tick = null;
 
   const HINTS = [
@@ -6728,14 +6758,17 @@ window.BossMusic = (() => {
     el.disabled = true;
     toast('Босс готовится…', 1500);
     const sp = Boss.setup(state, b);
-    const avoid = Boss.recall(state).map(m => m.t);
-    const res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
-    Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
-    const bst = Boss.st(state);
-    bst.lastTry = Date.now();
+    let res = unfinished && unfinished.id === b.id ? { list: unfinished.rounds, src: unfinished.src } : null;
+    if (!res) {
+      const avoid = Boss.recall(state).map(m => m.t);
+      res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
+      Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
+    }
+    unfinished = null;
+    res.list.forEach(r => { delete r.ok; delete r.said; });
     Boss.bs(state, b.id).tries++;
     persist();
-    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now() };
+    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now(), heard: null };
     BossMusic.start(b);
     nav('fight');
   };
@@ -6753,7 +6786,7 @@ window.BossMusic = (() => {
       const left = Math.ceil((deadline - Date.now()) / 1000);
       const el = $('#fclock');
       if (el) { el.textContent = left + ' с'; el.classList.toggle('urgent', left <= 5); }
-      if (left <= 0) { stopClock(); answer([]); }              /* не успел — мимо */
+      if (left <= 0) { stopClock(); BossGen.stopListening(); answer([], fight.i); }   /* не успел — мимо */
     };
     clock = setInterval(tick, 250);
     tick();
@@ -6762,8 +6795,14 @@ window.BossMusic = (() => {
   const speak = () => { const r = fight.rounds[fight.i]; Speech.say(r.say, fight.raged ? Boss.ragedVoice(fight.boss) : fight.boss.voice); };
   actions['fight-say'] = () => speak();
   actions['fight-quit'] = () => {
-    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, а следующий вызов всё равно через 10 минут.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
-      $('#fq', s).onclick = () => { closeSheet(); stopClock(); BossMusic.stop(); fight = null; nav('boss', {}, { replace: true }); };
+    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, но и время не сгорит: вызвать снова можно сразу, реплики останутся те же.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
+      $('#fq', s).onclick = () => {
+        closeSheet(); stopClock(); BossGen.stopListening(); BossMusic.stop();
+        unfinished = { id: fight.boss.id, rounds: fight.rounds, src: fight.src };
+        fight = null;
+        toast('Бой не засчитан — вызвать снова можно сразу', 2600);
+        nav('boss', {}, { replace: true });
+      };
       $('#fc', s).onclick = () => closeSheet();
     });
   };
@@ -6778,13 +6817,15 @@ window.BossMusic = (() => {
   actions['fight-pick'] = el => { if (fight) answer([el.dataset.v]); };
   actions['fight-listen'] = async el => {
     if (!fight || fight.busy) return;
-    fight.busy = true; el.classList.add('rec'); el.textContent = '● Слушаю…';
-    try {
-      const said = await BossGen.listen(7000);
-      fight.busy = false;
-      if (!said || !said.length) { toast('Не расслышал — попробуйте ещё раз или ответьте текстом'); render(); return; }
-      answer(said);
-    } catch (e) { fight.busy = false; toast(e.message + ' — ответьте текстом', 3000); render(); }
+    const round = fight.i;
+    fight.busy = true; fight.heard = null;
+    el.classList.add('rec'); el.textContent = '● Слушаю…';
+    const res = await BossGen.listen(8000);
+    if (!fight || fight.i !== round) return;                 /* раунд успел смениться — молча выходим */
+    fight.busy = false;
+    fight.heard = { text: (res.alts && res.alts[0]) || '', error: res.error };
+    if (!res.alts || !res.alts.length) { render(); return; } /* показываем, что услышано (или что не услышано) */
+    answer(res.alts, round);
   };
   actions['fight-text'] = () => {
     sheet(`<h3 class="sh-t">Ответ текстом</h3><div class="field"><label>По-китайски <span class="muted">· клавиатура 中文</span></label><input class="inp" id="fta" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="汉字"></div><button class="btn btn-primary btn-block" id="ftok">Ответить</button>`, s => {
@@ -6794,7 +6835,9 @@ window.BossMusic = (() => {
       inp.onkeydown = e => { if (e.key === 'Enter') go(); };
     });
   };
-  function answer(said) {
+  function answer(said, forRound) {
+    if (!fight || fight.shown) return;                       /* бой окончен или уже показываем разбор */
+    if (forRound != null && forRound !== fight.i) return;    /* ответ опоздал и относится к прошлой реплике */
     stopClock();
     const r = fight.rounds[fight.i];
     const ok = BossGen.judge(r, said);
@@ -6832,6 +6875,7 @@ window.BossMusic = (() => {
         <div class="fight-say zh" data-action="fight-say">${esc(r.say)}</div>
         ${sh.k === 'tr' ? `<div class="fight-tr">${esc(r.py || '')}<br>${esc(r.ru || '')}</div>` : ''}
         ${sh.k === 'start' ? `<div class="fight-tr">Начните так: <b class="zh">${esc((r.answer || '').slice(0, 3))}…</b></div>` : ''}
+        ${fight.heard && sh.k !== 'fb' ? `<div class="heard ${fight.heard.text ? '' : 'none'}">${fight.heard.text ? 'Услышано: <b class="zh">' + esc(fight.heard.text) + '</b>' : esc(fight.heard.error || 'ничего не услышал')}</div>` : ''}
         ${sh.k === 'fb' ? `<div class="fight-fb ${sh.ok ? 'ok' : 'bad'}">${sh.ok ? '对！' : '错！'} <span>${esc(r.said || '—')}</span>${sh.ok ? '' : `<div class="fight-tr">Верно: <b class="zh">${esc(r.answer)}</b> — ${esc(r.answer_ru || '')}</div>`}</div>` : ''}
       </div>
       ${sh.k === 'opts' ? `<div class="opts">${(sh.opts || []).map(o => `<button class="opt opt-txt" data-action="fight-pick" data-v="${attr(o)}" data-nosound><span class="opt-hanzi">${esc(o)}</span></button>`).join('')}</div>` : ''}
@@ -6853,6 +6897,8 @@ window.BossMusic = (() => {
 
   function endFight(won) {
     stopClock();
+    BossGen.stopListening();
+    Boss.st(state).lastTry = Date.now();   /* время между вызовами считается от завершённого боя */
     const b = fight.boss, r = Boss.bs(state, b.id);
     const noHints = fight.used === 0;
     let chest = null;

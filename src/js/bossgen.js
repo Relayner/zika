@@ -88,18 +88,43 @@ window.BossGen = (() => {
   /* ── голос ── */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const canListen = () => !!SR;
+  let active = null;                       /* текущая сессия распознавания — держим, чтобы гасить перед новой */
+  function stopListening() {
+    if (!active) return;
+    try { active.abort(); } catch (e) { try { active.stop(); } catch (e2) { /* ignore */ } }
+    active = null;
+  }
+  /* Никогда не падает: всегда отдаёт { alts, error } — вызывающему не нужно ловить исключения */
   function listen(ms = 7000) {
-    return new Promise((resolve, reject) => {
-      if (!SR) return reject(new Error('нет распознавания речи'));
-      const r = new SR();
-      r.lang = 'zh-CN'; r.interimResults = false; r.maxAlternatives = 3;
-      let done = false;
-      const finish = (v, err) => { if (done) return; done = true; try { r.stop(); } catch (e) { /* ignore */ } err ? reject(err) : resolve(v); };
-      r.onresult = e => { const alts = []; for (let i = 0; i < e.results[0].length; i++) alts.push(e.results[0][i].transcript); finish(alts); };
-      r.onerror = e => finish(null, new Error(e.error === 'not-allowed' ? 'нет доступа к микрофону' : 'не расслышал'));
+    return new Promise(resolve => {
+      if (!SR) return resolve({ alts: [], error: 'на этом устройстве нет распознавания речи' });
+      stopListening();                     /* прошлая сессия могла держать микрофон */
+      let r;
+      try { r = new SR(); } catch (e) { return resolve({ alts: [], error: 'микрофон занят, попробуйте ещё раз' }); }
+      active = r;
+      r.lang = 'zh-CN'; r.interimResults = true; r.maxAlternatives = 3;
+      let done = false, best = [], timer = null;
+      const finish = (alts, error) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (active === r) active = null;
+        try { r.stop(); } catch (e) { /* ignore */ }
+        resolve({ alts: alts && alts.length ? alts : best, error: error || null });
+      };
+      r.onresult = e => {
+        const alts = [];
+        const res = e.results[e.results.length - 1];
+        for (let i = 0; i < res.length; i++) alts.push(res[i].transcript);
+        if (res.isFinal) finish(alts);
+        else best = alts;                  /* промежуточный результат сохраняем: пригодится, если финала не будет */
+      };
+      r.onerror = e => finish([], e.error === 'not-allowed' || e.error === 'service-not-allowed'
+        ? 'нет доступа к микрофону — разрешите его в настройках'
+        : e.error === 'no-speech' ? 'ничего не услышал' : 'не расслышал');
       r.onend = () => finish([]);
-      setTimeout(() => finish([]), ms);
-      try { r.start(); } catch (e) { finish(null, e); }
+      timer = setTimeout(() => finish([]), ms);
+      try { r.start(); } catch (e) { finish([], 'микрофон занят, попробуйте ещё раз'); }
     });
   }
   const norm = t => String(t || '').replace(/[\s，。！？、,.!?;:'"·]/g, '');
@@ -111,5 +136,5 @@ window.BossGen = (() => {
     return alts.some(a => keys.some(k => a.includes(k)) || (ans && (a === ans || (a.length > 2 && ans.includes(a)))));
   }
 
-  return { BANK, rounds, fromBank, canListen, listen, judge, norm };
+  return { BANK, rounds, fromBank, canListen, listen, stopListening, judge, norm };
 })();

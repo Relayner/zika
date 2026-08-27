@@ -606,3 +606,6 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .rage-cry { margin: 8px auto 0; max-width: 92%; border: 1.5px solid var(--danger, #b3392f); border-radius: 12px; padding: 8px 12px; background: color-mix(in srgb, var(--danger, #b3392f) 8%, transparent); }
 .rage-cry .zh { display: block; font-size: 19px; }
 .rage-cry small { color: var(--ink-2, #6b6156); }
+.heard { margin-top: 10px; font-size: 15px; color: var(--ink-2, #6b6156); border: 1px dashed var(--line, #e4d8c2); border-radius: 10px; padding: 7px 10px; }
+.heard b { color: var(--ink, #2c2620); font-size: 18px; }
+.heard.none { color: var(--danger, #b3392f); }
