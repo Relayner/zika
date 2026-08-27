@@ -80,6 +80,7 @@ window.App = (() => {
       a.points = Math.round(a.points * d.mult);
     }
     Campaign.noteUnit(state, a);
+    SRS.noteAttempt(state, a);   /* двигаем карточки по лесенке повторений */
     if (!state.campaign) state.campaign = Campaign.create();
     const c = state.campaign;
     const before = Campaign.todayState(c, state.attempts), rb = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));
@@ -277,6 +278,14 @@ window.App = (() => {
       : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button>`;
     return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
   }
+  /* Что подошло по сроку повторения */
+  function reviewPanel() {
+    const n = SRS.dueCount(state);
+    if (!n) return '';
+    return `<div class="panel review-panel"><div class="grow"><div class="rp-t">К повторению · ${fmt.plural(n, 'слово', 'слова', 'слов')}</div><div class="hint" style="margin:2px 0 0">Пора освежить — иначе выученное осыпется</div></div><button class="btn btn-primary btn-sm" data-action="review-go">Повторить 复习</button></div>`;
+  }
+  actions['review-go'] = () => { App.startReview(); };
+
   /* Приглашение включить пуши — прямо на главной, пока они выключены */
   let pushSt = null;
   function pushInvite() {
@@ -337,6 +346,7 @@ window.App = (() => {
       <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Карточки китайского · HSK 1–3</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
       ${App.Profile.homePanel()}
       ${dragonPanel()}
+      ${reviewPanel()}
       ${pushInvite()}
       <div class="panel ornate hero">
         <div class="hero-greet">${greet}</div>

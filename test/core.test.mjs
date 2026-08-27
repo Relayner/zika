@@ -467,3 +467,41 @@ t('decay by level gap', () => {
   assert.ok(up.mult > 1, 'контент выше уровня — надбавка: ' + up.mult);
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'decay group passed');
+
+
+/* ── интервальные повторения ── */
+require('../src/js/srs.js');
+t('srs ladder', () => {
+  const st = { settings: {}, cards: [] };
+  const D = 24 * 3600e3, now = Date.now();
+  const r1 = SRS.grade(st, 'hsk1:爱', true, now);
+  assert.equal(r1.step, 0); assert.equal(Math.round((r1.due - now) / D), 1, 'первая встреча — через день');
+  const r2 = SRS.grade(st, 'hsk1:爱', true, now);
+  assert.equal(Math.round((r2.due - now) / D), 3, 'верно — следующая ступень');
+  SRS.grade(st, 'hsk1:爱', true, now);
+  const r4 = SRS.grade(st, 'hsk1:爱', true, now);
+  assert.equal(Math.round((r4.due - now) / D), 21);
+  const bad = SRS.grade(st, 'hsk1:爱', false, now);
+  assert.equal(Math.round((bad.due - now) / D), 7, 'ошибка откатывает на ступень назад, а не в начало');
+  /* просроченное попадает в очередь */
+  assert.equal(SRS.dueCount(st, now), 0);
+  assert.equal(SRS.dueCount(st, now + 8 * D), 1);
+});
+t('srs from attempt', () => {
+  const st = { settings: {}, cards: [] };
+  const now = Date.now();
+  const a = { percent: 100, questions: [{ cardId: 'hsk1:八', ok: true }, { cardId: 'hsk1:本', ok: false }, { cardId: 'hsk1:八', ok: false }] };
+  assert.equal(SRS.noteAttempt(st, a, now), 2, 'две уникальные карточки');
+  const s = st.settings.srs;
+  assert.equal(s['hsk1:八'].step, 0, 'при разных ответах засчитываем худший');
+  assert.equal(s['hsk1:本'].step, 0);
+  /* живыми считаются те, кто прошёл дальше третьей ступени */
+  assert.equal(SRS.alive(st, now).length, 0);
+  SRS.grade(st, 'hsk1:八', true, now); SRS.grade(st, 'hsk1:八', true, now); SRS.grade(st, 'hsk1:八', true, now);
+  assert.equal(SRS.alive(st, now).length, 1);
+  /* прогноз на неделю */
+  const f = SRS.forecast(st, 7, now);
+  assert.equal(f.length, 7);
+  assert.ok(f.reduce((x, y) => x + y, 0) >= 1);
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'srs group passed');

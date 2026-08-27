@@ -94,6 +94,19 @@
   };
   actions['setup-start'] = () => { const s = getSetup(); startSession(s.mode, JSON.parse(JSON.stringify(s.byMode[s.mode]))); };
   /* Открыть тренировку на конкретной колоде (из режима изучения) */
+  /* Повторение по срокам: только то, что подошло, вперемешку из всех колод */
+  App.startReview = () => {
+    const ids = SRS.due(state);
+    if (!ids.length) return toast('Пока нечего повторять — всё свежее');
+    const byId = {};
+    App.builtinDecks.forEach(d => cardsOfDeck(d.id).forEach(c => { byId[c.id] = c; }));
+    (state.cards || []).forEach(c => { byId[c.id] = c; });
+    const cards = ids.map(id => byId[id]).filter(Boolean);
+    if (!cards.length) return toast('Карточки повторения не найдены');
+    closeSheet();
+    startSession('quiz', { deckIds: [], difficulty: 'medium', count: Math.min(30, cards.length), order: 'random', timer: 0, show: 'mixed', guess: [], review: true },
+      { cards, deckName: 'Повторение 复习' });
+  };
   App.trainDeck = id => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
@@ -120,6 +133,7 @@
       if (!questions.length) return toast('Нет фраз для тренировки');
     } else {
       const cards = extra.cards || cardsOfDecks(cfg.deckIds || []);
+      if (extra.deckName) cfg.deckName = extra.deckName;
       if (!cards.length) return toast('Нет карточек для тренировки');
       if (mode === 'listen') {
         if (!Speech.available()) return toast('Нет китайского голоса — включите его в настройках iPhone и перезапустите', 4000);
@@ -276,7 +290,7 @@
     const a = {
       id: uid(), ts: quiz.startedAt, endedAt: Date.now(), durationMs: Date.now() - quiz.startedAt,
       mode: quiz.kind === 'hsk' ? 'hsk' : quiz.cfg.mode, level: quiz.level, difficulty: quiz.kind === 'hsk' ? 'exam' : diff,
-      deckIds: quiz.deckIds, deckName: quiz.cfg.mode === 'sentence' ? 'Фразы' : quiz.deckIds.map(id => (deckById(id) || {}).name || id).join(', '),
+      deckIds: quiz.deckIds, deckName: quiz.cfg.deckName || (quiz.cfg.mode === 'sentence' ? 'Фразы' : quiz.deckIds.map(id => (deckById(id) || {}).name || id).join(', ')),
       show: quiz.kind === 'hsk' ? 'exam' : quiz.cfg.show, guess: quiz.cfg.show === 'mixed' ? ['all'] : (quiz.cfg.guess || []), order: quiz.cfg.order, timer: quiz.cfg.timer || 0,
       total: qs.length, planned: quiz.questions.length, aborted: !!aborted,
       correct: sc.correct, partial: sc.partial, wrong: qs.length - sc.correct - sc.partial, percent: sc.percent, score: sc.score,
