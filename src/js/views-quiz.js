@@ -363,12 +363,13 @@
 
   /* ── HSK: фиксированные экзамены ── */
   function levelCard(d) {
+    const rec = window.Skill && Skill.recLevel(state, Skill.profile(state)) === d.level;
     const cards = cardsOfDeck(d.id), cs = state.cardStats;
     const seen = cards.filter(c => cs[c.id] && cs[c.id].asked).length, mastered = cards.filter(c => cs[c.id] && cs[c.id].mastered).length;
     const tests = state.attempts.filter(a => a.mode === 'hsk' && a.level === d.level);
     const best = tests.length ? Math.max(...tests.map(a => a.percent)) : null, passed = tests.filter(a => a.passed).length;
     const last = tests.length ? tests[tests.length - 1] : null;
-    return `<div class="panel ornate level"><div class="level-h"><div class="level-n">HSK ${d.level}</div><div class="level-d">${cards.length} слов · ${esc(d.desc)}</div></div>
+    return `<div class="panel ornate level"><div class="level-h"><div class="level-n">HSK ${d.level}${rec ? ' <span class="rec-chip">рекомендуем</span>' : ''}</div><div class="level-d">${cards.length} слов · ${esc(d.desc)}</div></div>
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>

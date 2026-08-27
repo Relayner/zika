@@ -631,6 +631,24 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .th-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px dashed var(--line, #e4d8c2); }
 .th-ex { font-size: 30px; min-width: 42px; text-align: center; color: var(--bordeaux, #6d1a24); }
 .big-btn.t-hand { color: var(--gold, #c9a227); }
+/* Рекомендации и поток */
+.rec-chip { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--jade, #2e7d5b); border: 1px solid var(--jade, #2e7d5b); border-radius: 10px; padding: 1px 8px; vertical-align: 2px; }
+.lvl-rec { border-color: var(--jade, #2e7d5b); }
+.blk-card.worn { opacity: .62; }
+.blk-card.blk-next { border-color: var(--jade, #2e7d5b); box-shadow: 0 0 0 1px var(--jade, #2e7d5b); position: relative; }
+.blk-recban { position: absolute; top: -9px; left: 10px; background: var(--jade, #2e7d5b); color: #fff; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border-radius: 8px; padding: 1px 7px; }
+.fl-steps { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.fl-step { display: flex; align-items: center; gap: 10px; background: var(--card, #fffdf6); border: 1.5px solid var(--line, #e4d8c2); border-radius: 12px; padding: 10px 12px; }
+.fl-step.done { opacity: .55; }
+.fl-step.cur { border-color: var(--bordeaux, #6d1a24); box-shadow: 0 0 0 1px var(--bordeaux, #6d1a24); }
+.fl-step .fl-n { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; background: color-mix(in srgb, var(--line, #e4d8c2) 55%, transparent); }
+.fl-step.done .fl-n { color: var(--jade, #2e7d5b); }
+.fl-msg { font-size: 16px; line-height: 1.5; }
+.big-btn.t-flow { color: var(--bordeaux, #6d1a24); }
+.wn { max-height: 62vh; overflow-y: auto; }
+.wn-it { margin: 8px 0; }
+.wn-fx { color: var(--ink-2, #6b6156); font-size: 14px; margin: 4px 0; }
+.wn-sec { margin-bottom: 14px; }
 
 </style>
 <div id="app">
@@ -2755,6 +2773,192 @@ window.HANDWRITING = (() => {
 })();
 
 ;
+/* Внутренняя оценка ученика: скользящая точность по видам работы с затуханием по времени. */
+window.Skill = (() => {
+  const HALF_LIFE = 14 * 24 * 3600e3;   /* вклад попытки тает вдвое каждые две недели */
+  const KINDS = {
+    listen: { zh: '听', ru: 'Слух' },
+    read: { zh: '读', ru: 'Чтение' },
+    write: { zh: '写', ru: 'Набор' },
+    hand: { zh: '手', ru: 'От руки' },
+    speak: { zh: '说', ru: 'Речь' },
+    vocab: { zh: '词', ru: 'Словарь' },
+  };
+  /* Какому навыку принадлежит попытка (или вопрос экзамена) */
+  function kindsOf(a) {
+    if (a.mode === 'hand') return ['hand'];
+    if (a.mode === 'boss') return ['speak', 'listen'];
+    if (a.mode === 'listen') return ['listen'];
+    if (a.mode === 'write') return ['write'];
+    if (a.mode === 'sentence') return ['write', 'read'];
+    if (a.mode === 'quiz' || a.mode === 'flip' || a.mode === 'sprint') return ['read'];
+    if (a.mode === 'hsk') return a.format === 'real' ? null : ['read'];   /* настоящий экзамен разбираем по секциям */
+    return ['read'];
+  }
+  const secKind = { listening: 'listen', reading: 'read', writing: 'write' };
+
+  /* Профиль: 0…100 на навык + уровень материала, на котором это заработано */
+  function profile(state, now = Date.now()) {
+    const acc = {};
+    for (const k of Object.keys(KINDS)) acc[k] = { w: 0, ok: 0, lvl: 0 };
+    for (const a of state.attempts || []) {
+      if (a.aborted) continue;
+      const age = Math.pow(0.5, (now - (a.ts || now)) / HALF_LIFE);
+      const lvl = Campaign.contentLevel(a) || 1;
+      const push = (k, okFrac, weight) => { const c = acc[k]; if (!c) return; const w = weight * age; c.w += w; c.ok += okFrac * w; c.lvl += lvl * w; };
+      if (a.mode === 'hsk' && a.format === 'real' && a.sections) {
+        for (const [sec, v] of Object.entries(a.sections)) push(secKind[sec] || 'read', v.total ? v.correct / v.total : 0, v.total);
+      } else {
+        const ks = kindsOf(a);
+        if (ks) for (const k of ks) push(k, (a.percent || 0) / 100, a.total || 1);
+      }
+    }
+    const out = {};
+    for (const [k, c] of Object.entries(acc)) {
+      out[k] = c.w > 2
+        ? { score: Math.round(c.ok / c.w * 100), lvl: Math.round(c.lvl / c.w * 10) / 10, data: Math.round(c.w) }
+        : { score: null, lvl: null, data: Math.round(c.w) };
+    }
+    /* словарь — охват: доля живых слов от изученного объёма */
+    const aliveN = (window.SRS ? SRS.alive(state, now).length : 0);
+    const seenN = Object.keys((state.settings || {}).srs || {}).length;
+    out.vocab = { score: seenN ? Math.round(aliveN / seenN * 100) : null, alive: aliveN, seen: seenN, data: seenN };
+    return out;
+  }
+  /* Слабейший навык с данными — кандидат на тренировку */
+  function weakest(prof) {
+    const rows = Object.entries(prof).filter(([k, v]) => v.score != null && k !== 'vocab');
+    if (!rows.length) return null;
+    rows.sort((a, b) => a[1].score - b[1].score);
+    return rows[0][0];
+  }
+  /* Рекомендованный уровень материала: рабочий уровень Boss.levelOf, но не ниже уровня, где точность просела */
+  function recLevel(state, prof) {
+    const base = Boss.levelOf(state);
+    const scores = Object.values(prof).filter(v => v.score != null && v.score !== undefined).map(v => v.score);
+    const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+    if (avg == null) return base;
+    if (avg >= 85 && base < 4) return base + 1;   /* уверенно — можно тянуться выше */
+    return base;
+  }
+  return { KINDS, kindsOf, profile, weakest, recLevel, HALF_LIFE };
+})();
+
+;
+/* Поток 流: система сама собирает день из повторений, уроков, тренировок, письма и боссов.
+   Раз в день план пересчитывает Fable через воркер; без сети работает локальный алгоритм. */
+window.Flow = (() => {
+  const st = state => (state.settings.flow || (state.settings.flow = { steps: 0, day: '', doneToday: 0, streakBest: 0 }));
+
+  /* компактная стата для тренера */
+  function statsFor(state) {
+    const prof = Skill.profile(state);
+    const today = Stats.dayKey(Date.now());
+    const yest = Campaign.addDays(today, -1);
+    return {
+      level: Boss.levelOf(state),
+      recLevel: Skill.recLevel(state, prof),
+      skills: Object.fromEntries(Object.entries(prof).map(([k, v]) => [k, v.score])),
+      weakest: Skill.weakest(prof),
+      due: SRS.dueCount(state),
+      attemptsYesterday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === yest).length,
+      attemptsToday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === today).length,
+      daysStreak: (state.campaign || {}).days || 0,
+    };
+  }
+
+  /* локальный план — фолбэк и основа */
+  function localPlan(state) {
+    const s = statsFor(state);
+    const mix = { review: 0, sprint: 2, drill: 2, hand: 1, boss: 0 };
+    if (s.due > 0) mix.review = s.due > 15 ? 2 : 1;
+    if (s.weakest === 'hand') mix.hand = 2;
+    if (s.attemptsYesterday > 0) mix.boss = 1;
+    const total = Object.values(mix).reduce((a, b) => a + b, 0);
+    if (s.attemptsToday === 0 && total > 7) mix.drill = 1;
+    return { focus: s.weakest || 'read', mix, message: s.due > 10 ? 'Сначала вернём то, что уплывает, — потом новое.' : 'Ровный день: немного повторений, немного нового.' , src: 'local' };
+  }
+
+  /* план дня: кэш на сутки, пересчёт через Fable */
+  async function planFor(state) {
+    const today = Stats.dayKey(Date.now());
+    const cached = state.settings.flowPlan;
+    if (cached && cached.day === today && cached.plan) return cached.plan;
+    let plan = null;
+    const conf = window.PUSH_CONF || {};
+    if (conf.url && navigator.onLine !== false) {
+      try {
+        const ctl = new AbortController();
+        const to = setTimeout(() => ctl.abort(), 12000);
+        const r = await fetch(conf.url + '/coach', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal,
+          body: JSON.stringify({ stats: statsFor(state) }) });
+        clearTimeout(to);
+        const d = await r.json();
+        if (d && d.ok && d.plan && d.plan.mix) { plan = d.plan; plan.src = 'fable'; }
+      } catch (e) { /* сеть подвела — локальный план */ }
+    }
+    if (!plan) plan = localPlan(state);
+    state.settings.flowPlan = { day: today, plan };
+    App.persist();
+    return plan;
+  }
+
+  /* очередь шагов из плана */
+  function buildQueue(state, plan) {
+    const q = [];
+    const lvl = Skill.recLevel(state, Skill.profile(state));
+    const deck = ['hsk1', 'hsk2', 'hsk3', 'freq1'][Math.min(3, lvl - 1)];
+    for (let i = 0; i < (plan.mix.review || 0); i++) q.push({ t: 'review', title: 'Повторение 复习', d: 'слова, подошедшие по сроку' });
+    /* уроки: недоосвоенные блоки рекомендованного уровня */
+    const blocks = (window.PROGRAM ? PROGRAM.byLevel(lvl) : []).filter(b => {
+      const bs = (state.settings.program || {})[b.id];
+      return !bs || bs.seal === 'new' || bs.seal === 'work';
+    });
+    for (let i = 0; i < (plan.mix.sprint || 0); i++) {
+      const b = blocks[i % Math.max(1, blocks.length)];
+      if (b) q.push({ t: 'sprint', blockId: b.id, title: 'Урок · ' + b.ru, d: 'лента и проверка блока' });
+    }
+    const drillMode = { listen: 'listen', read: 'quiz', write: 'write', speak: null, hand: null }[plan.focus] || 'quiz';
+    for (let i = 0; i < (plan.mix.drill || 0); i++)
+      q.push({ t: 'drill', mode: drillMode || 'quiz', deck, title: 'Тренировка · ' + (Skill.KINDS[plan.focus] || {}).ru, d: 'слабое место дня' });
+    for (let i = 0; i < (plan.mix.hand || 0); i++) q.push({ t: 'hand', deck, title: 'Письмо от руки 手写', d: 'знаки уровня, черта за чертой' });
+    if (plan.mix.boss) q.push({ t: 'boss', title: 'Босс', d: 'если готов — вызовите любого' });
+    return q;
+  }
+
+  /* бонус за длину потока: каждый завершённый шаг добавляет к финальной награде */
+  const streakBonus = n => Math.min(60, n * n * 2);   /* 2, 8, 18, 32, 50, 60 */
+  return { st, statsFor, localPlan, planFor, buildQueue, streakBonus };
+})();
+
+;
+/* Что нового: большие фишки → приятные мелочи → исправления. Показывается один раз после обновления. */
+window.CHANGELOG = [
+  {
+    v: '20260828',
+    title: 'Письмо от руки, умный день и честная экономика',
+    features: [
+      ['手 Письмо от руки', 'Новый раздел: пишете иероглифы пальцем в клетке 田字格, черта за чертой и в правильном порядке. Приложение сверяет каждую черту — начало, путь и направление. Четыре ступени: обводка, с подсказкой, по памяти и диктант на слух. Внутри — вся база: восемь черт, семь правил порядка, строение знака.'],
+      ['流 Поток', 'Система сама собирает ваш день: повторения, уроки вашего уровня, тренировка слабого места, письмо и — если вы в форме — босс. План раз в день составляет тренер-нейросеть по вашей статистике. Чем длиннее серия шагов без выхода, тем больше бонус в конце.'],
+      ['复习 Повторения по срокам', 'Выученные слова теперь возвращаются: через день, три, неделю, три недели и два месяца. Ошиблись — слово приходит раньше. Зелёная панель «К повторению» на главной покажет, что пора освежить.'],
+      ['Рекомендации по уровню', 'Приложение считает вашу форму по шести навыкам и подсказывает, где заниматься: в уроках, письме и на экзаменах отмечено «ваш уровень». Свободный выбор никуда не делся — это подсказка, а не замок.'],
+    ],
+    minor: [
+      ['Честная цена минуты', 'Очки выровнены: угадайка подешевела, письмо, фразы и экзамены подорожали. Теперь всё равно, чем заниматься, — платят за усилие, а не за скорость кликов.'],
+      ['Видно, что услышал микрофон', 'В бою строка «Услышано: …» показывает, что именно разобрано из вашего ответа.'],
+      ['Бой можно продолжить', 'Незаконченный бой с боссом переживает выход и вылет: на арене появится «Продолжить бой», кулдаун идёт только за пройденный до конца бой.'],
+      ['Многократно пройденное подкрашено', 'Уроки, пройденные три и больше раз, помечаются золотым счётчиком — видно, что пора двигаться дальше.'],
+    ],
+    fixes: [
+      'Экран больше не прыгает к началу при каждом действии — прокрутка сохраняется.',
+      'Голосовой ответ боссу больше не зависает, а «не расслышал» объясняет причину.',
+      'Список слов больше не выдаёт себя за режим изучения — он честно назван справочником.',
+      'Список боссов не мигает: таймеры обновляются точечно.',
+    ],
+  },
+];
+
+;
 /* Коты-воины эпохи Троецарствия: 10 рангов, данные и векторные иллюстрации (тушь на бумаге). */
 window.IMG_URL = key => (window.IMG && window.IMG[key]) || ('img/' + key + '.webp');
 window.Cats = (() => {
@@ -3030,7 +3234,7 @@ window.Campaign = (() => {
     flip: 1,                                            /* самооценка без проверки — намеренно дёшево */
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
-    hand: { trace: 5, hint: 8, memory: 12, dictation: 15 },   /* письмо от руки, знак ~12-20 с */
+    hand: { trace: 5, hint: 8, memory: 11, dictation: 13 },   /* письмо от руки, знак ~12-20 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
@@ -4828,7 +5032,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260827-2227';
+  const VERSION = '20260827-2352';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4844,10 +5048,10 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
-    mode: { hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
+    mode: { flow: 'Поток', hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', flow: 'home', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
@@ -5186,6 +5390,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
+        <button class="big-btn t-flow" data-action="flow-open" data-nosound><svg class="deco" viewBox="0 0 100 100"><path d="M10 30 Q 35 10, 50 30 T 90 30 M10 55 Q 35 35, 50 55 T 90 55 M10 80 Q 35 60, 50 80 T 90 80" fill="none" stroke="currentColor" stroke-width="7"/></svg><span class="bi">流</span><span>Поток</span><small>система соберёт ваш день</small></button>
         <button class="big-btn t-hand" data-go="hand"><svg class="deco" viewBox="0 0 100 100"><path d="M20 14 h60 v6 h-60 z M46 20 v62 h8 v-62 z M30 44 h40 v6 h-40 z" fill="currentColor"/></svg><span class="bi">手</span><span>Письмо</span><small>от руки · черта за чертой</small></button>
         <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
@@ -5232,6 +5437,7 @@ window.App = (() => {
         <div class="flabel">Установка на iPhone</div>
         <div class="install-note">${standalone ? 'Приложение запущено с экрана «Домой» ✓' : 'В Safari нажмите <b>Поделиться</b> → <b>На экран «Домой»</b>. Откроется на весь экран и будет работать без сети.'}</div>
         <a class="btn btn-secondary btn-block mt" href="help.html" target="_blank" rel="noopener" data-nosound>Инструкция и правила похода</a>
+        <button class="btn btn-secondary btn-sm btn-block" data-action="whats-new">Что нового в этой версии</button>
         <button class="btn btn-secondary btn-sm btn-block" data-action="check-update">Проверить обновления</button>
         <div class="hint">Траектории черт — из открытого набора Make Me a Hanzi (данные под Arphic Public License).</div>
         <div class="hint">Версия ${VERSION} · схема данных ${state.meta ? state.meta.schema : '—'} · Хранилище: ${modeName} · Карточек: ${hskCards.length + state.cards.length} · Попыток: ${state.attempts.length}</div>
@@ -5295,6 +5501,17 @@ window.App = (() => {
   };
 
   /* ── запуск ── */
+  /* Что нового: показываем один раз после обновления */
+  function whatsNew(force) {
+    const log = (window.CHANGELOG || [])[0];
+    if (!log) return;
+    if (!force && state.settings.seenRelease === log.v) return;
+    state.settings.seenRelease = log.v; persist();
+    const sec = (t, items, cls) => items && items.length ? `<div class="wn-sec ${cls}"><div class="flabel">${t}</div>${items.map(i => Array.isArray(i) ? `<div class="wn-it"><b>${i[0]}</b><div class="hint" style="margin:2px 0 0">${i[1]}</div></div>` : `<div class="wn-fx">· ${i}</div>`).join('')}</div>` : '';
+    sheet(`<h3 class="sh-t">Что нового</h3><div class="wn">${sec('Большое', log.features, 'big')}${sec('Приятное', log.minor, 'mid')}${sec('Исправлено', log.fixes, 'fix')}</div><button class="btn btn-primary btn-block mt" data-close>Отлично</button>`);
+  }
+  actions['whats-new'] = () => whatsNew(true);
+
   let pendingReload = false;
   function registerSW() {
     if (!('serviceWorker' in navigator) || location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
@@ -5345,6 +5562,7 @@ window.App = (() => {
     render();
     updateBadge();
     setTimeout(maybeNag, 1200);
+    setTimeout(() => { if (state.view === 'home') whatsNew(false); }, 1600);
     refreshPushState();
     Push.report(Campaign.todayState(state.campaign, state.attempts));
     registerSW();
@@ -5900,12 +6118,13 @@ window.App = (() => {
 
   /* ── HSK: фиксированные экзамены ── */
   function levelCard(d) {
+    const rec = window.Skill && Skill.recLevel(state, Skill.profile(state)) === d.level;
     const cards = cardsOfDeck(d.id), cs = state.cardStats;
     const seen = cards.filter(c => cs[c.id] && cs[c.id].asked).length, mastered = cards.filter(c => cs[c.id] && cs[c.id].mastered).length;
     const tests = state.attempts.filter(a => a.mode === 'hsk' && a.level === d.level);
     const best = tests.length ? Math.max(...tests.map(a => a.percent)) : null, passed = tests.filter(a => a.passed).length;
     const last = tests.length ? tests[tests.length - 1] : null;
-    return `<div class="panel ornate level"><div class="level-h"><div class="level-n">HSK ${d.level}</div><div class="level-d">${cards.length} слов · ${esc(d.desc)}</div></div>
+    return `<div class="panel ornate level"><div class="level-h"><div class="level-n">HSK ${d.level}${rec ? ' <span class="rec-chip">рекомендуем</span>' : ''}</div><div class="level-d">${cards.length} слов · ${esc(d.desc)}</div></div>
       <div class="bars"><div class="bar-l">Изучено <b>${seen}</b></div><div class="progress"><i style="width:${seen / cards.length * 100}%"></i></div><div class="bar-l">Освоено <b>${mastered}</b></div><div class="progress gold"><i style="width:${mastered / cards.length * 100}%"></i></div></div>
       <div class="hint">Формат экзамена: ${EXAM_FORMAT[d.level]}</div>
       <div class="level-stats"><span>Тестов: <b>${tests.length}</b></span><span>Сдано: <b>${passed}</b></span><span>Лучший: <b>${best == null ? '—' : best + '%'}</b></span>${last ? `<span>Последний: <b>${last.percent}%</b></span>` : ''}</div>
@@ -6672,22 +6891,25 @@ window.BossMusic = (() => {
   views.program = {
     render(p) {
       const only = p && p.lvl ? +p.lvl : null;
+      const recLvl = Skill.recLevel(state, Skill.profile(state));
       const lv = P.LEVELS.filter(l => !only || l.n === only).map(l => {
         const bs = P.byLevel(l.n);
         if (!bs.length) return `<div class="panel lvl-row muted"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} — блоки готовятся</div></div></div>`;
         const done = bs.filter(b => bstate(b.id).seal === 'done' || bstate(b.id).seal === 'gold').length;
-        return `<div class="panel"><div class="lvl-head"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} · ${bs.length} блоков · освоено ${done}</div></div></div>
-        <div class="blk-grid">${bs.map(b => {
+        const rec = l.n === recLvl;
+        return `<div class="panel ${rec ? 'lvl-rec' : ''}"><div class="lvl-head"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b>${rec ? ' <span class="rec-chip">ваш уровень</span>' : ''}<div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} · ${bs.length} блоков · освоено ${done}</div></div></div>
+        <div class="blk-grid">${(() => { const next = rec ? bs.find(x => { const q = bstate(x.id); return q.seal === 'new' || q.seal === 'work'; }) : null; return bs.map(b => {
           const st = bstate(b.id);
           const seen = st.seen.length, tot = b.words.length;
           const s = SEALS[st.seal];
-          return `<button class="blk-card s-${st.seal}" data-action="prog-open" data-id="${b.id}">
+          const worn = (st.runs || 0) >= 3 && (st.seal === 'done' || st.seal === 'gold');
+          return `<button class="blk-card s-${st.seal} ${worn ? 'worn' : ''} ${next && next.id === b.id ? 'blk-next' : ''}" data-action="prog-open" data-id="${b.id}">${next && next.id === b.id ? '<span class="blk-recban">рекомендуем</span>' : ''}
             <span class="blk-seal zh">${s[0]}</span>
             <span class="blk-zh zh">${esc(b.zh)}</span>
             <span class="blk-ru">${esc(b.ru)}</span>
             <span class="blk-bar"><i style="width:${Math.round(seen / tot * 100)}%"></i></span>
             <span class="blk-n">${seen} / ${tot}${st.runs ? ` <b class="blk-runs">×${st.runs}</b>` : ''}</span></button>`;
-        }).join('')}</div></div>`;
+        }).join(''); })()}</div></div>`;
       }).join('');
       return `<div class="vh">${only ? '<button class="icon-btn" data-back>‹</button>' : '<div class="seal">学</div>'}<div class="grow"><h1 class="title">${only ? 'Уроки HSK ' + only : 'Программа'}</h1><div class="sub">${only ? 'учите по одному блоку — проверка идёт по пройденному' : 'блоки по темам и грамматике · заходите в любой'}</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}${only ? '<button class="btn btn-secondary btn-block" data-go="program">Все уровни</button>' : ''}`;
     },
@@ -7221,12 +7443,15 @@ window.BossMusic = (() => {
   /* ── выбор занятия ── */
   views.hand = {
     render() {
+      const prof = Skill.profile(state);
+      const hs = (prof.hand || {}).score;
+      const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : hs < 90 ? 'memory' : 'dictation';
       const cur = state.settings.handMode || 'trace';
       const decks = builtinDecks.filter(d => d.level);
       const cards = state.settings.handDeck || 'hsk1';
       return `<div class="vh"><div class="seal">手</div><div class="grow"><h1 class="title">Письмо от руки</h1><div class="sub">手写 · черта за чертой, в верном порядке</div></div><button class="icon-btn" data-action="hand-info" aria-label="Как это работает">i</button></div>
-      <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}</button>`).join('')}</div>
-        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}</div></div>
+      <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}${m.k === recMode ? ' ·☆' : ''}</button>`).join('')}</div>
+        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}${cur !== recMode ? ` · по вашей форме советуем «${modeOf(recMode).t}»` : ' · это ваша ступень по форме'}</div></div>
       <div class="panel"><div class="flabel">Откуда брать знаки</div><div class="seg wrap">${decks.map(d => `<button class="${cards === d.id ? 'on' : ''}" data-action="hand-deck" data-id="${d.id}">${esc(d.name)}</button>`).join('')}</div></div>
       <div class="panel"><div class="flabel">Уроки письма</div>
         ${H.COURSE.map(c => `<button class="row tap" data-action="hand-course" data-id="${c.id}"><div><div class="row-t"><span class="zh">${c.zh}</span> · ${esc(c.ru)}</div><div class="row-s">${esc(c.can)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`).join('')}</div>
@@ -7457,6 +7682,73 @@ window.BossMusic = (() => {
       <div class="panel"><div class="flabel">Знаки</div><div class="hw-list">${f.results.map(r => `<div class="hw-it ${r.ok ? 'ok' : 'bad'}"><span class="zh">${esc(r.ch)}</span><small>${r.skipped ? 'пропущен' : r.ok ? (r.hints ? 'с подсказкой' : 'сам') : 'мимо'}</small></div>`).join('')}</div></div>
       <div class="btns"><button class="btn btn-primary btn-block" data-go="hand">Ещё</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
     },
+  };
+})();
+
+;
+/* Экран потока: план дня, очередь шагов, бонус за серию. */
+(() => {
+  const { state, views, actions, nav, esc, attr, uid, $, toast, persist, render, saveAttempt, fmt } = App;
+  let fl = null;   /* { plan, queue, i, doneAttempts, baseline } */
+
+  async function openFlow() {
+    toast('Собираю день…', 1500);
+    const plan = await Flow.planFor(state);
+    const queue = Flow.buildQueue(state, plan);
+    if (!queue.length) return toast('На сегодня всё сделано — загляните позже');
+    fl = { plan, queue, i: 0, done: 0, baseline: state.attempts.length, startedAt: Date.now() };
+    nav('flow');
+  }
+  actions['flow-open'] = () => { openFlow(); };
+
+  /* завершённые попытки двигают поток вперёд */
+  function sync() {
+    if (!fl) return;
+    const fresh = state.attempts.length - fl.baseline;
+    if (fresh > fl.done) fl.done = fresh;
+    if (fl.done > fl.i) fl.i = Math.min(fl.queue.length, fl.done);
+  }
+
+  views.flow = {
+    render() {
+      if (!fl) return '<div class="empty">Поток не собран.</div><div class="btns"><button class="btn btn-primary btn-block" data-action="flow-open">Собрать день</button></div>';
+      sync();
+      const p = fl.plan;
+      const finished = fl.i >= fl.queue.length;
+      const steps = fl.queue.map((s, k) => `<div class="fl-step ${k < fl.i ? 'done' : k === fl.i ? 'cur' : ''}">
+        <span class="fl-n">${k < fl.i ? '✓' : k + 1}</span>
+        <div class="grow"><b>${esc(s.title)}</b><div class="hint" style="margin:0">${esc(s.d)}</div></div>
+        ${k === fl.i && !finished ? `<button class="btn btn-primary btn-sm" data-action="flow-go">Начать</button>` : ''}</div>`).join('');
+      return `<div class="vh"><div class="seal">流</div><div class="grow"><h1 class="title">Поток</h1><div class="sub">${p.src === 'fable' ? 'план на день составил тренер' : 'план на день'} · фокус: ${(Skill.KINDS[p.focus] || {}).ru || p.focus}</div></div></div>
+      <div class="panel ornate"><div class="fl-msg">${esc(p.message || '')}</div>
+        <div class="hint" style="margin:8px 0 0">Шагов: ${fl.queue.length} · пройдено: ${fl.i} · бонус за серию: +${Flow.streakBonus(fl.i)} очк.</div></div>
+      <div class="fl-steps">${steps}</div>
+      ${finished ? `<button class="btn btn-jade btn-block btn-lg" data-action="flow-finish">Забрать бонус · +${Flow.streakBonus(fl.i)}</button>` : `<button class="btn btn-secondary btn-block btn-sm" data-action="flow-finish" ${fl.i ? '' : 'disabled'}>Завершить досрочно${fl.i ? ' · +' + Flow.streakBonus(fl.i) : ''}</button>`}`;
+    },
+  };
+  actions['flow-go'] = () => {
+    if (!fl) return;
+    sync();
+    const s = fl.queue[fl.i];
+    if (!s) return;
+    if (s.t === 'review') return App.startReview();
+    if (s.t === 'sprint') { const b = PROGRAM.byId(s.blockId); if (b) { App.actions['prog-open']({ dataset: { id: s.blockId } }); return; } }
+    if (s.t === 'drill') { App.trainDeck(s.deck); return; }
+    if (s.t === 'hand') { state.settings.handDeck = s.deck; persist(); nav('hand'); return; }
+    if (s.t === 'boss') { nav('boss'); return; }
+  };
+  actions['flow-finish'] = () => {
+    if (!fl || !fl.i) { fl = null; nav('home', {}, { replace: true }); return; }
+    const bonus = Flow.streakBonus(fl.i);
+    const f = Flow.st(state);
+    f.doneToday = fl.i; f.day = Stats.dayKey(Date.now());
+    if (fl.i > (f.streakBest || 0)) f.streakBest = fl.i;
+    const a = { id: uid(), ts: fl.startedAt, endedAt: Date.now(), durationMs: Date.now() - fl.startedAt,
+      mode: 'flow', difficulty: 'flow', deckIds: [], deckName: 'Поток · ' + fl.i + ' шагов', show: 'flow', guess: ['flow'],
+      order: 'random', timer: 0, total: fl.i, planned: fl.queue.length, aborted: false, correct: fl.i, partial: 0, wrong: 0,
+      percent: 100, points: bonus, questions: [] };
+    fl = null;
+    saveAttempt(a).then(() => { Sound.finish(true); toast('Бонус за поток: +' + bonus, 2500); nav('home', {}, { replace: true }); });
   };
 })();
 

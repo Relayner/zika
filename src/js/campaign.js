@@ -18,7 +18,7 @@ window.Campaign = (() => {
     flip: 1,                                            /* самооценка без проверки — намеренно дёшево */
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
-    hand: { trace: 5, hint: 8, memory: 12, dictation: 15 },   /* письмо от руки, знак ~12-20 с */
+    hand: { trace: 5, hint: 8, memory: 11, dictation: 13 },   /* письмо от руки, знак ~12-20 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };

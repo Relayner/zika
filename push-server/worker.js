@@ -93,6 +93,28 @@ export default {
       if (!m) return json({ error: 'bad_json', stop: data.stop_reason }, 502);
       try { return json({ ok: true, ...JSON.parse(m[0]) }); } catch (e) { return json({ error: 'bad_json', stop: data.stop_reason, len: text.length }, 502); }
     }
+    /* Тренер: раз в день Fable смотрит стату ученика и советует, из чего собрать день */
+    if (url.pathname === '/coach') {
+      if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 503);
+      const st = body.stats || {};
+      const sys = [
+        'Ты методист китайского в учебном приложении. По статистике ученика составь план на день.',
+        'Верни СТРОГО JSON без markdown: {"focus":"навык из списка listen/read/write/hand/speak","mix":{"review":N,"sprint":N,"drill":N,"hand":N,"boss":N},"message":"1-2 фразы ученику по-русски, тёплые и конкретные, без воды"}',
+        'mix — сколько шагов каждого типа положить в поток (всего 6-9): review — повторение слов по срокам, sprint — урок программы, drill — тренировка слабого навыка, hand — письмо от руки, boss — бой с боссом (0 или 1).',
+        'Правила: если просрочено много слов (due больше 15) — review не меньше 2; слабый навык получает больше drill; boss только если ученик занимался вчера; не перегружай — новичку меньше шагов.',
+      ].join('\n');
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-fable-5', max_tokens: 600, system: sys, messages: [{ role: 'user', content: 'Статистика ученика: ' + JSON.stringify(st) + '\nСоставь план. Только JSON.' }] }),
+      });
+      if (!r.ok) return json({ error: 'upstream', status: r.status }, 502);
+      const data = await r.json();
+      const text = (data.content || []).map(c => c.text || '').join('');
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) return json({ error: 'bad_json' }, 502);
+      try { return json({ ok: true, plan: JSON.parse(m[0]) }); } catch (e) { return json({ error: 'bad_json' }, 502); }
+    }
     if (url.pathname === '/test') {
       if (!body.endpoint) return json({ error: 'no endpoint' }, 400);
       const raw = await env.SUBS.get('s:' + (await idOf(body.endpoint)));

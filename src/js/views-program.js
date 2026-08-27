@@ -24,22 +24,25 @@
   views.program = {
     render(p) {
       const only = p && p.lvl ? +p.lvl : null;
+      const recLvl = Skill.recLevel(state, Skill.profile(state));
       const lv = P.LEVELS.filter(l => !only || l.n === only).map(l => {
         const bs = P.byLevel(l.n);
         if (!bs.length) return `<div class="panel lvl-row muted"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} — блоки готовятся</div></div></div>`;
         const done = bs.filter(b => bstate(b.id).seal === 'done' || bstate(b.id).seal === 'gold').length;
-        return `<div class="panel"><div class="lvl-head"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b><div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} · ${bs.length} блоков · освоено ${done}</div></div></div>
-        <div class="blk-grid">${bs.map(b => {
+        const rec = l.n === recLvl;
+        return `<div class="panel ${rec ? 'lvl-rec' : ''}"><div class="lvl-head"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b>${rec ? ' <span class="rec-chip">ваш уровень</span>' : ''}<div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} · ${bs.length} блоков · освоено ${done}</div></div></div>
+        <div class="blk-grid">${(() => { const next = rec ? bs.find(x => { const q = bstate(x.id); return q.seal === 'new' || q.seal === 'work'; }) : null; return bs.map(b => {
           const st = bstate(b.id);
           const seen = st.seen.length, tot = b.words.length;
           const s = SEALS[st.seal];
-          return `<button class="blk-card s-${st.seal}" data-action="prog-open" data-id="${b.id}">
+          const worn = (st.runs || 0) >= 3 && (st.seal === 'done' || st.seal === 'gold');
+          return `<button class="blk-card s-${st.seal} ${worn ? 'worn' : ''} ${next && next.id === b.id ? 'blk-next' : ''}" data-action="prog-open" data-id="${b.id}">${next && next.id === b.id ? '<span class="blk-recban">рекомендуем</span>' : ''}
             <span class="blk-seal zh">${s[0]}</span>
             <span class="blk-zh zh">${esc(b.zh)}</span>
             <span class="blk-ru">${esc(b.ru)}</span>
             <span class="blk-bar"><i style="width:${Math.round(seen / tot * 100)}%"></i></span>
             <span class="blk-n">${seen} / ${tot}${st.runs ? ` <b class="blk-runs">×${st.runs}</b>` : ''}</span></button>`;
-        }).join('')}</div></div>`;
+        }).join(''); })()}</div></div>`;
       }).join('');
       return `<div class="vh">${only ? '<button class="icon-btn" data-back>‹</button>' : '<div class="seal">学</div>'}<div class="grow"><h1 class="title">${only ? 'Уроки HSK ' + only : 'Программа'}</h1><div class="sub">${only ? 'учите по одному блоку — проверка идёт по пройденному' : 'блоки по темам и грамматике · заходите в любой'}</div></div><button class="icon-btn" data-action="prog-info" aria-label="О программе">i</button></div>${lv}${only ? '<button class="btn btn-secondary btn-block" data-go="program">Все уровни</button>' : ''}`;
     },

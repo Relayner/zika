@@ -629,3 +629,21 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .th-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px dashed var(--line, #e4d8c2); }
 .th-ex { font-size: 30px; min-width: 42px; text-align: center; color: var(--bordeaux, #6d1a24); }
 .big-btn.t-hand { color: var(--gold, #c9a227); }
+/* Рекомендации и поток */
+.rec-chip { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--jade, #2e7d5b); border: 1px solid var(--jade, #2e7d5b); border-radius: 10px; padding: 1px 8px; vertical-align: 2px; }
+.lvl-rec { border-color: var(--jade, #2e7d5b); }
+.blk-card.worn { opacity: .62; }
+.blk-card.blk-next { border-color: var(--jade, #2e7d5b); box-shadow: 0 0 0 1px var(--jade, #2e7d5b); position: relative; }
+.blk-recban { position: absolute; top: -9px; left: 10px; background: var(--jade, #2e7d5b); color: #fff; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border-radius: 8px; padding: 1px 7px; }
+.fl-steps { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.fl-step { display: flex; align-items: center; gap: 10px; background: var(--card, #fffdf6); border: 1.5px solid var(--line, #e4d8c2); border-radius: 12px; padding: 10px 12px; }
+.fl-step.done { opacity: .55; }
+.fl-step.cur { border-color: var(--bordeaux, #6d1a24); box-shadow: 0 0 0 1px var(--bordeaux, #6d1a24); }
+.fl-step .fl-n { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; background: color-mix(in srgb, var(--line, #e4d8c2) 55%, transparent); }
+.fl-step.done .fl-n { color: var(--jade, #2e7d5b); }
+.fl-msg { font-size: 16px; line-height: 1.5; }
+.big-btn.t-flow { color: var(--bordeaux, #6d1a24); }
+.wn { max-height: 62vh; overflow-y: auto; }
+.wn-it { margin: 8px 0; }
+.wn-fx { color: var(--ink-2, #6b6156); font-size: 14px; margin: 4px 0; }
+.wn-sec { margin-bottom: 14px; }

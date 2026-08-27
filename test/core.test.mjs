@@ -511,3 +511,41 @@ t('srs from attempt', () => {
   assert.ok(f.reduce((x, y) => x + y, 0) >= 1);
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'srs group passed');
+
+
+/* ── оценка навыков и поток ── */
+require('../src/js/skill.js');
+require('../src/js/flow.js');
+t('skill profile', () => {
+  const now = Date.now();
+  const mk = (mode, percent, total, ts, extra = {}) => ({ mode, percent, total, ts, aborted: false, deckIds: ['hsk1'], ...extra });
+  const st = { attempts: [mk('listen', 90, 20, now), mk('quiz', 40, 20, now), mk('hand', 100, 8, now)], settings: {}, cardStats: {} };
+  const p = Skill.profile(st, now);
+  assert.equal(p.listen.score, 90);
+  assert.equal(p.read.score, 40);
+  assert.equal(p.hand.score, 100);
+  assert.equal(p.speak.score, null, 'нет данных — нет оценки');
+  assert.equal(Skill.weakest(p), 'read');
+  /* затухание: старый успех весит меньше свежего провала */
+  const st2 = { attempts: [mk('quiz', 100, 20, now - 60 * 864e5), mk('quiz', 40, 20, now)], settings: {}, cardStats: {} };
+  const p2 = Skill.profile(st2, now);
+  assert.ok(p2.read.score < 60, 'свежий провал перевешивает: ' + p2.read.score);
+  /* настоящий экзамен раскладывается по секциям */
+  const st3 = { attempts: [{ mode: 'hsk', format: 'real', level: 2, ts: now, aborted: false, total: 60,
+    sections: { listening: { correct: 30, total: 35 }, reading: { correct: 10, total: 25 } } }], settings: {}, cardStats: {} };
+  const p3 = Skill.profile(st3, now);
+  assert.equal(p3.listen.score, 86);
+  assert.equal(p3.read.score, 40);
+});
+t('flow plan and bonus', () => {
+  const st = { attempts: [], settings: {}, cardStats: {}, campaign: { days: 0 } };
+  const plan = Flow.localPlan(st);
+  assert.ok(plan.mix.sprint >= 1 && plan.message);
+  const q = Flow.buildQueue(st, plan);
+  assert.ok(q.length >= 3, 'очередь собралась: ' + q.length);
+  assert.ok(q.every(x => x.title));
+  assert.equal(Flow.streakBonus(1), 2);
+  assert.equal(Flow.streakBonus(5), 50);
+  assert.equal(Flow.streakBonus(10), 60, 'потолок бонуса');
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'skill/flow group passed');

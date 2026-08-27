@@ -6,7 +6,7 @@ const src = p => path.join(root, 'src', p), dist = p => path.join(root, 'docs', 
 const read = p => fs.readFileSync(p, 'utf8');
 const now = new Date();
 const VERSION = now.toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/(\d{8})(\d{4})/, '$1-$2');
-const JS_ORDER = ['hsk.js', 'freq.js', 'sentences.js', 'pinyin.js', 'store.js', 'audio.js', 'speech.js', 'quiz.js', 'stats.js', 'srs.js', 'strokes.js', 'handwriting.js', 'cats.js', 'treasures.js', 'campaign.js', 'dragon.js', 'hsk1exam.js', 'hsk2exam.js', 'hsk3exam.js', 'hsk4exam.js', 'hskreal.js', 'vault.js', 'push.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-learn.js', 'program.js', 'boss.js', 'bossgen.js', 'bossmusic.js', 'views-program.js', 'views-boss.js', 'views-hand.js', 'views-hskexam.js', 'views-profile.js', 'views-stats.js'];
+const JS_ORDER = ['hsk.js', 'freq.js', 'sentences.js', 'pinyin.js', 'store.js', 'audio.js', 'speech.js', 'quiz.js', 'stats.js', 'srs.js', 'strokes.js', 'handwriting.js', 'skill.js', 'flow.js', 'changelog.js', 'cats.js', 'treasures.js', 'campaign.js', 'dragon.js', 'hsk1exam.js', 'hsk2exam.js', 'hsk3exam.js', 'hsk4exam.js', 'hskreal.js', 'vault.js', 'push.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-learn.js', 'program.js', 'boss.js', 'bossgen.js', 'bossmusic.js', 'views-program.js', 'views-boss.js', 'views-hand.js', 'views-flow.js', 'views-hskexam.js', 'views-profile.js', 'views-stats.js'];
 const css = read(src('css/style.css'));
 const pushConf = JSON.parse(read(src('pushconf.json')));
 const picsAvail = (fs.existsSync(src('img')) ? fs.readdirSync(src('img')) : []).filter(f => /^pic-p\d+\.webp$/.test(f)).map(f => f.replace('.webp', '').replace('pic-', ''));

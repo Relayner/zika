@@ -15,12 +15,15 @@
   /* ── выбор занятия ── */
   views.hand = {
     render() {
+      const prof = Skill.profile(state);
+      const hs = (prof.hand || {}).score;
+      const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : hs < 90 ? 'memory' : 'dictation';
       const cur = state.settings.handMode || 'trace';
       const decks = builtinDecks.filter(d => d.level);
       const cards = state.settings.handDeck || 'hsk1';
       return `<div class="vh"><div class="seal">手</div><div class="grow"><h1 class="title">Письмо от руки</h1><div class="sub">手写 · черта за чертой, в верном порядке</div></div><button class="icon-btn" data-action="hand-info" aria-label="Как это работает">i</button></div>
-      <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}</button>`).join('')}</div>
-        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}</div></div>
+      <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}${m.k === recMode ? ' ·☆' : ''}</button>`).join('')}</div>
+        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}${cur !== recMode ? ` · по вашей форме советуем «${modeOf(recMode).t}»` : ' · это ваша ступень по форме'}</div></div>
       <div class="panel"><div class="flabel">Откуда брать знаки</div><div class="seg wrap">${decks.map(d => `<button class="${cards === d.id ? 'on' : ''}" data-action="hand-deck" data-id="${d.id}">${esc(d.name)}</button>`).join('')}</div></div>
       <div class="panel"><div class="flabel">Уроки письма</div>
         ${H.COURSE.map(c => `<button class="row tap" data-action="hand-course" data-id="${c.id}"><div><div class="row-t"><span class="zh">${c.zh}</span> · ${esc(c.ru)}</div><div class="row-s">${esc(c.can)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`).join('')}</div>

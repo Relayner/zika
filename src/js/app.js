@@ -16,10 +16,10 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
-    mode: { hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
+    mode: { flow: 'Поток', hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', flow: 'home', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
@@ -358,6 +358,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
+        <button class="big-btn t-flow" data-action="flow-open" data-nosound><svg class="deco" viewBox="0 0 100 100"><path d="M10 30 Q 35 10, 50 30 T 90 30 M10 55 Q 35 35, 50 55 T 90 55 M10 80 Q 35 60, 50 80 T 90 80" fill="none" stroke="currentColor" stroke-width="7"/></svg><span class="bi">流</span><span>Поток</span><small>система соберёт ваш день</small></button>
         <button class="big-btn t-hand" data-go="hand"><svg class="deco" viewBox="0 0 100 100"><path d="M20 14 h60 v6 h-60 z M46 20 v62 h8 v-62 z M30 44 h40 v6 h-40 z" fill="currentColor"/></svg><span class="bi">手</span><span>Письмо</span><small>от руки · черта за чертой</small></button>
         <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
@@ -404,6 +405,7 @@ window.App = (() => {
         <div class="flabel">Установка на iPhone</div>
         <div class="install-note">${standalone ? 'Приложение запущено с экрана «Домой» ✓' : 'В Safari нажмите <b>Поделиться</b> → <b>На экран «Домой»</b>. Откроется на весь экран и будет работать без сети.'}</div>
         <a class="btn btn-secondary btn-block mt" href="help.html" target="_blank" rel="noopener" data-nosound>Инструкция и правила похода</a>
+        <button class="btn btn-secondary btn-sm btn-block" data-action="whats-new">Что нового в этой версии</button>
         <button class="btn btn-secondary btn-sm btn-block" data-action="check-update">Проверить обновления</button>
         <div class="hint">Траектории черт — из открытого набора Make Me a Hanzi (данные под Arphic Public License).</div>
         <div class="hint">Версия ${VERSION} · схема данных ${state.meta ? state.meta.schema : '—'} · Хранилище: ${modeName} · Карточек: ${hskCards.length + state.cards.length} · Попыток: ${state.attempts.length}</div>
@@ -467,6 +469,17 @@ window.App = (() => {
   };
 
   /* ── запуск ── */
+  /* Что нового: показываем один раз после обновления */
+  function whatsNew(force) {
+    const log = (window.CHANGELOG || [])[0];
+    if (!log) return;
+    if (!force && state.settings.seenRelease === log.v) return;
+    state.settings.seenRelease = log.v; persist();
+    const sec = (t, items, cls) => items && items.length ? `<div class="wn-sec ${cls}"><div class="flabel">${t}</div>${items.map(i => Array.isArray(i) ? `<div class="wn-it"><b>${i[0]}</b><div class="hint" style="margin:2px 0 0">${i[1]}</div></div>` : `<div class="wn-fx">· ${i}</div>`).join('')}</div>` : '';
+    sheet(`<h3 class="sh-t">Что нового</h3><div class="wn">${sec('Большое', log.features, 'big')}${sec('Приятное', log.minor, 'mid')}${sec('Исправлено', log.fixes, 'fix')}</div><button class="btn btn-primary btn-block mt" data-close>Отлично</button>`);
+  }
+  actions['whats-new'] = () => whatsNew(true);
+
   let pendingReload = false;
   function registerSW() {
     if (!('serviceWorker' in navigator) || location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
@@ -517,6 +530,7 @@ window.App = (() => {
     render();
     updateBadge();
     setTimeout(maybeNag, 1200);
+    setTimeout(() => { if (state.view === 'home') whatsNew(false); }, 1600);
     refreshPushState();
     Push.report(Campaign.todayState(state.campaign, state.attempts));
     registerSW();
