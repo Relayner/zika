@@ -27,7 +27,7 @@
           <div class="grow">
             <div class="boss-n"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div>
             <div class="boss-lore">${esc(b.lore)}</div>
-            <div class="boss-terms">речь <b>HSK ${sp.lvl}</b> · ${fmt.plural(sp.rounds, 'реплика', 'реплики', 'реплик')} · ${fmt.plural(sp.lives, 'ошибка', 'ошибки', 'ошибок')} · ${fmt.plural(sp.hints.length, 'подсказка', 'подсказки', 'подсказок')}${sp.sec ? ' · ' + sp.sec + ' с на ответ' : ''}</div>
+            <div class="boss-terms">речь <b>HSK ${sp.lvl}</b> · ${fmt.plural(sp.rounds, 'реплика', 'реплики', 'реплик')} · ${fmt.plural(sp.lives, 'ошибка', 'ошибки', 'ошибок')} · ${fmt.plural(sp.hints.length, 'подсказка', 'подсказки', 'подсказок')}${sp.sec ? ' · ' + sp.sec + ' с на ответ' : ''}${sp.rage ? ` · <b>звереет после ${sp.rage.at} верных</b>` : ''}</div>
             <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b> · награда ×${Boss.weight(sp)}</div>
             <div class="boss-when">${why}</div>
             <button class="btn ${locked ? 'btn-secondary' : 'btn-danger'} btn-sm" data-action="boss-go" data-id="${b.id}" ${locked ? 'disabled' : ''}>Вызвать на бой</button>
@@ -103,8 +103,9 @@
   function stopClock() { if (clock) { clearInterval(clock); clock = null; } }
   function startClock() {
     stopClock();
-    if (!fight || !fight.sp.sec) return;
-    const deadline = Date.now() + fight.sp.sec * 1000;
+    const sec = curSec();
+    if (!fight || !sec) return;
+    const deadline = Date.now() + sec * 1000;
     const tick = () => {
       if (!fight || fight.shown) return;                      /* во время подсказки и разбора не тикаем */
       const left = Math.ceil((deadline - Date.now()) / 1000);
@@ -115,7 +116,8 @@
     clock = setInterval(tick, 250);
     tick();
   }
-  const speak = () => { const r = fight.rounds[fight.i], v = fight.boss.voice; Speech.say(r.say, v); };
+  const curSec = () => (fight.raged ? Boss.ragedSec(fight.sp) : fight.sp.sec);
+  const speak = () => { const r = fight.rounds[fight.i]; Speech.say(r.say, fight.raged ? Boss.ragedVoice(fight.boss) : fight.boss.voice); };
   actions['fight-say'] = () => speak();
   actions['fight-quit'] = () => {
     sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, а следующий вызов всё равно через 10 минут.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
@@ -156,7 +158,12 @@
     const ok = BossGen.judge(r, said);
     r.said = Array.isArray(said) ? said[0] : said;
     r.ok = ok;
-    if (ok) Sound.ok(); else { fight.wrong++; Sound.fail(); }
+    if (ok) { fight.right = (fight.right || 0) + 1; Sound.ok(); } else { fight.wrong++; Sound.fail(); }
+    /* вторая фаза: босс звереет */
+    if (!fight.raged && fight.sp.rage && fight.right >= fight.sp.rage.at && fight.i < fight.rounds.length - 1) {
+      fight.raged = true; fight.rageShown = false;
+      BossMusic.rage(fight.boss);
+    }
     fight.shown = { k: 'fb', ok };
     render();
     setTimeout(() => {
@@ -175,10 +182,11 @@
       const b = fight.boss, r = fight.rounds[fight.i];
       const sh = fight.shown || {};
       const hearts = '❤'.repeat(Math.max(0, fight.sp.lives - fight.wrong)) + '·'.repeat(Math.min(fight.sp.lives, fight.wrong));
-      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>${fight.sp.sec ? `<div class="fight-clock" id="fclock">${fight.sp.sec} с</div>` : ''}
+      return `<div class="qbar"><button class="icon-btn" data-action="fight-quit">✕</button><div class="progress"><i style="width:${fight.i / fight.rounds.length * 100}%"></i></div><div class="qcount">${fight.i + 1}/${fight.rounds.length}</div><div class="qtimer">${hearts}</div></div>${curSec() ? `<div class="fight-clock ${fight.raged ? 'urgent' : ''}" id="fclock">${curSec()} с</div>` : ''}
       <div class="panel ornate fight-card">
-        <img class="boss-por big ${sh.k === 'fb' ? (sh.ok ? 'hit' : 'laugh') : ''}" src="${IMG_URL(b.img)}" alt="" draggable="false">
-        <div class="boss-n"><span class="zh">${esc(b.zh)}</span></div>
+        <img class="boss-por big ${fight.raged ? 'rage' : ''} ${sh.k === 'fb' ? (sh.ok ? 'hit' : 'laugh') : ''}" src="${IMG_URL(b.img)}" alt="" draggable="false">
+        <div class="boss-n"><span class="zh">${esc(b.zh)}</span>${fight.raged ? ' <span class="rage-tag">怒 в ярости</span>' : ''}</div>
+        ${fight.raged && !fight.rageSeen ? `<div class="rage-cry"><span class="zh">${esc(fight.sp.rage.zh)}</span><small>${esc(fight.sp.rage.ru)}</small></div>` : ''}
         <div class="fight-say zh" data-action="fight-say">${esc(r.say)}</div>
         ${sh.k === 'tr' ? `<div class="fight-tr">${esc(r.py || '')}<br>${esc(r.ru || '')}</div>` : ''}
         ${sh.k === 'start' ? `<div class="fight-tr">Начните так: <b class="zh">${esc((r.answer || '').slice(0, 3))}…</b></div>` : ''}
@@ -195,8 +203,9 @@
     mount() {
       if (!fight) return;
       if (!fight.spoke) { fight.spoke = true; setTimeout(speak, 400); }
+      if (fight.raged && !fight.rageSeen && !fight.shown) { setTimeout(() => { if (fight) { fight.rageSeen = true; } }, 2600); }
       if (fight.shown && fight.shown.k === 'fb') stopClock();
-      else if (fight.sp.sec && fight.clockFor !== fight.i) { fight.clockFor = fight.i; startClock(); }
+      else if (curSec() && fight.clockFor !== fight.i) { fight.clockFor = fight.i; startClock(); }
     },
   };
 
@@ -228,7 +237,7 @@
     };
     persist();
     BossMusic.finish(won);
-    state.lastFight = { boss: b, won, noHints, chest, pts, rounds: fight.rounds.slice(), src: fight.src };
+    state.lastFight = { boss: b, won, noHints, chest, pts, rounds: fight.rounds.slice(), src: fight.src, raged: !!fight.raged };
     fight = null;
     saveAttempt(a).then(() => { state.lastFight.pts = a.points; state.lastFight.decay = a.decay; nav('fight-result', {}, { replace: true }); });
   }
@@ -240,7 +249,7 @@
       return `<div class="vh"><div class="seal">${f.won ? '胜' : '败'}</div><div class="grow"><h1 class="title">${f.won ? 'Победа' : 'Поражение'}</h1><div class="sub"><span class="zh">${esc(b.zh)}</span> · ${esc(b.ru)}</div></div></div>
       <div class="panel ornate fight-res ${f.won ? 'win' : 'lose'}"><img class="boss-por big" src="${IMG_URL(b.img)}" alt="">
         <div class="grow"><b>${f.won ? (f.noHints ? 'Повержен без единой подсказки' : 'Повержен') : 'Босс устоял'}</b>
-        <div class="hint" style="margin:4px 0 0">${f.won ? `Встанет через ${Boss.fmtLeft(Boss.RESPAWN)}` : 'Следующий вызов через 10 минут'}</div></div>
+        <div class="hint" style="margin:4px 0 0">${f.raged ? 'Дошло до ярости 怒 · ' : ''}${f.won ? `Встанет через ${Boss.fmtLeft(Boss.RESPAWN)}` : 'Следующий вызов через 10 минут'}</div></div>
         ${f.pts ? `<div class="sr-pts">+${f.pts}<small>очк.</small></div>` : ''}</div>
       ${f.decay && f.decay.why && f.decay.why.length ? `<div class="panel"><div class="flabel">Множитель очков ×${f.decay.mult}</div><div class="hint" style="margin:0">${f.decay.why.map(esc).join(' · ')}</div></div>` : ''}
       ${f.chest && f.chest.length ? `<div class="panel"><div class="flabel">Сундук босса${f.noHints ? ' · полнее на ' + Boss.chestBonusPct + '%' : ''}</div>

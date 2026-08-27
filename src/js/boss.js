@@ -11,31 +11,36 @@ window.Boss = (() => {
       style: 'дотошный, снисходительный, говорит короткими простыми фразами, придирается к мелочам',
       topic: 'приветствия, имена, семья, числа, простые бытовые вопросы',
       voice: { rate: 0.75, pitch: 0.9 }, lvl: 1, note: 'A',
-      offset: -1, rounds: 4, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0 },
+      offset: -1, rounds: 4, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0,
+      rage: { at: 3, sec: 22, rate: 1.2, pitch: 0.85, zh: '咦？你居然会！那我认真了。', ru: 'Ого, ты и правда умеешь! Тогда я всерьёз.' } },
     { id: 'b2', img: 'boss-2', zh: '茶博士', py: 'Chá bóshì', ru: 'Чайный Доктор',
       lore: 'Барсук держит чайную у горной дороги. Наливает всем, но платы просит словами: пока не расскажешь о себе — чашка не опустеет. Хитрый и радушный одновременно.',
       style: 'радушный, хитрый, задаёт бытовые вопросы про еду, время и погоду, поддакивает',
       topic: 'еда и напитки, время суток, погода, дом, привычки',
       voice: { rate: 0.85, pitch: 1.05 }, lvl: 1, note: 'C',
-      offset: 0, rounds: 5, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0 },
+      offset: 0, rounds: 5, lives: 3, hints: ['tr', 'start', 'opts'], sec: 0,
+      rage: { at: 3, sec: 20, rate: 1.25, pitch: 0.95, zh: '茶要凉了，快点回答！', ru: 'Чай стынет — отвечай быстрее!' } },
     { id: 'b3', img: 'boss-3', zh: '市井狐', py: 'Shìjǐng hú', ru: 'Базарная Лиса',
       lore: 'Торгует всем и сразу, считает быстрее счётов. Если запнёшься — тут же поднимет цену. Говорит скороговоркой, обожает торговаться.',
       style: 'быстрый, напористый, торгуется, спрашивает про цены, количества, покупки',
       topic: 'покупки, деньги, цены, счёт, магазин, торг',
       voice: { rate: 1.15, pitch: 1.15 }, lvl: 2, note: 'E',
-      offset: 0, rounds: 5, lives: 2, hints: ['tr', 'start', 'opts'], sec: 25 },
+      offset: 0, rounds: 5, lives: 2, hints: ['tr', 'start', 'opts'], sec: 25,
+      rage: { at: 3, sec: 14, rate: 1.35, pitch: 1.2, zh: '哼，会还价是吧？那我加价！', ru: 'Ах, торговаться умеешь? Тогда я подниму цену!' } },
     { id: 'b4', img: 'boss-4', zh: '笔吏', py: 'Bǐ lì', ru: 'Писарь-Журавль',
       lore: 'Чиновник с кистью наперевес. Проверяет не тебя, а твою грамматику, и ставит красную печать при первой же ошибке в порядке слов. Сух, точен, безжалостен.',
       style: 'сухой, официальный, придирается к грамматике и порядку слов, требует полных ответов',
       topic: 'учёба, работа, документы, грамматические конструкции, объяснения причин',
       voice: { rate: 0.9, pitch: 0.8 }, lvl: 3, note: 'G',
-      offset: 1, rounds: 6, lives: 2, hints: ['tr', 'start'], sec: 20 },
+      offset: 1, rounds: 6, lives: 2, hints: ['tr', 'start'], sec: 20,
+      rage: { at: 3, sec: 12, rate: 1.25, pitch: 0.75, zh: '不错。现在按规矩来，快！', ru: 'Недурно. Теперь по всей форме, живо!' } },
     { id: 'b5', img: 'boss-5', zh: '虎将军', py: 'Hǔ jiāngjūn', ru: 'Тигр-Генерал',
       lore: 'Последний страж заставы. Не спрашивает — требует. Отвечать надо быстро и по существу, иначе гуаньдао опускается, и разговор окончен.',
       style: 'громкий, властный, рубит фразы, требует быстрых чётких ответов, давит',
       topic: 'планы, решения, путь и дорога, здоровье, воля и характер',
       voice: { rate: 1.0, pitch: 0.7 }, lvl: 4, note: 'D',
-      offset: 1, rounds: 7, lives: 1, hints: ['tr'], sec: 15 },
+      offset: 1, rounds: 7, lives: 1, hints: ['tr'], sec: 15,
+      rage: { at: 2, sec: 9, rate: 1.4, pitch: 0.6, zh: '好胆！那就别怪我了！', ru: 'Дерзок! Тогда пеняй на себя!' } },
   ];
   const byId = id => LIST.find(b => b.id === id);
 
@@ -112,11 +117,19 @@ window.Boss = (() => {
       hints: boss.hints || ['tr', 'start', 'opts'],
       sec: boss.sec || 0,                                  /* 0 — без таймера на ответ */
       hard: (boss.offset || 0) > 0,
+      rage: boss.rage || null,
     };
+  }
+  /* Вторая фаза: босс звереет — быстрее речь, меньше времени на ответ */
+  function ragedSec(sp) { return sp.rage ? sp.rage.sec : sp.sec; }
+  function ragedVoice(boss) {
+    const r = boss.rage || {};
+    return { rate: (boss.voice.rate || 1) * (r.rate || 1), pitch: r.pitch != null ? r.pitch : boss.voice.pitch };
   }
   /* Насколько бой тяжелее прогулки — на это же множится награда */
   function weight(sp) {
     let w = 1;
+    if (sp.rage) w += 0.15;                   /* вторая фаза добавляет жару */
     w += (sp.rounds - 5) * 0.08;              /* больше реплик */
     w += (3 - sp.lives) * 0.12;               /* меньше права на ошибку */
     w += (3 - sp.hints.length) * 0.1;         /* меньше подсказок */
@@ -124,5 +137,5 @@ window.Boss = (() => {
     if (sp.hard) w += 0.15;                   /* речь выше вашего уровня */
     return Math.round(w * 100) / 100;
   }
-  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest, setup, weight };
+  return { LIST, byId, ROUNDS, TRY_COOLDOWN, RESPAWN, MEMORY_TTL, chestBonusPct, st, bs, tryLeft, respawnLeft, ready, fmtLeft, levelOf, recall, remember, chest, setup, weight, ragedSec, ragedVoice };
 })();

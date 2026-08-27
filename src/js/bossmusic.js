@@ -43,6 +43,14 @@ window.BossMusic = (() => {
     try { if (ctx.state === 'suspended') ctx.resume(); } catch (e) { /* ignore */ }
     loop();
   }
+  /* Вторая фаза: тот же мотив, но злее и быстрее */
+  function rage(boss) {
+    if (!enabled() || !nowCtx()) return;
+    start(Object.assign({}, boss, { lvl: 4 }));
+    if (gain) gain.gain.value = 0.18;
+    const t = ctx.currentTime + 0.02;
+    drum(t, 0.6); drum(t + 0.14, 0.6);
+  }
   function stop() { on = false; if (timer) { clearTimeout(timer); timer = null; } if (gain) { try { gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05); } catch (e) { /* ignore */ } gain = null; } }
   function finish(won) {
     stop();
@@ -53,5 +61,5 @@ window.BossMusic = (() => {
     seq.forEach((f, i) => blip(f, t + i * 0.16, 0.3, 'triangle', 0.22));
     if (won) { drum(t, 0.5); drum(t + 0.5, 0.5); }
   }
-  return { start, stop, finish };
+  return { start, stop, finish, rage };
 })();
