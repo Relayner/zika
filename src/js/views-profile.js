@@ -71,7 +71,7 @@
       <div class="gallery">${R().map((r, i) => `<button class="cell ${i > peak ? 'locked' : ''} ${i === idx ? 'cur' : ''}" data-action="rank-info" data-idx="${i}" data-nosound>${Cats.imgTag(i)}<div class="cell-n">${i + 1}</div><div class="cell-t">${i > peak ? '???' : esc(r.ru)}</div></button>`).join('')}</div>
       <div class="panel"><div class="flabel">Правила похода</div><div class="hint" style="margin:0">
         Очки — за каждый верный ответ (лёгкий/средний/сложный): тест ×${Campaign.BASE.quiz.easy}/${Campaign.BASE.quiz.medium}/${Campaign.BASE.quiz.hard}, письмо ×${Campaign.BASE.write.easy}/${Campaign.BASE.write.medium}/${Campaign.BASE.write.hard}, аудирование ×${Campaign.BASE.listen.easy}/${Campaign.BASE.listen.medium}/${Campaign.BASE.listen.hard}, фразы ×${Campaign.BASE.sentence.easy}/${Campaign.BASE.sentence.medium}/${Campaign.BASE.sentence.hard}, карточки ×${Campaign.BASE.flip}, экзамен ×${Campaign.BASE.hsk}; частичный ответ — половина. Бонусы: законченная тренировка от 10 вопросов +${Campaign.BONUS.finish}, без ошибок +${Campaign.BONUS.perfect}, сданный экзамен +${Campaign.BONUS.pass}.<br>
-        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут): день зачтён. <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
+        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (10–20 минут — смотря чем заниматься): день зачтён. <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
     },
   };
   const rar = id => Treasures.RARITY[Treasures.byId[id].rarity];
@@ -130,7 +130,7 @@
       <div class="panel" style="margin-bottom:12px">${todayBar(today)}</div>
       <div class="install-note">
         <p><b>Сейчас:</b> ${left}</p>
-        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Ранги дорожают: на первый нужно ${Campaign.RANK_DAYS[0]} зачтённых дня, на последний — ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]}; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
+        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (15–20 минут занятий): день зачтён, +1 к походу. Ранги дорожают: на первый нужно ${Campaign.RANK_DAYS[0]} зачтённых дня, на последний — ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]}; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
         <p><b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два и сундук с сокровищами.</p>
         <p>День без перехода откатывает поход на день. Очки — за верные ответы: сложнее режим — больше очков.</p>
       </div>

@@ -8,14 +8,24 @@ window.Campaign = (() => {
   const RANK_AT = RANK_DAYS.reduce((acc, d) => (acc.push(acc[acc.length - 1] + d), acc), [0]);   /* дней к началу каждого ранга */
   const TOTAL_DAYS = RANK_AT[RANK_AT.length - 1];   /* 63 дня до высшего ранга */
   const DAYS_PER_RANK = RANK_DAYS[0];
-  const BASE = { quiz: { easy: 2, medium: 4, hard: 8 }, write: { easy: 5, medium: 7, hard: 10 }, listen: { easy: 3, medium: 5, hard: 9 }, sentence: { easy: 4, medium: 7, hard: 12 }, flip: 1, hsk: 4 };
-  const BONUS = { finish: 5, perfect: 10, pass: 30 };
+  /* Ставка за задание = работа головы × время на неё. Считана так, чтобы минута любого серьёзного
+     занятия стоила примерно одинаково, а производство и полный экзамен были не дешевле узнавания. */
+  const BASE = {
+    quiz: { easy: 1.5, medium: 2.5, hard: 3.5 },        /* узнавание из вариантов, ~6 с */
+    listen: { easy: 2.5, medium: 4, hard: 5.5 },        /* узнавание на слух, ~9 с */
+    write: { easy: 6, medium: 8, hard: 10 },            /* производство иероглифа, ~16 с */
+    sentence: { easy: 7, medium: 10, hard: 13 },        /* производство фразы, ~20 с */
+    flip: 1,                                            /* самооценка без проверки — намеренно дёшево */
+    hsk: 3,                                             /* словарный тест */
+    exam: 6,                                            /* задание настоящего экзамена, ~11 с */
+  };
+  const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
 
   function questionPoints(a, q) {
     let base;
     if (a.mode === 'flip') base = BASE.flip;
-    else if (a.mode === 'hsk') base = BASE.hsk;
+    else if (a.mode === 'hsk') base = a.format === 'real' ? BASE.exam : BASE.hsk;
     else if (BASE[a.mode] && typeof BASE[a.mode] === 'object') base = BASE[a.mode][a.difficulty] || 3;
     else base = BASE.quiz[a.difficulty] || 2;
     return base * (q.fraction || 0);
@@ -25,7 +35,7 @@ window.Campaign = (() => {
     for (const q of a.questions || []) p += questionPoints(a, q);
     if (!a.aborted && a.total >= 10) p += BONUS.finish;
     if (a.percent === 100 && a.total >= 10) p += BONUS.perfect;
-    if (a.mode === 'hsk' && a.passed) p += BONUS.pass;
+    if (a.mode === 'hsk' && a.format === 'real' && a.passed) p += BONUS.pass;   /* надбавка за сданный настоящий экзамен, не за словарный тест */
     return Math.round(p * 10) / 10;
   }
   const pts = a => (a.points != null ? a.points : attemptPoints(a));

@@ -263,7 +263,7 @@
       state.campaign.chestLog.push(entry);
       state.campaign.chests.opened++;
     }
-    const pts = won ? Math.round((25 + fight.sp.lvl * 12) * Boss.weight(fight.sp) * (noHints ? 1.5 : 1)) : 0;
+    const pts = won ? Math.round((18 + fight.sp.lvl * 8) * Boss.weight(fight.sp) * (noHints ? 1.4 : 1)) : 0;
     const a = {
       id: uid(), ts: fight.startedAt, endedAt: Date.now(), durationMs: Date.now() - fight.startedAt,
       mode: 'boss', boss: b.id, bossName: b.ru, level: fight.lvl, difficulty: 'boss', deckIds: [], deckName: b.ru,

@@ -2894,14 +2894,24 @@ window.Campaign = (() => {
   const RANK_AT = RANK_DAYS.reduce((acc, d) => (acc.push(acc[acc.length - 1] + d), acc), [0]);   /* дней к началу каждого ранга */
   const TOTAL_DAYS = RANK_AT[RANK_AT.length - 1];   /* 63 дня до высшего ранга */
   const DAYS_PER_RANK = RANK_DAYS[0];
-  const BASE = { quiz: { easy: 2, medium: 4, hard: 8 }, write: { easy: 5, medium: 7, hard: 10 }, listen: { easy: 3, medium: 5, hard: 9 }, sentence: { easy: 4, medium: 7, hard: 12 }, flip: 1, hsk: 4 };
-  const BONUS = { finish: 5, perfect: 10, pass: 30 };
+  /* Ставка за задание = работа головы × время на неё. Считана так, чтобы минута любого серьёзного
+     занятия стоила примерно одинаково, а производство и полный экзамен были не дешевле узнавания. */
+  const BASE = {
+    quiz: { easy: 1.5, medium: 2.5, hard: 3.5 },        /* узнавание из вариантов, ~6 с */
+    listen: { easy: 2.5, medium: 4, hard: 5.5 },        /* узнавание на слух, ~9 с */
+    write: { easy: 6, medium: 8, hard: 10 },            /* производство иероглифа, ~16 с */
+    sentence: { easy: 7, medium: 10, hard: 13 },        /* производство фразы, ~20 с */
+    flip: 1,                                            /* самооценка без проверки — намеренно дёшево */
+    hsk: 3,                                             /* словарный тест */
+    exam: 6,                                            /* задание настоящего экзамена, ~11 с */
+  };
+  const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
 
   function questionPoints(a, q) {
     let base;
     if (a.mode === 'flip') base = BASE.flip;
-    else if (a.mode === 'hsk') base = BASE.hsk;
+    else if (a.mode === 'hsk') base = a.format === 'real' ? BASE.exam : BASE.hsk;
     else if (BASE[a.mode] && typeof BASE[a.mode] === 'object') base = BASE[a.mode][a.difficulty] || 3;
     else base = BASE.quiz[a.difficulty] || 2;
     return base * (q.fraction || 0);
@@ -2911,7 +2921,7 @@ window.Campaign = (() => {
     for (const q of a.questions || []) p += questionPoints(a, q);
     if (!a.aborted && a.total >= 10) p += BONUS.finish;
     if (a.percent === 100 && a.total >= 10) p += BONUS.perfect;
-    if (a.mode === 'hsk' && a.passed) p += BONUS.pass;
+    if (a.mode === 'hsk' && a.format === 'real' && a.passed) p += BONUS.pass;   /* надбавка за сданный настоящий экзамен, не за словарный тест */
     return Math.round(p * 10) / 10;
   }
   const pts = a => (a.points != null ? a.points : attemptPoints(a));
@@ -4690,7 +4700,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260827-2056';
+  const VERSION = '20260827-2120';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -7026,7 +7036,7 @@ window.BossMusic = (() => {
       state.campaign.chestLog.push(entry);
       state.campaign.chests.opened++;
     }
-    const pts = won ? Math.round((25 + fight.sp.lvl * 12) * Boss.weight(fight.sp) * (noHints ? 1.5 : 1)) : 0;
+    const pts = won ? Math.round((18 + fight.sp.lvl * 8) * Boss.weight(fight.sp) * (noHints ? 1.4 : 1)) : 0;
     const a = {
       id: uid(), ts: fight.startedAt, endedAt: Date.now(), durationMs: Date.now() - fight.startedAt,
       mode: 'boss', boss: b.id, bossName: b.ru, level: fight.lvl, difficulty: 'boss', deckIds: [], deckName: b.ru,
@@ -7551,7 +7561,7 @@ window.BossMusic = (() => {
       <div class="gallery">${R().map((r, i) => `<button class="cell ${i > peak ? 'locked' : ''} ${i === idx ? 'cur' : ''}" data-action="rank-info" data-idx="${i}" data-nosound>${Cats.imgTag(i)}<div class="cell-n">${i + 1}</div><div class="cell-t">${i > peak ? '???' : esc(r.ru)}</div></button>`).join('')}</div>
       <div class="panel"><div class="flabel">Правила похода</div><div class="hint" style="margin:0">
         Очки — за каждый верный ответ (лёгкий/средний/сложный): тест ×${Campaign.BASE.quiz.easy}/${Campaign.BASE.quiz.medium}/${Campaign.BASE.quiz.hard}, письмо ×${Campaign.BASE.write.easy}/${Campaign.BASE.write.medium}/${Campaign.BASE.write.hard}, аудирование ×${Campaign.BASE.listen.easy}/${Campaign.BASE.listen.medium}/${Campaign.BASE.listen.hard}, фразы ×${Campaign.BASE.sentence.easy}/${Campaign.BASE.sentence.medium}/${Campaign.BASE.sentence.hard}, карточки ×${Campaign.BASE.flip}, экзамен ×${Campaign.BASE.hsk}; частичный ответ — половина. Бонусы: законченная тренировка от 10 вопросов +${Campaign.BONUS.finish}, без ошибок +${Campaign.BONUS.perfect}, сданный экзамен +${Campaign.BONUS.pass}.<br>
-        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут): день зачтён. <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
+        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (10–20 минут — смотря чем заниматься): день зачтён. <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
     },
   };
   const rar = id => Treasures.RARITY[Treasures.byId[id].rarity];
@@ -7610,7 +7620,7 @@ window.BossMusic = (() => {
       <div class="panel" style="margin-bottom:12px">${todayBar(today)}</div>
       <div class="install-note">
         <p><b>Сейчас:</b> ${left}</p>
-        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (≈ 20 минут занятий): день зачтён, +1 к походу. Ранги дорожают: на первый нужно ${Campaign.RANK_DAYS[0]} зачтённых дня, на последний — ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]}; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
+        <p><b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (15–20 минут занятий): день зачтён, +1 к походу. Ранги дорожают: на первый нужно ${Campaign.RANK_DAYS[0]} зачтённых дня, на последний — ${Campaign.RANK_DAYS[Campaign.RANK_DAYS.length - 1]}; ${rp.complete ? 'поход завершён' : 'до ранга «' + esc(R()[Math.min(idx + 1, R().length - 1)].ru) + '» — ' + fmt.plural(rp.toNext, 'день', 'дня', 'дней')}.</p>
         <p><b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два и сундук с сокровищами.</p>
         <p>День без перехода откатывает поход на день. Очки — за верные ответы: сложнее режим — больше очков.</p>
       </div>

@@ -142,11 +142,14 @@ const D = 864e5;
 const mkA = (ts, mode, difficulty, qs, extra = {}) => ({ id: 'a' + ts + Math.random(), ts, mode, difficulty, total: qs.length, correct: qs.filter(q => q.fraction === 1).length, percent: Math.round(qs.reduce((s, q) => s + q.fraction, 0) / qs.length * 100), questions: qs, ...extra });
 const qs = (n, frac = 1) => Array.from({ length: n }, (_, i) => ({ cardId: 'hsk1-' + String(i + 1).padStart(3, '0'), fraction: frac, ok: frac === 1 }));
 t('campaign points', () => {
-  assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'easy', qs(10))), 10 * 2 + 5 + 10);
-  assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'hard', qs(10, 0.5))), 10 * 8 * 0.5 + 5);
+  assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'easy', qs(10))), 10 * 1.5 + 3 + 6);
+  assert.equal(Campaign.attemptPoints(mkA(0, 'quiz', 'hard', qs(10, 0.5))), 10 * 3.5 * 0.5 + 3);
   assert.equal(Campaign.attemptPoints(mkA(0, 'flip', 'flip', qs(5))), 5);
-  assert.equal(Campaign.attemptPoints(mkA(0, 'hsk', 'exam', qs(20), { passed: true })), 20 * 4 + 5 + 10 + 30);
-  assert.equal(Campaign.attemptPoints(mkA(0, 'write', 'medium', qs(3))), 21);
+  assert.equal(Campaign.attemptPoints(mkA(0, 'write', 'medium', qs(3))), 24);
+  /* словарный тест — обычная ставка, надбавки за сдачу нет */
+  assert.equal(Campaign.attemptPoints(mkA(0, 'hsk', 'exam', qs(20), { passed: true })), 20 * 3 + 3 + 6);
+  /* настоящий экзамен дороже и получает надбавку за сдачу */
+  assert.equal(Campaign.attemptPoints(mkA(0, 'hsk', 'exam', qs(20), { passed: true, format: 'real' })), 20 * 6 + 3 + 6 + 30);
 });
 t('campaign days', () => {
   const now = new Date(2026, 7, 23, 12).getTime();
@@ -263,10 +266,13 @@ t('sentence mode', () => {
 });
 t('points rebalance', () => {
   const mk = (mode, diff, n) => ({ mode, difficulty: diff, total: n, percent: 100, aborted: false, questions: Array.from({ length: n }, () => ({ fraction: 1, ok: true })) });
-  assert.equal(Campaign.attemptPoints(mk('quiz', 'hard', 5)), 40);
-  assert.equal(Campaign.attemptPoints(mk('listen', 'medium', 4)), 20);
-  assert.equal(Campaign.attemptPoints(mk('sentence', 'hard', 3)), 36);
-  assert.equal(Campaign.attemptPoints(mk('write', 'easy', 2)), 10);
+  assert.equal(Campaign.attemptPoints(mk('quiz', 'hard', 5)), 17.5);
+  assert.equal(Campaign.attemptPoints(mk('listen', 'medium', 4)), 16);
+  assert.equal(Campaign.attemptPoints(mk('sentence', 'hard', 3)), 39);
+  assert.equal(Campaign.attemptPoints(mk('write', 'easy', 2)), 12);
+  /* производство должно стоить дороже узнавания при равном числе заданий */
+  assert.ok(Campaign.attemptPoints(mk('write', 'hard', 10)) > Campaign.attemptPoints(mk('quiz', 'hard', 10)));
+  assert.ok(Campaign.attemptPoints(mk('sentence', 'hard', 10)) > Campaign.attemptPoints(mk('listen', 'hard', 10)));
   assert.ok(Campaign.BASE.quiz.hard > Campaign.BASE.quiz.medium && Campaign.BASE.quiz.medium > Campaign.BASE.quiz.easy);
 });
 t('dragon moods', () => {
