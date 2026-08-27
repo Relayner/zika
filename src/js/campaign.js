@@ -18,13 +18,15 @@ window.Campaign = (() => {
     flip: 1,                                            /* самооценка без проверки — намеренно дёшево */
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
+    hand: { trace: 5, hint: 8, memory: 12, dictation: 15 },   /* письмо от руки, знак ~12-20 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
 
   function questionPoints(a, q) {
     let base;
-    if (a.mode === 'flip') base = BASE.flip;
+    if (a.mode === 'hand') base = BASE.hand[a.difficulty] || BASE.hand.trace;
+    else if (a.mode === 'flip') base = BASE.flip;
     else if (a.mode === 'hsk') base = a.format === 'real' ? BASE.exam : BASE.hsk;
     else if (BASE[a.mode] && typeof BASE[a.mode] === 'object') base = BASE[a.mode][a.difficulty] || 3;
     else base = BASE.quiz[a.difficulty] || 2;

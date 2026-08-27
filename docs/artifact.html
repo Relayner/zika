@@ -613,6 +613,24 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .heard.none { color: var(--danger, #b3392f); }
 .review-panel { display: flex; align-items: center; gap: 12px; border-color: var(--jade, #2e7d5b); }
 .review-panel .rp-t { font-weight: 700; color: var(--jade, #2e7d5b); }
+/* Письмо от руки */
+.hw-wrap { display: grid; place-items: center; margin: 10px 0; }
+.hw-canvas { width: min(88vw, 340px); height: min(88vw, 340px); border-radius: 14px; background: var(--card, #fffdf6); border: 1.5px solid var(--line, #e4d8c2); touch-action: none; }
+.hw-info { display: flex; justify-content: space-between; align-items: center; margin: 0 0 10px; font-size: 14px; color: var(--ink-2, #6b6156); }
+.hw-msg.bad { color: var(--danger, #b3392f); }
+.hw-prompt { text-align: center; margin: 6px 0 2px; font-size: 17px; }
+.hw-prompt b { font-size: 22px; }
+.hw-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.hw-it { text-align: center; border: 1.5px solid var(--line, #e4d8c2); border-radius: 10px; padding: 6px 2px; }
+.hw-it .zh { font-size: 26px; display: block; }
+.hw-it small { font-size: 11px; color: var(--ink-2, #6b6156); }
+.hw-it.ok { border-color: var(--jade, #2e7d5b); }
+.hw-it.bad { border-color: var(--danger, #b3392f); opacity: .7; }
+.seg.wrap { flex-wrap: wrap; }
+.theory { max-height: 60vh; overflow-y: auto; }
+.th-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px dashed var(--line, #e4d8c2); }
+.th-ex { font-size: 30px; min-width: 42px; text-align: center; color: var(--bordeaux, #6d1a24); }
+.big-btn.t-hand { color: var(--gold, #c9a227); }
 
 </style>
 <div id="app">
@@ -2629,6 +2647,114 @@ window.SRS = (() => {
 })();
 
 ;
+/* Порядок черт: траектории берутся из открытого набора Make Me a Hanzi (лицензия Arphic Public License).
+   Координаты в поле 0…128, ось Y направлена вверх — на экран переводим через toScreen. */
+window.Strokes = (() => {
+  const FIELD = 128, BASE_Y = 112.5;
+  let data = null, loading = null;
+
+  function load() {
+    if (data) return Promise.resolve(data);
+    if (loading) return loading;
+    loading = fetch('strokes.json').then(r => r.json()).then(d => { data = d; loading = null; return d; })
+      .catch(e => { loading = null; throw new Error('не удалось загрузить траектории черт'); });
+    return loading;
+  }
+  const ready = () => !!data;
+  const of = ch => (data && data[ch]) || null;
+  const has = ch => !!of(ch);
+  const known = word => [...String(word)].every(has);
+  /* поле знака → пиксели холста */
+  const toScreen = (p, size) => [p[0] / FIELD * size, (BASE_Y - p[1]) / FIELD * size];
+
+  /* ── сравнение нарисованной черты с образцом ── */
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  function resample(pts, n) {
+    if (pts.length < 2) return Array.from({ length: n }, () => pts[0] || [0, 0]);
+    const seg = [];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) { const d = dist(pts[i - 1], pts[i]); seg.push(d); total += d; }
+    if (!total) return Array.from({ length: n }, () => pts[0]);
+    const step = total / (n - 1), out = [pts[0]];
+    let i = 1, acc = 0, need = step;
+    while (out.length < n && i < pts.length) {
+      const d = seg[i - 1];
+      if (acc + d >= need) {
+        const t = (need - acc) / d;
+        out.push([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t]);
+        need += step;
+      } else { acc += d; i++; }
+    }
+    while (out.length < n) out.push(pts[pts.length - 1]);
+    return out;
+  }
+  const len = pts => { let s = 0; for (let i = 1; i < pts.length; i++) s += dist(pts[i - 1], pts[i]); return s; };
+
+  /* drawn — точки в том же поле 0…128 (ось Y вниз, как на экране); expected — медиана черты */
+  function match(expected, drawn, opt = {}) {
+    const tolStart = opt.start || 26, tolMean = opt.mean || 22;
+    const exp = expected.map(p => [p[0], BASE_Y - p[1]]);          /* приводим образец к экранной оси */
+    if (!drawn || drawn.length < 2) return { ok: false, why: 'слишком короткая черта' };
+    const dLen = len(drawn), eLen = len(exp);
+    if (dLen < Math.max(6, eLen * 0.35)) return { ok: false, why: 'черта короче, чем нужно' };
+    const a = resample(exp, 16), b = resample(drawn, 16);
+    const bRev = b.slice().reverse();
+    const mean = arr => arr.reduce((s, p, i) => s + dist(a[i], p), 0) / arr.length;
+    const mFwd = mean(b), mRev = mean(bRev);
+    if (mRev < mFwd && mRev < tolMean) return { ok: false, why: 'черта ведётся в другую сторону' };
+    if (dist(a[0], b[0]) > tolStart) return { ok: false, why: 'начало черты не там' };
+    if (dist(a[15], b[15]) > tolStart) return { ok: false, why: 'конец черты не там' };
+    if (mFwd > tolMean) return { ok: false, why: 'черта идёт мимо' };
+    return { ok: true, score: Math.max(0, Math.round(100 - mFwd * 4)) };
+  }
+  return { FIELD, BASE_Y, load, ready, of, has, known, toScreen, match, resample };
+})();
+
+;
+/* Методика письма: основные черты, правила порядка, типы структуры. Материал для блоков «Рука 手». */
+window.HANDWRITING = (() => {
+  /* Восемь основных черт — на них строится всё остальное */
+  const STROKES = [
+    { zh: '横', py: 'héng', ru: 'горизонталь', d: 'Слева направо, чуть вверх к концу.', ex: '一' },
+    { zh: '竖', py: 'shù', ru: 'вертикаль', d: 'Сверху вниз, ровно.', ex: '十' },
+    { zh: '撇', py: 'piě', ru: 'откидная влево', d: 'Из верхнего правого угла вниз-влево, с утончением.', ex: '人' },
+    { zh: '捺', py: 'nà', ru: 'откидная вправо', d: 'Вниз-вправо с нажимом к концу.', ex: '八' },
+    { zh: '点', py: 'diǎn', ru: 'точка', d: 'Короткий росчерк вниз-вправо.', ex: '六' },
+    { zh: '提', py: 'tí', ru: 'подъём', d: 'Снизу вверх-вправо, быстрый.', ex: '打' },
+    { zh: '折', py: 'zhé', ru: 'излом', d: 'Черта с поворотом: горизонталь переходит в вертикаль.', ex: '口' },
+    { zh: '钩', py: 'gōu', ru: 'крюк', d: 'Завершение черты коротким подъёмом.', ex: '小' },
+  ];
+  /* Семь классических правил порядка */
+  const RULES = [
+    { t: 'Сверху вниз', zh: '从上到下', d: 'Верхние части знака пишутся раньше нижних.', ex: '三' },
+    { t: 'Слева направо', zh: '从左到右', d: 'Левая часть раньше правой.', ex: '们' },
+    { t: 'Сначала горизонталь', zh: '先横后竖', d: 'При пересечении горизонталь идёт раньше вертикали.', ex: '十' },
+    { t: 'Сначала откидная влево', zh: '先撇后捺', d: 'Левая откидная раньше правой.', ex: '人' },
+    { t: 'Сначала внешнее', zh: '先外后内', d: 'Обрамление раньше того, что внутри.', ex: '同' },
+    { t: 'Закрывать последним', zh: '先里头后封口', d: 'Нижняя черта рамки пишется после содержимого.', ex: '国' },
+    { t: 'Середина раньше боков', zh: '先中间后两边', d: 'Центральная черта раньше симметричных боковых.', ex: '小' },
+  ];
+  /* Типы структуры — помогают держать пропорции в клетке */
+  const STRUCT = [
+    { t: 'Цельный', zh: '独体', d: 'Знак не делится на части.', ex: '大 人 山' },
+    { t: 'Левое и правое', zh: '左右', d: 'Две части рядом, левая обычно уже.', ex: '好 明 你' },
+    { t: 'Верх и низ', zh: '上下', d: 'Части одна над другой.', ex: '是 家 花' },
+    { t: 'Обрамление', zh: '包围', d: 'Одна часть охватывает другую.', ex: '国 回 问' },
+  ];
+  /* Порядок освоения: от простого к сложному, привязан к уровням приложения */
+  const COURSE = [
+    { id: 'h0-01', lvl: 0, zh: '笔画', ru: 'Восемь черт', can: 'Узнаю и веду каждую из восьми базовых черт', chars: '一 十 人 八 六 打 口 小' },
+    { id: 'h0-02', lvl: 0, zh: '笔顺', ru: 'Правила порядка', can: 'Пишу простые знаки в верном порядке', chars: '三 们 十 人 同 国 小' },
+    { id: 'h0-03', lvl: 0, zh: '结构', ru: 'Строение знака', can: 'Вижу, из каких частей собран знак', chars: '大 好 是 国 明 花' },
+    { id: 'h1-01', lvl: 1, zh: '数字', ru: 'Числа и счёт', can: 'Пишу числа от руки', chars: '一 二 三 四 五 六 七 八 九 十' },
+    { id: 'h1-02', lvl: 1, zh: '人物', ru: 'Люди и семья', can: 'Пишу слова о людях', chars: '人 大 小 女 子 妈 爸 我 你 他' },
+    { id: 'h1-03', lvl: 1, zh: '日常', ru: 'Каждый день', can: 'Пишу бытовые знаки', chars: '日 月 水 火 山 口 手 目 心 门' },
+    { id: 'h1-04', lvl: 1, zh: '动作', ru: 'Действия', can: 'Пишу простые глаголы', chars: '看 听 说 写 读 吃 喝 去 来 学' },
+  ];
+  return { STROKES, RULES, STRUCT, COURSE };
+})();
+
+;
 /* Коты-воины эпохи Троецарствия: 10 рангов, данные и векторные иллюстрации (тушь на бумаге). */
 window.IMG_URL = key => (window.IMG && window.IMG[key]) || ('img/' + key + '.webp');
 window.Cats = (() => {
@@ -2904,13 +3030,15 @@ window.Campaign = (() => {
     flip: 1,                                            /* самооценка без проверки — намеренно дёшево */
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
+    hand: { trace: 5, hint: 8, memory: 12, dictation: 15 },   /* письмо от руки, знак ~12-20 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
 
   function questionPoints(a, q) {
     let base;
-    if (a.mode === 'flip') base = BASE.flip;
+    if (a.mode === 'hand') base = BASE.hand[a.difficulty] || BASE.hand.trace;
+    else if (a.mode === 'flip') base = BASE.flip;
     else if (a.mode === 'hsk') base = a.format === 'real' ? BASE.exam : BASE.hsk;
     else if (BASE[a.mode] && typeof BASE[a.mode] === 'object') base = BASE[a.mode][a.difficulty] || 3;
     else base = BASE.quiz[a.difficulty] || 2;
@@ -4700,7 +4828,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260827-2120';
+  const VERSION = '20260827-2227';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4716,10 +4844,10 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
-    mode: { boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
+    mode: { hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
@@ -5058,6 +5186,7 @@ window.App = (() => {
         <div class="proverb"><div class="hanzi">${pv[0]}</div><div class="pinyin" style="text-align:left">${pv[1]}</div><div class="ru">${pv[2]}</div></div>
       </div>
       <div class="grid2">
+        <button class="big-btn t-hand" data-go="hand"><svg class="deco" viewBox="0 0 100 100"><path d="M20 14 h60 v6 h-60 z M46 20 v62 h8 v-62 z M30 44 h40 v6 h-40 z" fill="currentColor"/></svg><span class="bi">手</span><span>Письмо</span><small>от руки · черта за чертой</small></button>
         <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
         <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
@@ -5104,6 +5233,7 @@ window.App = (() => {
         <div class="install-note">${standalone ? 'Приложение запущено с экрана «Домой» ✓' : 'В Safari нажмите <b>Поделиться</b> → <b>На экран «Домой»</b>. Откроется на весь экран и будет работать без сети.'}</div>
         <a class="btn btn-secondary btn-block mt" href="help.html" target="_blank" rel="noopener" data-nosound>Инструкция и правила похода</a>
         <button class="btn btn-secondary btn-sm btn-block" data-action="check-update">Проверить обновления</button>
+        <div class="hint">Траектории черт — из открытого набора Make Me a Hanzi (данные под Arphic Public License).</div>
         <div class="hint">Версия ${VERSION} · схема данных ${state.meta ? state.meta.schema : '—'} · Хранилище: ${modeName} · Карточек: ${hskCards.length + state.cards.length} · Попыток: ${state.attempts.length}</div>
         <div class="hint" id="backup-info">Резервные копии: …</div>
       </div>`;
@@ -7069,6 +7199,263 @@ window.BossMusic = (() => {
       <div class="panel"><div class="flabel">Как отвечали</div>${f.rounds.map((r, i) => `<div class="fb-row"><span class="fb-p zh">${esc(r.say)}</span><span class="fb-v">${r.ok == null ? '—' : r.ok ? '<b class="ok-t">верно</b>' : '<b class="bad-t">мимо</b>'}</span></div>`).join('')}
         <div class="hint" style="margin:8px 0 0">Реплики: ${f.src === 'fable' ? 'сочинил Claude Fable' : 'из встроенного банка'}</div></div>
       <div class="btns"><button class="btn btn-primary btn-block" data-go="boss">К боссам</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
+    },
+  };
+})();
+
+;
+/* Письмо от руки 手写: клетка 田字格, разбор по чертам, четыре ступени от обводки до диктанта. */
+(() => {
+  const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, saveAttempt, fmt, cardsOfDeck, builtinDecks } = App;
+  const H = window.HANDWRITING;
+  let hw = null;   /* { chars, i, strokeIdx, drawn, mistakes, mode, level, results, startedAt } */
+
+  const MODES = [
+    { k: 'trace', zh: '描', t: 'Обводка', d: 'Знак виден целиком, для каждой черты — точка начала и направление', pts: 5 },
+    { k: 'hint', zh: '临', t: 'С подсказкой', d: 'Знак виден бледно, подсказка по черте появляется только после ошибки', pts: 8 },
+    { k: 'memory', zh: '默', t: 'По памяти', d: 'Пустая клетка, дан только перевод и пиньинь', pts: 12 },
+    { k: 'dictation', zh: '听', t: 'Диктант', d: 'Слово произносят вслух — пишете, не видя ни знака, ни перевода', pts: 15 },
+  ];
+  const modeOf = k => MODES.find(m => m.k === k) || MODES[0];
+
+  /* ── выбор занятия ── */
+  views.hand = {
+    render() {
+      const cur = state.settings.handMode || 'trace';
+      const decks = builtinDecks.filter(d => d.level);
+      const cards = state.settings.handDeck || 'hsk1';
+      return `<div class="vh"><div class="seal">手</div><div class="grow"><h1 class="title">Письмо от руки</h1><div class="sub">手写 · черта за чертой, в верном порядке</div></div><button class="icon-btn" data-action="hand-info" aria-label="Как это работает">i</button></div>
+      <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}</button>`).join('')}</div>
+        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}</div></div>
+      <div class="panel"><div class="flabel">Откуда брать знаки</div><div class="seg wrap">${decks.map(d => `<button class="${cards === d.id ? 'on' : ''}" data-action="hand-deck" data-id="${d.id}">${esc(d.name)}</button>`).join('')}</div></div>
+      <div class="panel"><div class="flabel">Уроки письма</div>
+        ${H.COURSE.map(c => `<button class="row tap" data-action="hand-course" data-id="${c.id}"><div><div class="row-t"><span class="zh">${c.zh}</span> · ${esc(c.ru)}</div><div class="row-s">${esc(c.can)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`).join('')}</div>
+      <button class="btn btn-primary btn-block btn-lg" data-action="hand-start">Начать · 8 знаков</button>
+      <div class="panel"><div class="flabel">Основа</div>
+        <button class="row tap" data-action="hand-theory" data-k="strokes"><div><div class="row-t">Восемь черт 笔画</div><div class="row-s">как ведётся каждая</div></div><span class="chev">›</span></button>
+        <button class="row tap" data-action="hand-theory" data-k="rules"><div><div class="row-t">Правила порядка 笔顺</div><div class="row-s">семь правил, по которым пишут все знаки</div></div><span class="chev">›</span></button>
+        <button class="row tap" data-action="hand-theory" data-k="struct"><div><div class="row-t">Строение знака 结构</div><div class="row-s">из каких частей собирается иероглиф</div></div><span class="chev">›</span></button></div>`;
+    },
+  };
+  actions['hand-mode'] = el => { state.settings.handMode = el.dataset.k; persist(); render(); };
+  actions['hand-deck'] = el => { state.settings.handDeck = el.dataset.id; persist(); render(); };
+  actions['hand-info'] = () => sheet(`<h3 class="sh-t">Как устроено письмо от руки</h3><div class="install-note">
+    <p>Знак пишется <b>по чертам и в правильном порядке</b>. Приложение сверяет каждую черту: откуда начали, куда вели и совпал ли путь.</p>
+    <p>Черта не засчитывается, если ведёте её в обратную сторону — в китайском направление черты часть нормы, а не мелочь.</p>
+    <p>Клетка 田字格 с диагоналями — та же, по которой учатся в китайской школе: она держит пропорции.</p>
+    <p>Ошиблись дважды на одной черте — появится подсказка. Очки за знак зависят от того, сколько подсказок понадобилось.</p></div>
+    <button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
+  actions['hand-theory'] = el => {
+    const k = el.dataset.k;
+    const body = (k === 'strokes'
+      ? H.STROKES.map(s => `<div class="th-row"><span class="zh th-ex">${s.ex}</span><div><b><span class="zh">${s.zh}</span> ${s.py} — ${esc(s.ru)}</b><div class="hint" style="margin:2px 0 0">${esc(s.d)}</div></div></div>`).join('')
+      : k === 'rules'
+        ? H.RULES.map(r => `<div class="th-row"><span class="zh th-ex">${r.ex}</span><div><b>${esc(r.t)} · <span class="zh">${r.zh}</span></b><div class="hint" style="margin:2px 0 0">${esc(r.d)}</div></div></div>`).join('')
+        : H.STRUCT.map(r => `<div class="th-row"><span class="zh th-ex">${r.ex.split(' ')[0]}</span><div><b>${esc(r.t)} · <span class="zh">${r.zh}</span></b><div class="hint" style="margin:2px 0 0">${esc(r.d)} Например: <span class="zh">${esc(r.ex)}</span></div></div></div>`).join(''));
+    sheet(`<h3 class="sh-t">${k === 'strokes' ? 'Восемь черт 笔画' : k === 'rules' ? 'Правила порядка 笔顺' : 'Строение знака 结构'}</h3><div class="theory">${body}</div><button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
+  };
+  actions['hand-course'] = el => { const c = H.COURSE.find(x => x.id === el.dataset.id); if (c) startHand(c.chars.split(' ').filter(Boolean), c.lvl || 1, c.ru); };
+  actions['hand-start'] = () => {
+    const deck = state.settings.handDeck || 'hsk1';
+    const cards = cardsOfDeck(deck).filter(c => Strokes.known(c.hanzi) && c.hanzi.length <= 2);
+    if (!cards.length) return toast('Для этой колоды нет данных о чертах');
+    const pick = HskReal.shuffle(cards).slice(0, 8);
+    startHand(pick.map(c => c.hanzi), (builtinDecks.find(d => d.id === deck) || {}).level || 1, (builtinDecks.find(d => d.id === deck) || {}).name);
+  };
+
+  async function startHand(words, level, title) {
+    toast('Готовлю клетку…', 1200);
+    try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }
+    const chars = [];
+    words.forEach(w => [...w].forEach(ch => { if (Strokes.has(ch) && !chars.includes(ch)) chars.push(ch); }));
+    if (!chars.length) return toast('Нет знаков с данными о чертах');
+    hw = { chars: chars.slice(0, 12), i: 0, strokeIdx: 0, drawn: [], tries: 0, results: [], mode: state.settings.handMode || 'trace',
+      level, title: title || '', startedAt: Date.now(), hintShown: false, done: 0 };
+    nav('hand-run');
+  }
+
+  /* ── холст ── */
+  const cardOf = ch => {
+    for (const d of builtinDecks) { const c = cardsOfDeck(d.id).find(x => x.hanzi === ch); if (c) return c; }
+    return null;
+  };
+  views['hand-run'] = {
+    render() {
+      if (!hw) return '<div class="empty">Занятие не начато</div>';
+      const ch = hw.chars[hw.i];
+      const m = modeOf(hw.mode);
+      const card = cardOf(ch);
+      const total = Strokes.of(ch).length;
+      const prompt = hw.mode === 'memory'
+        ? `<div class="hw-prompt"><b>${esc(card ? card.pinyin : '')}</b><div>${esc(card ? card.ru : '')}</div></div>`
+        : hw.mode === 'dictation'
+          ? `<div class="hw-prompt"><button class="btn btn-secondary btn-sm" data-action="hand-say" data-nosound>🔊 Повторить</button></div>`
+          : '';
+      return `<div class="qbar"><button class="icon-btn" data-action="hand-quit">✕</button><div class="progress"><i style="width:${hw.i / hw.chars.length * 100}%"></i></div><div class="qcount">${hw.i + 1}/${hw.chars.length}</div><div class="qtimer"><span class="zh">${m.zh}</span></div></div>
+      ${prompt}
+      <div class="hw-wrap"><canvas id="hw-c" class="hw-canvas" width="640" height="640"></canvas></div>
+      <div class="hw-info"><span>Черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg"></span></div>
+      <div class="btns row2"><button class="btn btn-secondary" data-action="hand-undo">Стереть черту</button><button class="btn btn-secondary" data-action="hand-hint">Подсказать</button></div>
+      <button class="btn btn-secondary btn-block btn-sm" data-action="hand-skip">Пропустить знак</button>`;
+    },
+    mount() { if (hw) setupCanvas(); },
+  };
+  actions['hand-say'] = () => { if (hw) Speech.say(hw.chars[hw.i]); };
+  actions['hand-quit'] = () => { hw = null; nav('hand', {}, { replace: true }); };
+  actions['hand-undo'] = () => { if (hw && hw.strokeIdx > 0) { hw.strokeIdx--; hw.tries = 0; hw.hintShown = false; render(); } };
+  actions['hand-hint'] = () => { if (hw) { hw.hintShown = true; hw.usedHint = (hw.usedHint || 0) + 1; render(); } };
+  actions['hand-skip'] = () => { if (hw) { hw.results.push({ ch: hw.chars[hw.i], ok: false, tries: hw.tries, skipped: true }); nextChar(); } };
+
+  function nextChar() {
+    hw.i++; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false;
+    if (hw.i >= hw.chars.length) return finish();
+    render();
+    if (hw.mode === 'dictation') setTimeout(() => Speech.say(hw.chars[hw.i]), 400);
+  }
+
+  function setupCanvas() {
+    const cv = $('#hw-c');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const S = cv.width;
+    const ch = hw.chars[hw.i];
+    const medians = Strokes.of(ch);
+    const pt = p => Strokes.toScreen(p, S);
+    let drawing = false, cur = [];
+
+    function grid() {
+      ctx.clearRect(0, 0, S, S);
+      ctx.fillStyle = 'rgba(255,255,255,0.02)'; ctx.fillRect(0, 0, S, S);
+      ctx.strokeStyle = 'rgba(180,140,60,0.45)'; ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, S - 2, S - 2);
+      ctx.setLineDash([8, 10]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.moveTo(0, S / 2); ctx.lineTo(S, S / 2);
+      ctx.moveTo(0, 0); ctx.lineTo(S, S); ctx.moveTo(S, 0); ctx.lineTo(0, S); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function ghost() {
+      /* образец знака: в обводке ярко, с подсказкой — бледно, по памяти и в диктанте не показываем */
+      const a = hw.mode === 'trace' ? 0.3 : hw.mode === 'hint' ? 0.12 : 0;
+      if (!a) return;
+      ctx.save();
+      ctx.font = Math.round(S * 0.82) + 'px "Noto Serif SC", serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(160,160,160,${a})`;
+      ctx.fillText(ch, S / 2, S / 2 + S * 0.03);
+      ctx.restore();
+    }
+    function doneStrokes() {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055;
+      ctx.strokeStyle = 'rgba(230,225,215,0.92)';
+      for (let i = 0; i < hw.strokeIdx; i++) {
+        const m = medians[i];
+        ctx.beginPath();
+        m.forEach((p, k) => { const [x, y] = pt(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+        ctx.stroke();
+      }
+    }
+    function hint() {
+      const show = hw.mode === 'trace' || hw.hintShown || hw.tries >= 2;
+      if (!show || hw.strokeIdx >= medians.length) return;
+      const m = medians[hw.strokeIdx];
+      ctx.save();
+      ctx.strokeStyle = 'rgba(201,162,39,0.85)'; ctx.lineWidth = S * 0.02; ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      m.forEach((p, k) => { const [x, y] = pt(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke(); ctx.setLineDash([]);
+      const [sx, sy] = pt(m[0]);
+      ctx.fillStyle = 'rgba(46,125,91,0.95)';
+      ctx.beginPath(); ctx.arc(sx, sy, S * 0.028, 0, 7); ctx.fill();
+      const [ex, ey] = pt(m[m.length - 1]);
+      ctx.fillStyle = 'rgba(179,57,47,0.9)';
+      ctx.beginPath(); ctx.arc(ex, ey, S * 0.018, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    function live() {
+      if (cur.length < 2) return;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055;
+      ctx.strokeStyle = 'rgba(109,26,36,0.9)';
+      ctx.beginPath();
+      cur.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+      ctx.stroke();
+    }
+    function paint() { grid(); ghost(); doneStrokes(); hint(); live(); }
+    paint();
+
+    const pos = e => {
+      const r = cv.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return [(t.clientX - r.left) / r.width * S, (t.clientY - r.top) / r.height * S];
+    };
+    const start = e => { e.preventDefault(); drawing = true; cur = [pos(e)]; paint(); };
+    const move = e => { if (!drawing) return; e.preventDefault(); cur.push(pos(e)); paint(); };
+    const end = e => {
+      if (!drawing) return;
+      e.preventDefault(); drawing = false;
+      const drawn = cur.map(p => [p[0] / S * Strokes.FIELD, p[1] / S * Strokes.FIELD]);
+      cur = [];
+      judge(drawn, medians, paint);
+    };
+    cv.addEventListener('pointerdown', start); cv.addEventListener('pointermove', move);
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end); cv.addEventListener('pointerleave', end);
+    if (hw.mode === 'dictation' && !hw.said) { hw.said = true; setTimeout(() => Speech.say(ch), 350); }
+  }
+
+  function judge(drawn, medians, paint) {
+    const msg = $('#hw-msg');
+    const expected = medians[hw.strokeIdx];
+    const tol = hw.mode === 'trace' ? { start: 30, mean: 26 } : { start: 26, mean: 22 };
+    const res = Strokes.match(expected, drawn, tol);
+    if (res.ok) {
+      hw.strokeIdx++; hw.tries = 0; hw.hintShown = false;
+      Sound.ok();
+      if (hw.strokeIdx >= medians.length) {
+        hw.results.push({ ch: hw.chars[hw.i], ok: true, tries: hw.totalTries || 0, hints: hw.usedHint || 0 });
+        hw.done++;
+        hw.totalTries = 0; hw.usedHint = 0;
+        toast('Знак написан · ' + hw.chars[hw.i], 1200);
+        setTimeout(nextChar, 500);
+        return;
+      }
+      render();
+      return;
+    }
+    hw.tries++; hw.totalTries = (hw.totalTries || 0) + 1;
+    Sound.fail();
+    if (msg) { msg.textContent = res.why; msg.classList.add('bad'); }
+    paint();
+    if (hw.tries >= 2) render();
+  }
+
+  function finish() {
+    const ok = hw.results.filter(r => r.ok).length;
+    const m = modeOf(hw.mode);
+    const a = {
+      id: uid(), ts: hw.startedAt, endedAt: Date.now(), durationMs: Date.now() - hw.startedAt,
+      mode: 'hand', difficulty: hw.mode, level: hw.level, deckIds: [], deckName: 'Письмо от руки' + (hw.title ? ' · ' + hw.title : ''),
+      show: 'hand', guess: ['stroke'], order: 'random', timer: 0,
+      total: hw.results.length, planned: hw.chars.length, aborted: false,
+      correct: ok, partial: 0, wrong: hw.results.length - ok,
+      percent: Math.round(ok / Math.max(1, hw.results.length) * 100),
+      words: hw.results.filter(r => r.ok).map(r => r.ch),
+      questions: hw.results.map(r => ({ cardId: (cardOf(r.ch) || {}).id, hanzi: r.ch, ok: r.ok, fraction: r.ok ? 1 : 0, ms: 0, answer: {} })),
+    };
+    state.lastHand = { results: hw.results.slice(), mode: m, level: hw.level };
+    hw = null;
+    saveAttempt(a).then(() => { Sound.finish(ok === a.total); nav('hand-result', { id: a.id }, { replace: true }); });
+  }
+  window.__hw = () => hw;   /* отладка: состояние занятия по письму */
+  views['hand-result'] = {
+    render(p) {
+      const a = state.attempts.find(x => x.id === p.id);
+      const f = state.lastHand;
+      if (!a || !f) return '<div class="empty">Результат не найден</div>';
+      return `<div class="vh"><div class="seal">手</div><div class="grow"><h1 class="title">Написано</h1><div class="sub"><span class="zh">${f.mode.zh}</span> ${f.mode.t} · ${fmt.dur(a.durationMs)}</div></div></div>
+      <div class="panel ornate result-top"><div class="res-meta"><div class="big-score">${a.correct}<small> из ${a.total} знаков</small></div>
+        <div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${a.points}</b></span></div>
+        ${a.decay && a.decay.why.length ? `<div class="hint" style="margin:6px 0 0">${esc(a.decay.why.join(' · '))}</div>` : ''}</div></div>
+      <div class="panel"><div class="flabel">Знаки</div><div class="hw-list">${f.results.map(r => `<div class="hw-it ${r.ok ? 'ok' : 'bad'}"><span class="zh">${esc(r.ch)}</span><small>${r.skipped ? 'пропущен' : r.ok ? (r.hints ? 'с подсказкой' : 'сам') : 'мимо'}</small></div>`).join('')}</div></div>
+      <div class="btns"><button class="btn btn-primary btn-block" data-go="hand">Ещё</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
     },
   };
 })();
