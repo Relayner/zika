@@ -4635,7 +4635,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260827-0042';
+  const VERSION = '20260827-2006';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4806,11 +4806,17 @@ window.App = (() => {
     if (stack.length > 1) { stack.pop(); const st = stack[stack.length - 1]; state.view = st.view; state.params = st.params || {}; render(); return; }
     nav('home', {}, { replace: true });
   }
+  let lastRoute = null;
   function render() {
     const v = views[state.view] || views.home;
     const root = $('#view');
+    const route = state.view + '|' + JSON.stringify(state.params || {});
+    const moved = route !== lastRoute;           /* наверх прокручиваем только при переходе на другой экран */
+    const keep = moved ? 0 : (window.scrollY || document.documentElement.scrollTop || 0);
     root.innerHTML = v.render(state.params) || '';
-    window.scrollTo(0, 0);
+    lastRoute = route;
+    if (moved) window.scrollTo(0, 0);
+    else if (keep) window.scrollTo(0, keep);
     document.body.classList.toggle('no-tabs', state.view === 'quiz' || state.view === 'exam');
     if (pendingReload && state.view !== 'quiz' && state.view !== 'exam') { pendingReload = false; toast('Применяю обновление…', 2500); setTimeout(() => location.reload(), 700); }
     const tab = TAB_OF[state.view];
