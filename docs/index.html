@@ -4706,7 +4706,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260827-2039';
+  const VERSION = '20260827-2056';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -6781,7 +6781,15 @@ window.BossMusic = (() => {
 (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, sheet, closeSheet, persist, render, saveAttempt, fmt } = App;
   let fight = null;   /* { boss, sp, rounds, i, hints, used, wrong, heard } */
-  let unfinished = null;   /* брошенный бой: реплики придержим, чтобы не генерировать заново */
+  /* Снимок незаконченного боя хранится вместе с прогрессом: переживает выход, перезагрузку и вылет */
+  const pending = () => Boss.st(state).pending || null;
+  function savePending() {
+    if (!fight) return;
+    Boss.st(state).pending = { id: fight.boss.id, rounds: fight.rounds, i: fight.i, wrong: fight.wrong, right: fight.right || 0,
+      used: fight.used, hints: fight.hints, raged: !!fight.raged, src: fight.src, lvl: fight.lvl, startedAt: fight.startedAt };
+    persist();
+  }
+  function clearPending() { const b = Boss.st(state); if (b.pending) { delete b.pending; persist(); } }
   let tick = null;
 
   const HINTS = [
@@ -6799,9 +6807,11 @@ window.BossMusic = (() => {
       const cards = Boss.LIST.map(b => {
         const r = Boss.bs(state, b.id);
         const sp = Boss.setup(state, b);
+        const p0 = pending();
+        const resume = p0 && p0.id === b.id ? p0 : null;
         const rs = Boss.respawnLeft(state, b.id, now);
         const locked = rs > 0 || cd > 0;
-        const why = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
+        const why = resume ? 'Бой не окончен — можно продолжить' : rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
         return `<div class="panel boss-card ${locked ? 'locked' : 'ready'}" data-boss="${b.id}">
           <img class="boss-por" src="${IMG_URL(b.img)}" alt="" draggable="false">
           <div class="grow">
@@ -6810,7 +6820,7 @@ window.BossMusic = (() => {
             <div class="boss-terms">речь <b>HSK ${sp.lvl}</b> · ${fmt.plural(sp.rounds, 'реплика', 'реплики', 'реплик')} · ${fmt.plural(sp.lives, 'ошибка', 'ошибки', 'ошибок')} · ${fmt.plural(sp.hints.length, 'подсказка', 'подсказки', 'подсказок')}${sp.sec ? ' · ' + sp.sec + ' с на ответ' : ''}${sp.rage ? ` · <b>звереет после ${sp.rage.at} верных</b>` : ''}</div>
             <div class="boss-meta">Побед: <b>${r.wins}</b> · без подсказок: <b>${r.clean}</b> · награда ×${Boss.weight(sp)}</div>
             <div class="boss-when">${why}</div>
-            <button class="btn ${locked ? 'btn-secondary' : 'btn-danger'} btn-sm" data-action="boss-go" data-id="${b.id}" ${locked ? 'disabled' : ''}>Вызвать на бой</button>
+            <button class="btn ${resume ? 'btn-jade' : locked ? 'btn-secondary' : 'btn-danger'} btn-sm" data-action="boss-go" data-id="${b.id}" ${locked && !resume ? 'disabled' : ''}>${resume ? `Продолжить бой · реплика ${resume.i + 1}` : 'Вызвать на бой'}</button>
           </div></div>`;
       }).join('');
       return `<div class="vh"><div class="seal">斗</div><div class="grow"><h1 class="title">Боссы</h1><div class="sub">пять реплик голосом · уровень HSK ${lvl}</div></div><button class="icon-btn" data-action="boss-info" aria-label="Правила">i</button></div>
@@ -6834,15 +6844,18 @@ window.BossMusic = (() => {
           if (!card) continue;
           const rs = Boss.respawnLeft(state, b.id, now);
           const locked = rs > 0 || cd > 0;
+          const p0 = pending();
+          const resume = !!(p0 && p0.id === b.id);
           const when = card.querySelector('.boss-when');
           if (when) {
-            const html = rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
+            const html = resume ? 'Бой не окончен — можно продолжить' : rs > 0 ? `Повержен · встанет через <b>${Boss.fmtLeft(rs)}</b>` : cd > 0 ? `Следующий вызов через <b>${Boss.fmtLeft(cd)}</b>` : 'Готов к бою';
             if (when.innerHTML !== html) when.innerHTML = html;
           }
           const btn = card.querySelector('[data-action=boss-go]');
-          if (btn && btn.disabled !== locked) {
-            btn.disabled = locked;
-            btn.className = 'btn ' + (locked ? 'btn-secondary' : 'btn-danger') + ' btn-sm';
+          const block = locked && !resume;
+          if (btn && btn.disabled !== block) {
+            btn.disabled = block;
+            btn.className = 'btn ' + (resume ? 'btn-jade' : block ? 'btn-secondary' : 'btn-danger') + ' btn-sm';
           }
           card.classList.toggle('locked', locked);
           card.classList.toggle('ready', !locked);
@@ -6866,17 +6879,23 @@ window.BossMusic = (() => {
     el.disabled = true;
     toast('Босс готовится…', 1500);
     const sp = Boss.setup(state, b);
-    let res = unfinished && unfinished.id === b.id ? { list: unfinished.rounds, src: unfinished.src } : null;
-    if (!res) {
-      const avoid = Boss.recall(state).map(m => m.t);
-      res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
-      Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
+    const p = pending();
+    if (p && p.id === b.id) {
+      /* возвращаемся ровно туда, где прервались */
+      fight = { boss: b, sp, rounds: p.rounds, i: p.i, src: p.src, hints: p.hints, used: p.used, wrong: p.wrong, right: p.right,
+        raged: p.raged, rageSeen: p.raged, lvl: p.lvl, shown: null, startedAt: p.startedAt, heard: null };
+      BossMusic.start(b);
+      if (p.raged) BossMusic.rage(b);
+      nav('fight');
+      return;
     }
-    unfinished = null;
-    res.list.forEach(r => { delete r.ok; delete r.said; });
+    const avoid = Boss.recall(state).map(m => m.t);
+    const res = await BossGen.rounds(b, sp.lvl, sp.rounds, avoid);
+    Boss.remember(state, res.list.map(r => r.say.slice(0, 40)));
     Boss.bs(state, b.id).tries++;
     persist();
-    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, lvl: sp.lvl, shown: null, startedAt: Date.now(), heard: null };
+    fight = { boss: b, sp, rounds: res.list, i: 0, src: res.src, hints: { tr: 0, start: 0, opts: 0 }, used: 0, wrong: 0, right: 0, lvl: sp.lvl, shown: null, startedAt: Date.now(), heard: null };
+    savePending();
     BossMusic.start(b);
     nav('fight');
   };
@@ -6903,12 +6922,12 @@ window.BossMusic = (() => {
   const speak = () => { const r = fight.rounds[fight.i]; Speech.say(r.say, fight.raged ? Boss.ragedVoice(fight.boss) : fight.boss.voice); };
   actions['fight-say'] = () => speak();
   actions['fight-quit'] = () => {
-    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Бой не засчитается, но и время не сгорит: вызвать снова можно сразу, реплики останутся те же.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
+    sheet(`<h3 class="sh-t">Отступить?</h3><p style="color:var(--ink-2)">Время не сгорит, а бой сохранится: вернётесь — продолжите с этой же реплики, с теми же жизнями и подсказками.</p><div class="btns"><button class="btn btn-danger btn-block" id="fq">Отступить</button><button class="btn btn-secondary btn-block" id="fc">Драться</button></div>`, s => {
       $('#fq', s).onclick = () => {
         closeSheet(); stopClock(); BossGen.stopListening(); BossMusic.stop();
-        unfinished = { id: fight.boss.id, rounds: fight.rounds, src: fight.src };
+        savePending();
         fight = null;
-        toast('Бой не засчитан — вызвать снова можно сразу', 2600);
+        toast('Бой сохранён — вернётесь и продолжите с этого места', 2800);
         nav('boss', {}, { replace: true });
       };
       $('#fc', s).onclick = () => closeSheet();
@@ -6919,6 +6938,7 @@ window.BossMusic = (() => {
     if (!fight || fight.hints[k]) return;
     fight.hints[k] = 1; fight.used++;
     fight.shown = k === 'opts' ? { k, opts: HskReal.shuffle(fight.rounds[fight.i].opts || []) } : { k };
+    savePending();
     Sound.click();
     render();
   };
@@ -6965,6 +6985,7 @@ window.BossMusic = (() => {
       fight.i++;
       fight.shown = null;
       if (fight.i >= fight.rounds.length) return endFight(true);
+      savePending();                     /* снимок делаем уже на новой реплике */
       render();
       setTimeout(speak, 350);
     }, 1600);
@@ -7007,6 +7028,7 @@ window.BossMusic = (() => {
     stopClock();
     BossGen.stopListening();
     Boss.st(state).lastTry = Date.now();   /* время между вызовами считается от завершённого боя */
+    clearPending();
     const b = fight.boss, r = Boss.bs(state, b.id);
     const noHints = fight.used === 0;
     let chest = null;
