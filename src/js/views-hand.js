@@ -52,8 +52,9 @@
     sheet(`<h3 class="sh-t">${k === 'strokes' ? 'Восемь черт 笔画' : k === 'rules' ? 'Правила порядка 笔顺' : 'Строение знака 结构'}</h3><div class="theory">${body}</div><button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
   };
   actions['hand-course'] = el => { const c = H.COURSE.find(x => x.id === el.dataset.id); if (c) startHand(c.chars.split(' ').filter(Boolean), c.lvl || 1, c.ru); };
-  actions['hand-start'] = () => {
+  actions['hand-start'] = async () => {
     const deck = state.settings.handDeck || 'hsk1';
+    try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }   /* без данных known() всем отказывал */
     const cards = cardsOfDeck(deck).filter(c => Strokes.known(c.hanzi) && c.hanzi.length <= 2);
     if (!cards.length) return toast('Для этой колоды нет данных о чертах');
     const pick = HskReal.shuffle(cards).slice(0, 8);

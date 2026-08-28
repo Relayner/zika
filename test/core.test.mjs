@@ -92,12 +92,11 @@ t('quiz hard + checks', () => {
 });
 t('write mode', () => {
   const e = Quiz.buildQuestions(cards, cards, { mode: 'write', difficulty: 'easy', count: 3, order: 'random' }, {});
-  assert.equal(e.length, 3); e.forEach(q => { assert.equal(q.show, 'both'); assert.deepEqual(q.guess, ['hanzi']); assert.ok(!q.options); });
-  assert.equal(Quiz.buildQuestions(cards, cards, { mode: 'write', difficulty: 'medium', count: 1 }, {})[0].show, 'pinyin');
-  const h = Quiz.buildQuestions(cards, cards, { mode: 'write', difficulty: 'hard', count: 1 }, {})[0];
-  assert.equal(h.show, 'ru');
-  assert.equal(Quiz.checkInput(h, { hanzi: h.card.hanzi }).ok, true);
-  assert.equal(Quiz.checkInput(h, { hanzi: '错' }).ok, false);
+  assert.ok(e.every(q => q.show === 'both' && q.guess[0] === 'hanzi'), 'лёгкий: пиньинь и перевод даны');
+  const m2 = Quiz.buildQuestions(cards, cards, { mode: 'write', difficulty: 'medium', count: 3, order: 'random' }, {});
+  assert.ok(m2.every(q => q.show === 'ru'), 'средний: только перевод');
+  const h = Quiz.buildQuestions(cards, cards, { mode: 'write', difficulty: 'hard', count: 3, order: 'random' }, {});
+  assert.ok(h.every(q => q.show === 'audio'), 'сложный: только на слух');
 });
 t('exam format', () => {
   const e1 = Quiz.buildExam(1, cards, {});

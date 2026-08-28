@@ -63,7 +63,8 @@ window.Quiz = (() => {
     const picked = pickCards(cards, cfg, cardStats || {});
     return picked.map(card => {
       if (cfg.mode === 'write') {
-        const show = cfg.difficulty === 'medium' ? 'pinyin' : cfg.difficulty === 'hard' ? 'ru' : 'both';
+        /* лёгкий — с пиньинем (учимся выбирать среди омофонов), средний — по переводу, сложный — на слух */
+        const show = cfg.difficulty === 'medium' ? 'ru' : cfg.difficulty === 'hard' ? 'audio' : 'both';
         return { cardId: card.id, show, guess: ['hanzi'], card };
       }
       const show = cfg.show === 'mixed' ? PARTS[rnd(3)] : cfg.show;
