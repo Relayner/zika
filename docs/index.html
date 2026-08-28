@@ -663,6 +663,8 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .wn-it { margin: 8px 0; }
 .wn-fx { color: var(--ink-2, #6b6156); font-size: 14px; margin: 4px 0; }
 .wn-sec { margin-bottom: 14px; }
+.draw-sw { margin-bottom: 10px; }
+.hw-canvas.qw { width: min(80vw, 300px); height: min(80vw, 300px); }
 
 </style>
 </head>
@@ -2963,6 +2965,7 @@ window.CHANGELOG = [
       ['Честная цена минуты', 'Очки выровнены: угадайка подешевела, письмо, фразы и экзамены подорожали. Теперь всё равно, чем заниматься, — платят за усилие, а не за скорость кликов.'],
       ['Видно, что услышал микрофон', 'В бою строка «Услышано: …» показывает, что именно разобрано из вашего ответа.'],
       ['Бой можно продолжить', 'Незаконченный бой с боссом переживает выход и вылет: на арене появится «Продолжить бой», кулдаун идёт только за пройденный до конца бой.'],
+      ['Ответ от руки прямо в тренировке', 'В режиме «Письмо 写» появился переключатель: отвечать клавиатурой или рисовать знак пальцем в клетке — черта за чертой, как в разделе письма. Написали без подсказок — полный балл, с подсказками — половина.'],
       ['Письмо-набор стало честнее', 'Пиньинь-подсказка осталась только на лёгком уровне — там она учит выбирать знак среди омофонов. Средний спрашивает по переводу, сложный — на слух: услышали и набрали.'],
       ['Заезженное меркнет относительно соседей', 'Урок, прогнанный чаще остальных на уровне, приглушается — но стоит соседям догнать его по счётчику, он снова становится ярким. Подсветка живёт вместе с вашим прогрессом.'],
     ],
@@ -5050,7 +5053,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260828-1138';
+  const VERSION = '20260828-1249';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5943,10 +5946,21 @@ window.App = (() => {
           : q.kind === 'sentence' ? [['answer', 'Ответ иероглифами <span class="muted">· клавиатура 中文 через 🌐</span>', '汉字']]
           : q.guess.map(p => [p, LABELS.part[p] + (p === 'pinyin' ? ' <span class="muted">· тоны цифрами, ü = v</span>' : p === 'hanzi' ? ' <span class="muted">· клавиатура 中文 через 🌐</span>' : ''), p === 'pinyin' ? 'ni3 hao3' : p === 'ru' ? 'перевод' : '汉字']);
         answer = `<form id="inputs" class="inputs" autocomplete="off">${fields.map(([nm, lbl, ph]) => `<div class="field"><label>${lbl}</label><input class="inp" name="${nm}" lang="zh-CN" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${ph}">${nm === 'pinyin' ? '<div class="pv" id="pv"></div>' : ''}</div>`).join('')}<button class="btn btn-primary btn-block" type="submit">Проверить</button></form>`;
+        /* ответ иероглифом можно дать от руки — если для всех знаков слова есть траектории */
+        if (quiz.cfg.mode === 'write' && q.guess.length === 1 && q.guess[0] === 'hanzi' && window.Strokes) {
+          const drawOn = state.settings.writeDraw === true;
+          const sw = `<div class="seg draw-sw"><button class="${drawOn ? '' : 'on'}" data-action="write-input" data-v="kbd" data-nosound>⌨ Клавиатура</button><button class="${drawOn ? 'on' : ''}" data-action="write-input" data-v="draw" data-nosound>✍ От руки</button></div>`;
+          if (drawOn) {
+            answer = sw + `<div id="draw-pad"><div class="hw-wrap"><canvas id="qw-c" class="hw-canvas qw" width="560" height="560"></canvas></div>
+            <div class="hw-info"><span id="qw-progress">…</span><span id="qw-msg" class="hw-msg"></span></div>
+            <div class="btns row2 mt0"><button class="btn btn-secondary btn-sm" data-action="qw-hint" data-nosound>Подсказать черту</button><button class="btn btn-secondary btn-sm" data-action="qw-give" data-nosound>Не выходит — показать</button></div></div>`;
+          } else answer = sw + answer;
+        }
       }
       return head + prompt + answer + '<div id="feedback"></div>';
     },
     mount() {
+      setupDrawPad();
       if (!quiz) return;
       startTimer();
       const q = quiz.questions[quiz.i];
@@ -5984,6 +5998,79 @@ window.App = (() => {
     const txt = q.options[idx] ? (q.options[idx].text != null ? q.options[idx].text : q.guess.map(p => q.options[idx][p]).join(' · ')) : '';
     finishQuestion(q, Quiz.checkChoice(q, idx), { choice: idx, choiceText: txt });
   };
+  actions['write-input'] = el => { state.settings.writeDraw = el.dataset.v === 'draw'; persist(); render(); };
+  actions['qw-hint'] = () => { if (quiz && quiz.qw) { quiz.qw.hint = true; quiz.qw.hints++; quiz.qw.paint(); } };
+  actions['qw-give'] = () => {
+    if (!quiz || quiz.answered) return;
+    const q = quiz.questions[quiz.i];
+    finishQuestion(q, { parts: { hanzi: 'wrong' }, fraction: 0, ok: false }, { input: { hanzi: quiz.qw ? quiz.qw.written : '' }, gaveUp: true });
+  };
+  /* Рукописный ответ: знак за знаком, черта за чертой — теми же правилами, что в разделе «Письмо от руки» */
+  async function setupDrawPad() {
+    const cv = $('#qw-c');
+    if (!cv || !quiz || quiz.answered) return;
+    const q = quiz.questions[quiz.i];
+    try { await Strokes.load(); } catch (e) { toast(e.message, 2500); state.settings.writeDraw = false; persist(); render(); return; }
+    const word = [...q.card.hanzi.replace(/[…\s]/g, '')];
+    if (!word.every(ch => Strokes.has(ch))) { toast('Для этого слова нет траекторий — отвечайте клавиатурой', 2500); state.settings.writeDraw = false; persist(); render(); return; }
+    const S = cv.width, ctx = cv.getContext('2d');
+    const qw = quiz.qw = { ci: 0, si: 0, errs: 0, hints: 0, hint: false, written: '', paint: null };
+    const pt = p => Strokes.toScreen(p, S);
+    let drawing = false, cur = [];
+    function paint() {
+      const ch = word[qw.ci], med = Strokes.of(ch);
+      ctx.clearRect(0, 0, S, S);
+      ctx.strokeStyle = 'rgba(180,140,60,0.4)'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, S - 2, S - 2);
+      ctx.setLineDash([7, 9]); ctx.lineWidth = 1.2; ctx.beginPath();
+      ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.moveTo(0, S / 2); ctx.lineTo(S, S / 2);
+      ctx.moveTo(0, 0); ctx.lineTo(S, S); ctx.moveTo(S, 0); ctx.lineTo(0, S); ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055; ctx.strokeStyle = 'rgba(230,225,215,0.92)';
+      for (let i = 0; i < qw.si; i++) { ctx.beginPath(); med[i].forEach((p, k) => { const [x, y] = pt(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); }
+      if (qw.hint && qw.si < med.length) {
+        const m = med[qw.si];
+        ctx.save(); ctx.strokeStyle = 'rgba(201,162,39,0.85)'; ctx.lineWidth = S * 0.018; ctx.setLineDash([9, 7]);
+        ctx.beginPath(); m.forEach((p, k) => { const [x, y] = pt(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]);
+        const [sx, sy] = pt(m[0]); ctx.fillStyle = 'rgba(46,125,91,0.95)'; ctx.beginPath(); ctx.arc(sx, sy, S * 0.026, 0, 7); ctx.fill(); ctx.restore();
+      }
+      if (cur.length > 1) { ctx.lineWidth = S * 0.055; ctx.strokeStyle = 'rgba(109,26,36,0.9)'; ctx.beginPath(); cur.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); }
+      const pr = $('#qw-progress');
+      if (pr) pr.innerHTML = (word.length > 1 ? `Знак <b>${qw.ci + 1}</b> из ${word.length} · ` : '') + `черта <b>${qw.si + 1}</b> из ${med.length}`;
+    }
+    qw.paint = paint;
+    paint();
+    const pos = e => { const r = cv.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) / r.width * S, (t.clientY - r.top) / r.height * S]; };
+    const up = () => {
+      if (!drawing) return;
+      drawing = false;
+      const ch = word[qw.ci], med = Strokes.of(ch);
+      const drawn = cur.map(p => [p[0] / S * Strokes.FIELD, p[1] / S * Strokes.FIELD]);
+      cur = [];
+      const res = Strokes.match(med[qw.si], drawn);
+      const msg = $('#qw-msg');
+      if (res.ok) {
+        qw.si++; qw.hint = false; if (msg) msg.textContent = '';
+        Sound.ok();
+        if (qw.si >= med.length) {
+          qw.written += ch; qw.ci++; qw.si = 0;
+          if (qw.ci >= word.length) {
+            const clean = qw.hints === 0;
+            finishQuestion(q, { parts: { hanzi: clean ? 'exact' : 'tones' }, fraction: clean ? 1 : 0.5, ok: clean }, { input: { hanzi: qw.written }, drawn: true, hints: qw.hints });
+            return;
+          }
+        }
+        paint();
+      } else {
+        qw.errs++; Sound.fail();
+        if (msg) { msg.textContent = res.why; msg.classList.add('bad'); }
+        if (qw.errs >= 2 && !qw.hint) { qw.hint = true; qw.hints++; qw.errs = 0; }
+        paint();
+      }
+    };
+    cv.addEventListener('pointerdown', e => { e.preventDefault(); if (quiz.answered) return; drawing = true; cur = [pos(e)]; paint(); });
+    cv.addEventListener('pointermove', e => { if (!drawing) return; e.preventDefault(); cur.push(pos(e)); paint(); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => cv.addEventListener(t, e => { e.preventDefault(); up(); }));
+  }
+
   function submitInput(timeout) {
     if (!quiz || quiz.answered) return;
     const q = quiz.questions[quiz.i], f = $('#inputs'), answers = {};
