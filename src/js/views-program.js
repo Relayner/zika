@@ -31,12 +31,18 @@
         const done = bs.filter(b => bstate(b.id).seal === 'done' || bstate(b.id).seal === 'gold').length;
         const rec = l.n === recLvl;
         return `<div class="panel ${rec ? 'lvl-rec' : ''}"><div class="lvl-head"><div class="lvl-badge zh">${l.n}</div><div class="grow"><b>${l.zh} · ${l.ru}</b>${rec ? ' <span class="rec-chip">ваш уровень</span>' : ''}<div class="hint" style="margin:0">HSK ${l.hsk} · ${l.cefr} · ${bs.length} блоков · освоено ${done}</div></div></div>
-        <div class="blk-grid">${(() => { const next = rec ? bs.find(x => { const q = bstate(x.id); return q.seal === 'new' || q.seal === 'work'; }) : null; return bs.map(b => {
+        <div class="blk-grid">${(() => { const next = rec ? bs.find(x => { const q = bstate(x.id); return q.seal === 'new' || q.seal === 'work'; }) : null;
+        /* приглушение относительное: меркнет тот, кто прогнан заметно чаще соседей по уровню;
+           когда соседи догоняют по счётчику, блок снова становится резче */
+        const runsArr = bs.map(x => bstate(x.id).runs || 0).sort((a, b) => a - b);
+        const median = runsArr[Math.floor(runsArr.length / 2)] || 0;
+        return bs.map(b => {
           const st = bstate(b.id);
           const seen = st.seen.length, tot = b.words.length;
           const s = SEALS[st.seal];
-          const worn = (st.runs || 0) >= 3 && (st.seal === 'done' || st.seal === 'gold');
-          return `<button class="blk-card s-${st.seal} ${worn ? 'worn' : ''} ${next && next.id === b.id ? 'blk-next' : ''}" data-action="prog-open" data-id="${b.id}">${next && next.id === b.id ? '<span class="blk-recban">рекомендуем</span>' : ''}
+          const over = Math.max(0, (st.runs || 0) - median);
+          const dim = over > 0 && (st.seal === 'done' || st.seal === 'gold') ? Math.min(0.45, over * 0.15) : 0;
+          return `<button class="blk-card s-${st.seal} ${next && next.id === b.id ? 'blk-next' : ''}" ${dim ? `style="opacity:${(1 - dim).toFixed(2)}"` : ''} data-action="prog-open" data-id="${b.id}">${next && next.id === b.id ? '<span class="blk-recban">рекомендуем</span>' : ''}
             <span class="blk-seal zh">${s[0]}</span>
             <span class="blk-zh zh">${esc(b.zh)}</span>
             <span class="blk-ru">${esc(b.ru)}</span>

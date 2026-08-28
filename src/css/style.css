@@ -632,7 +632,6 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 /* Рекомендации и поток */
 .rec-chip { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--jade, #2e7d5b); border: 1px solid var(--jade, #2e7d5b); border-radius: 10px; padding: 1px 8px; vertical-align: 2px; }
 .lvl-rec { border-color: var(--jade, #2e7d5b); }
-.blk-card.worn { opacity: .62; }
 .blk-card.blk-next { border-color: var(--jade, #2e7d5b); box-shadow: 0 0 0 1px var(--jade, #2e7d5b); position: relative; }
 .blk-recban { position: absolute; top: -9px; left: 10px; background: var(--jade, #2e7d5b); color: #fff; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border-radius: 8px; padding: 1px 7px; }
 .fl-steps { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
