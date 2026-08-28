@@ -61,7 +61,10 @@ window.Flow = (() => {
     const q = [];
     const lvl = Skill.recLevel(state, Skill.profile(state));
     const deck = ['hsk1', 'hsk2', 'hsk3', 'freq1'][Math.min(3, lvl - 1)];
-    for (let i = 0; i < (plan.mix.review || 0); i++) q.push({ t: 'review', title: 'Повторение 复习', d: 'слова, подошедшие по сроку' });
+    /* повторений кладём не больше, чем реально есть чего повторять: тренер мог ошибиться */
+    const due = SRS.dueCount(state);
+    const revSteps = due > 0 ? Math.min(plan.mix.review || 0, Math.ceil(due / 15)) : 0;
+    for (let i = 0; i < revSteps; i++) q.push({ t: 'review', title: 'Повторение 复习', d: 'слова, подошедшие по сроку' });
     /* уроки: недоосвоенные блоки рекомендованного уровня */
     const blocks = (window.PROGRAM ? PROGRAM.byLevel(lvl) : []).filter(b => {
       const bs = (state.settings.program || {})[b.id];

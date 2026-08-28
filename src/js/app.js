@@ -36,9 +36,11 @@ window.App = (() => {
   const cardsOfDeck = id => (String(id).startsWith('hsk') || String(id).startsWith('freq') ? builtinCards : state.cards).filter(c => c.deckId === id);
   const cardsOfDecks = ids => ids.flatMap(cardsOfDeck);
   function deckAccuracy(cards) {
-    let asked = 0, correct = 0;
-    for (const c of cards) { const s = state.cardStats[c.id]; if (s) { asked += s.asked; correct += s.correct; } }
-    return asked ? Math.round(correct / asked * 100) : null;
+    let asked = 0, correct = 0, seen = 0;
+    for (const c of cards) { const s = state.cardStats[c.id]; if (s && s.asked) { asked += s.asked; correct += s.correct; seen++; } }
+    /* по паре случайных карточек процент врёт «100%» — показываем только при заметном покрытии колоды */
+    if (!asked || (seen < 15 && seen < cards.length * 0.2)) return null;
+    return Math.round(correct / asked * 100);
   }
   const accClass = acc => acc >= 80 ? 'good' : acc >= 50 ? 'mid' : 'bad';
 

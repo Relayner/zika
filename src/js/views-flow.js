@@ -30,7 +30,7 @@
       const steps = fl.queue.map((s, k) => `<div class="fl-step ${k < fl.i ? 'done' : k === fl.i ? 'cur' : ''}">
         <span class="fl-n">${k < fl.i ? '✓' : k + 1}</span>
         <div class="grow"><b>${esc(s.title)}</b><div class="hint" style="margin:0">${esc(s.d)}</div></div>
-        ${k === fl.i && !finished ? `<button class="btn btn-primary btn-sm" data-action="flow-go">Начать</button>` : ''}</div>`).join('');
+        ${k === fl.i && !finished ? `<button class="btn btn-primary btn-sm" data-action="flow-go">Начать</button><button class="btn btn-secondary btn-sm" data-action="flow-skip" data-nosound>Пропустить</button>` : ''}</div>`).join('');
       return `<div class="vh"><div class="seal">流</div><div class="grow"><h1 class="title">Поток</h1><div class="sub">${p.src === 'fable' ? 'план на день составил тренер' : 'план на день'} · фокус: ${(Skill.KINDS[p.focus] || {}).ru || p.focus}</div></div></div>
       <div class="panel ornate"><div class="fl-msg">${esc(p.message || '')}</div>
         <div class="hint" style="margin:8px 0 0">Шагов: ${fl.queue.length} · пройдено: ${fl.i} · бонус за серию: +${Flow.streakBonus(fl.i)} очк.</div></div>
@@ -38,12 +38,16 @@
       ${finished ? `<button class="btn btn-jade btn-block btn-lg" data-action="flow-finish">Забрать бонус · +${Flow.streakBonus(fl.i)}</button>` : `<button class="btn btn-secondary btn-block btn-sm" data-action="flow-finish" ${fl.i ? '' : 'disabled'}>Завершить досрочно${fl.i ? ' · +' + Flow.streakBonus(fl.i) : ''}</button>`}`;
     },
   };
+  actions['flow-skip'] = () => { if (!fl) return; sync(); fl.i++; fl.baseline--; fl.done = Math.max(fl.done, fl.i); render(); };
   actions['flow-go'] = () => {
     if (!fl) return;
     sync();
     const s = fl.queue[fl.i];
     if (!s) return;
-    if (s.t === 'review') return App.startReview();
+    if (s.t === 'review') {
+      if (!SRS.dueCount(state)) { toast('Повторять уже нечего — шаг пропущен'); fl.i++; fl.baseline--; render(); return; }
+      return App.startReview();
+    }
     if (s.t === 'sprint') { const b = PROGRAM.byId(s.blockId); if (b) { App.actions['prog-open']({ dataset: { id: s.blockId } }); return; } }
     if (s.t === 'drill') { App.trainDeck(s.deck); return; }
     if (s.t === 'hand') { state.settings.handDeck = s.deck; persist(); nav('hand'); return; }

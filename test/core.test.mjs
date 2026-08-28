@@ -548,3 +548,21 @@ t('flow plan and bonus', () => {
   assert.equal(Flow.streakBonus(10), 60, 'потолок бонуса');
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'skill/flow group passed');
+
+
+/* ── точность колоды требует покрытия ── */
+t('deck accuracy needs coverage', () => {
+  /* поведение через движок views нельзя, проверяем логику напрямую тем же алгоритмом */
+  const calc = (cards, statsMap) => {
+    let asked = 0, correct = 0, seen = 0;
+    for (const c of cards) { const s = statsMap[c.id]; if (s && s.asked) { asked += s.asked; correct += s.correct; seen++; } }
+    if (!asked || (seen < 15 && seen < cards.length * 0.2)) return null;
+    return Math.round(correct / asked * 100);
+  };
+  const deck = Array.from({ length: 100 }, (_, i) => ({ id: 'd:' + i }));
+  const two = { 'd:0': { asked: 2, correct: 2 }, 'd:1': { asked: 1, correct: 1 } };
+  assert.equal(calc(deck, two), null, 'две карточки из ста — процента нет');
+  const many = {}; for (let i = 0; i < 25; i++) many['d:' + i] = { asked: 2, correct: 1 };
+  assert.equal(calc(deck, many), 50, 'при покрытии процент честный');
+});
+console.log(process.exitCode ? 'SOME TESTS FAILED' : 'coverage group passed');

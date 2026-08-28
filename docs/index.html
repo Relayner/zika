@@ -2926,7 +2926,10 @@ window.Flow = (() => {
     const q = [];
     const lvl = Skill.recLevel(state, Skill.profile(state));
     const deck = ['hsk1', 'hsk2', 'hsk3', 'freq1'][Math.min(3, lvl - 1)];
-    for (let i = 0; i < (plan.mix.review || 0); i++) q.push({ t: 'review', title: 'Повторение 复习', d: 'слова, подошедшие по сроку' });
+    /* повторений кладём не больше, чем реально есть чего повторять: тренер мог ошибиться */
+    const due = SRS.dueCount(state);
+    const revSteps = due > 0 ? Math.min(plan.mix.review || 0, Math.ceil(due / 15)) : 0;
+    for (let i = 0; i < revSteps; i++) q.push({ t: 'review', title: 'Повторение 复习', d: 'слова, подошедшие по сроку' });
     /* уроки: недоосвоенные блоки рекомендованного уровня */
     const blocks = (window.PROGRAM ? PROGRAM.byLevel(lvl) : []).filter(b => {
       const bs = (state.settings.program || {})[b.id];
@@ -2970,6 +2973,8 @@ window.CHANGELOG = [
       ['Заезженное меркнет относительно соседей', 'Урок, прогнанный чаще остальных на уровне, приглушается — но стоит соседям догнать его по счётчику, он снова становится ярким. Подсветка живёт вместе с вашим прогрессом.'],
     ],
     fixes: [
+      'Поток больше не застревает на «Повторении», когда повторять нечего: пустые шаги не попадают в план, любой шаг можно пропустить.',
+      'Проценты у колод перестали врать: «100%» по двум случайно отвеченным словам больше не показывается — точность появляется только при заметном покрытии колоды.',
       'Кнопка «Начать» в письме от руки больше не пишет «нет данных о чертах» на первом запуске — данные подгружаются до проверки.',
       'Экран больше не прыгает к началу при каждом действии — прокрутка сохраняется.',
       'Голосовой ответ боссу больше не зависает, а «не расслышал» объясняет причину.',
@@ -5053,7 +5058,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260828-1249';
+  const VERSION = '20260828-1801';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5089,9 +5094,11 @@ window.App = (() => {
   const cardsOfDeck = id => (String(id).startsWith('hsk') || String(id).startsWith('freq') ? builtinCards : state.cards).filter(c => c.deckId === id);
   const cardsOfDecks = ids => ids.flatMap(cardsOfDeck);
   function deckAccuracy(cards) {
-    let asked = 0, correct = 0;
-    for (const c of cards) { const s = state.cardStats[c.id]; if (s) { asked += s.asked; correct += s.correct; } }
-    return asked ? Math.round(correct / asked * 100) : null;
+    let asked = 0, correct = 0, seen = 0;
+    for (const c of cards) { const s = state.cardStats[c.id]; if (s && s.asked) { asked += s.asked; correct += s.correct; seen++; } }
+    /* по паре случайных карточек процент врёт «100%» — показываем только при заметном покрытии колоды */
+    if (!asked || (seen < 15 && seen < cards.length * 0.2)) return null;
+    return Math.round(correct / asked * 100);
   }
   const accClass = acc => acc >= 80 ? 'good' : acc >= 50 ? 'mid' : 'bad';
 
@@ -7830,7 +7837,7 @@ window.BossMusic = (() => {
       const steps = fl.queue.map((s, k) => `<div class="fl-step ${k < fl.i ? 'done' : k === fl.i ? 'cur' : ''}">
         <span class="fl-n">${k < fl.i ? '✓' : k + 1}</span>
         <div class="grow"><b>${esc(s.title)}</b><div class="hint" style="margin:0">${esc(s.d)}</div></div>
-        ${k === fl.i && !finished ? `<button class="btn btn-primary btn-sm" data-action="flow-go">Начать</button>` : ''}</div>`).join('');
+        ${k === fl.i && !finished ? `<button class="btn btn-primary btn-sm" data-action="flow-go">Начать</button><button class="btn btn-secondary btn-sm" data-action="flow-skip" data-nosound>Пропустить</button>` : ''}</div>`).join('');
       return `<div class="vh"><div class="seal">流</div><div class="grow"><h1 class="title">Поток</h1><div class="sub">${p.src === 'fable' ? 'план на день составил тренер' : 'план на день'} · фокус: ${(Skill.KINDS[p.focus] || {}).ru || p.focus}</div></div></div>
       <div class="panel ornate"><div class="fl-msg">${esc(p.message || '')}</div>
         <div class="hint" style="margin:8px 0 0">Шагов: ${fl.queue.length} · пройдено: ${fl.i} · бонус за серию: +${Flow.streakBonus(fl.i)} очк.</div></div>
@@ -7838,12 +7845,16 @@ window.BossMusic = (() => {
       ${finished ? `<button class="btn btn-jade btn-block btn-lg" data-action="flow-finish">Забрать бонус · +${Flow.streakBonus(fl.i)}</button>` : `<button class="btn btn-secondary btn-block btn-sm" data-action="flow-finish" ${fl.i ? '' : 'disabled'}>Завершить досрочно${fl.i ? ' · +' + Flow.streakBonus(fl.i) : ''}</button>`}`;
     },
   };
+  actions['flow-skip'] = () => { if (!fl) return; sync(); fl.i++; fl.baseline--; fl.done = Math.max(fl.done, fl.i); render(); };
   actions['flow-go'] = () => {
     if (!fl) return;
     sync();
     const s = fl.queue[fl.i];
     if (!s) return;
-    if (s.t === 'review') return App.startReview();
+    if (s.t === 'review') {
+      if (!SRS.dueCount(state)) { toast('Повторять уже нечего — шаг пропущен'); fl.i++; fl.baseline--; render(); return; }
+      return App.startReview();
+    }
     if (s.t === 'sprint') { const b = PROGRAM.byId(s.blockId); if (b) { App.actions['prog-open']({ dataset: { id: s.blockId } }); return; } }
     if (s.t === 'drill') { App.trainDeck(s.deck); return; }
     if (s.t === 'hand') { state.settings.handDeck = s.deck; persist(); nav('hand'); return; }
