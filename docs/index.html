@@ -2777,6 +2777,20 @@ window.HANDWRITING = (() => {
     { t: 'Верх и низ', zh: '上下', d: 'Части одна над другой.', ex: '是 家 花' },
     { t: 'Обрамление', zh: '包围', d: 'Одна часть охватывает другую.', ex: '国 回 问' },
   ];
+  /* Значения отдельных знаков курса: в уроках пишут именно знаки, а не слова */
+  const CHARS = {
+    '一': ['yī', 'один'], '二': ['èr', 'два'], '三': ['sān', 'три'], '四': ['sì', 'четыре'], '五': ['wǔ', 'пять'],
+    '六': ['liù', 'шесть'], '七': ['qī', 'семь'], '八': ['bā', 'восемь'], '九': ['jiǔ', 'девять'], '十': ['shí', 'десять'],
+    '人': ['rén', 'человек'], '大': ['dà', 'большой'], '小': ['xiǎo', 'маленький'], '女': ['nǚ', 'женщина'],
+    '子': ['zǐ', 'ребёнок; сын'], '妈': ['mā', 'мама'], '爸': ['bà', 'папа'], '我': ['wǒ', 'я'], '你': ['nǐ', 'ты'],
+    '他': ['tā', 'он'], '们': ['men', 'суффикс множественности'], '好': ['hǎo', 'хороший'], '是': ['shì', 'быть; являться'],
+    '日': ['rì', 'солнце; день'], '月': ['yuè', 'луна; месяц'], '水': ['shuǐ', 'вода'], '火': ['huǒ', 'огонь'],
+    '山': ['shān', 'гора'], '手': ['shǒu', 'рука'], '目': ['mù', 'глаз'], '心': ['xīn', 'сердце'], '口': ['kǒu', 'рот'],
+    '门': ['mén', 'дверь'], '打': ['dǎ', 'бить; делать'], '同': ['tóng', 'одинаковый; вместе'], '国': ['guó', 'страна'],
+    '明': ['míng', 'светлый; ясный'], '花': ['huā', 'цветок'], '看': ['kàn', 'смотреть'], '听': ['tīng', 'слушать'],
+    '说': ['shuō', 'говорить'], '写': ['xiě', 'писать'], '读': ['dú', 'читать'], '吃': ['chī', 'есть'],
+    '喝': ['hē', 'пить'], '去': ['qù', 'идти; уходить'], '来': ['lái', 'приходить'], '学': ['xué', 'учиться'],
+  };
   /* Порядок освоения: от простого к сложному, привязан к уровням приложения */
   const COURSE = [
     { id: 'h0-01', lvl: 0, zh: '笔画', ru: 'Восемь черт', can: 'Узнаю и веду каждую из восьми базовых черт', chars: '一 十 人 八 六 打 口 小' },
@@ -2787,7 +2801,7 @@ window.HANDWRITING = (() => {
     { id: 'h1-03', lvl: 1, zh: '日常', ru: 'Каждый день', can: 'Пишу бытовые знаки', chars: '日 月 水 火 山 口 手 目 心 门' },
     { id: 'h1-04', lvl: 1, zh: '动作', ru: 'Действия', can: 'Пишу простые глаголы', chars: '看 听 说 写 读 吃 喝 去 来 学' },
   ];
-  return { STROKES, RULES, STRUCT, COURSE };
+  return { STROKES, RULES, STRUCT, COURSE, CHARS };
 })();
 
 ;
@@ -2973,6 +2987,7 @@ window.CHANGELOG = [
       ['Заезженное меркнет относительно соседей', 'Урок, прогнанный чаще остальных на уровне, приглушается — но стоит соседям догнать его по счётчику, он снова становится ярким. Подсветка живёт вместе с вашим прогрессом.'],
     ],
     fixes: [
+      'Письмо от руки больше не показывает пустую клетку: занятие идёт словами целиком с пиньинем и переводом, а знаки уроков получили собственные значения. Раньше в режимах «по памяти» и «диктант» подпись пропадала у 393 знаков из двусложных слов — писать было нечего.',
       'Поток больше не застревает на «Повторении», когда повторять нечего: пустые шаги не попадают в план, любой шаг можно пропустить.',
       'Проценты у колод перестали врать: «100%» по двум случайно отвеченным словам больше не показывается — точность появляется только при заметном покрытии колоды.',
       'Кнопка «Начать» в письме от руки больше не пишет «нет данных о чертах» на первом запуске — данные подгружаются до проверки.',
@@ -5058,7 +5073,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260828-1801';
+  const VERSION = '20260831-2029';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -7604,18 +7619,28 @@ window.BossMusic = (() => {
     const cards = cardsOfDeck(deck).filter(c => Strokes.known(c.hanzi) && c.hanzi.length <= 2);
     if (!cards.length) return toast('Для этой колоды нет данных о чертах');
     const pick = HskReal.shuffle(cards).slice(0, 8);
-    startHand(pick.map(c => c.hanzi), (builtinDecks.find(d => d.id === deck) || {}).level || 1, (builtinDecks.find(d => d.id === deck) || {}).name);
+    startHand(pick.map(c => ({ hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru, id: c.id })),
+      (builtinDecks.find(d => d.id === deck) || {}).level || 1, (builtinDecks.find(d => d.id === deck) || {}).name);
   };
 
-  async function startHand(words, level, title) {
+  /* Единица занятия — слово с подписью: иначе в режимах «по памяти» и «диктант» писать нечего */
+  async function startHand(items, level, title) {
     toast('Готовлю клетку…', 1200);
     try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }
-    const chars = [];
-    words.forEach(w => [...w].forEach(ch => { if (Strokes.has(ch) && !chars.includes(ch)) chars.push(ch); }));
-    if (!chars.length) return toast('Нет знаков с данными о чертах');
-    hw = { chars: chars.slice(0, 12), i: 0, strokeIdx: 0, drawn: [], tries: 0, results: [], mode: state.settings.handMode || 'trace',
+    const list = items
+      .map(it => (typeof it === 'string' ? charItem(it) : it))
+      .filter(it => it && it.hanzi && [...it.hanzi].every(ch => Strokes.has(ch)));
+    if (!list.length) return toast('Нет знаков с данными о чертах');
+    hw = { items: list.slice(0, 12), i: 0, ci: 0, strokeIdx: 0, tries: 0, results: [], mode: state.settings.handMode || 'trace',
       level, title: title || '', startedAt: Date.now(), hintShown: false, done: 0 };
     nav('hand-run');
+  }
+  /* Знак курса: подпись берём из словаря, иначе из карточки-слова */
+  function charItem(ch) {
+    const d = (H.CHARS || {})[ch];
+    if (d) return { hanzi: ch, pinyin: d[0], ru: d[1] };
+    const c = cardOf(ch);
+    return c ? { hanzi: ch, pinyin: c.pinyin, ru: c.ru, id: c.id } : null;
   }
 
   /* ── холст ── */
@@ -7626,35 +7651,38 @@ window.BossMusic = (() => {
   views['hand-run'] = {
     render() {
       if (!hw) return '<div class="empty">Занятие не начато</div>';
-      const ch = hw.chars[hw.i];
+      const it = hw.items[hw.i];
+      const word = [...it.hanzi];
+      const ch = word[hw.ci];
       const m = modeOf(hw.mode);
-      const card = cardOf(ch);
       const total = Strokes.of(ch).length;
-      const prompt = hw.mode === 'memory'
-        ? `<div class="hw-prompt"><b>${esc(card ? card.pinyin : '')}</b><div>${esc(card ? card.ru : '')}</div></div>`
-        : hw.mode === 'dictation'
-          ? `<div class="hw-prompt"><button class="btn btn-secondary btn-sm" data-action="hand-say" data-nosound>🔊 Повторить</button></div>`
-          : '';
-      return `<div class="qbar"><button class="icon-btn" data-action="hand-quit">✕</button><div class="progress"><i style="width:${hw.i / hw.chars.length * 100}%"></i></div><div class="qcount">${hw.i + 1}/${hw.chars.length}</div><div class="qtimer"><span class="zh">${m.zh}</span></div></div>
+      const label = hw.mode === 'dictation'
+        ? `<button class="btn btn-secondary btn-sm" data-action="hand-say" data-nosound>🔊 Повторить</button>`
+        : hw.mode === 'memory'
+          ? `<b>${esc(it.pinyin || '')}</b><div>${esc(it.ru || '')}</div>`
+          : `<b>${esc(it.pinyin || '')}</b><div>${esc(it.ru || '')}</div>`;
+      const prompt = `<div class="hw-prompt">${label}</div>`;
+      return `<div class="qbar"><button class="icon-btn" data-action="hand-quit">✕</button><div class="progress"><i style="width:${hw.i / hw.items.length * 100}%"></i></div><div class="qcount">${hw.i + 1}/${hw.items.length}</div><div class="qtimer"><span class="zh">${m.zh}</span></div></div>
       ${prompt}
       <div class="hw-wrap"><canvas id="hw-c" class="hw-canvas" width="640" height="640"></canvas></div>
-      <div class="hw-info"><span>Черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg"></span></div>
+      <div class="hw-info"><span>${word.length > 1 ? `Знак <b>${hw.ci + 1}</b> из ${word.length} · ` : ''}черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg"></span></div>
       <div class="btns row2"><button class="btn btn-secondary" data-action="hand-undo">Стереть черту</button><button class="btn btn-secondary" data-action="hand-hint">Подсказать</button></div>
       <button class="btn btn-secondary btn-block btn-sm" data-action="hand-skip">Пропустить знак</button>`;
     },
     mount() { if (hw) setupCanvas(); },
   };
-  actions['hand-say'] = () => { if (hw) Speech.say(hw.chars[hw.i]); };
+  actions['hand-say'] = () => { if (hw) Speech.say(hw.items[hw.i].hanzi); };
   actions['hand-quit'] = () => { hw = null; nav('hand', {}, { replace: true }); };
   actions['hand-undo'] = () => { if (hw && hw.strokeIdx > 0) { hw.strokeIdx--; hw.tries = 0; hw.hintShown = false; render(); } };
+  actions['hand-hintbtn'] = () => {};
   actions['hand-hint'] = () => { if (hw) { hw.hintShown = true; hw.usedHint = (hw.usedHint || 0) + 1; render(); } };
-  actions['hand-skip'] = () => { if (hw) { hw.results.push({ ch: hw.chars[hw.i], ok: false, tries: hw.tries, skipped: true }); nextChar(); } };
+  actions['hand-skip'] = () => { if (hw) { hw.results.push({ ch: hw.items[hw.i].hanzi, ok: false, tries: hw.tries, skipped: true }); nextItem(); } };
 
-  function nextChar() {
-    hw.i++; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false;
-    if (hw.i >= hw.chars.length) return finish();
+  function nextItem() {
+    hw.i++; hw.ci = 0; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false; hw.said = false;
+    if (hw.i >= hw.items.length) return finish();
     render();
-    if (hw.mode === 'dictation') setTimeout(() => Speech.say(hw.chars[hw.i]), 400);
+    if (hw.mode === 'dictation') setTimeout(() => Speech.say(hw.items[hw.i].hanzi), 400);
   }
 
   function setupCanvas() {
@@ -7662,7 +7690,7 @@ window.BossMusic = (() => {
     if (!cv) return;
     const ctx = cv.getContext('2d');
     const S = cv.width;
-    const ch = hw.chars[hw.i];
+    const ch = [...hw.items[hw.i].hanzi][hw.ci];
     const medians = Strokes.of(ch);
     const pt = p => Strokes.toScreen(p, S);
     let drawing = false, cur = [];
@@ -7742,7 +7770,7 @@ window.BossMusic = (() => {
     };
     cv.addEventListener('pointerdown', start); cv.addEventListener('pointermove', move);
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end); cv.addEventListener('pointerleave', end);
-    if (hw.mode === 'dictation' && !hw.said) { hw.said = true; setTimeout(() => Speech.say(ch), 350); }
+    if (hw.mode === 'dictation' && !hw.said) { hw.said = true; setTimeout(() => Speech.say(hw.items[hw.i].hanzi), 350); }
   }
 
   function judge(drawn, medians, paint) {
@@ -7754,11 +7782,13 @@ window.BossMusic = (() => {
       hw.strokeIdx++; hw.tries = 0; hw.hintShown = false;
       Sound.ok();
       if (hw.strokeIdx >= medians.length) {
-        hw.results.push({ ch: hw.chars[hw.i], ok: true, tries: hw.totalTries || 0, hints: hw.usedHint || 0 });
+        const word = [...hw.items[hw.i].hanzi];
+        if (hw.ci < word.length - 1) { hw.ci++; hw.strokeIdx = 0; toast('Знак написан · ' + word[hw.ci - 1], 900); render(); return; }
+        hw.results.push({ ch: hw.items[hw.i].hanzi, ok: true, tries: hw.totalTries || 0, hints: hw.usedHint || 0 });
         hw.done++;
         hw.totalTries = 0; hw.usedHint = 0;
-        toast('Знак написан · ' + hw.chars[hw.i], 1200);
-        setTimeout(nextChar, 500);
+        toast('Написано · ' + hw.items[hw.i].hanzi, 1200);
+        setTimeout(nextItem, 500);
         return;
       }
       render();
@@ -7778,7 +7808,7 @@ window.BossMusic = (() => {
       id: uid(), ts: hw.startedAt, endedAt: Date.now(), durationMs: Date.now() - hw.startedAt,
       mode: 'hand', difficulty: hw.mode, level: hw.level, deckIds: [], deckName: 'Письмо от руки' + (hw.title ? ' · ' + hw.title : ''),
       show: 'hand', guess: ['stroke'], order: 'random', timer: 0,
-      total: hw.results.length, planned: hw.chars.length, aborted: false,
+      total: hw.results.length, planned: hw.items.length, aborted: false,
       correct: ok, partial: 0, wrong: hw.results.length - ok,
       percent: Math.round(ok / Math.max(1, hw.results.length) * 100),
       words: hw.results.filter(r => r.ok).map(r => r.ch),

@@ -58,18 +58,28 @@
     const cards = cardsOfDeck(deck).filter(c => Strokes.known(c.hanzi) && c.hanzi.length <= 2);
     if (!cards.length) return toast('Для этой колоды нет данных о чертах');
     const pick = HskReal.shuffle(cards).slice(0, 8);
-    startHand(pick.map(c => c.hanzi), (builtinDecks.find(d => d.id === deck) || {}).level || 1, (builtinDecks.find(d => d.id === deck) || {}).name);
+    startHand(pick.map(c => ({ hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru, id: c.id })),
+      (builtinDecks.find(d => d.id === deck) || {}).level || 1, (builtinDecks.find(d => d.id === deck) || {}).name);
   };
 
-  async function startHand(words, level, title) {
+  /* Единица занятия — слово с подписью: иначе в режимах «по памяти» и «диктант» писать нечего */
+  async function startHand(items, level, title) {
     toast('Готовлю клетку…', 1200);
     try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }
-    const chars = [];
-    words.forEach(w => [...w].forEach(ch => { if (Strokes.has(ch) && !chars.includes(ch)) chars.push(ch); }));
-    if (!chars.length) return toast('Нет знаков с данными о чертах');
-    hw = { chars: chars.slice(0, 12), i: 0, strokeIdx: 0, drawn: [], tries: 0, results: [], mode: state.settings.handMode || 'trace',
+    const list = items
+      .map(it => (typeof it === 'string' ? charItem(it) : it))
+      .filter(it => it && it.hanzi && [...it.hanzi].every(ch => Strokes.has(ch)));
+    if (!list.length) return toast('Нет знаков с данными о чертах');
+    hw = { items: list.slice(0, 12), i: 0, ci: 0, strokeIdx: 0, tries: 0, results: [], mode: state.settings.handMode || 'trace',
       level, title: title || '', startedAt: Date.now(), hintShown: false, done: 0 };
     nav('hand-run');
+  }
+  /* Знак курса: подпись берём из словаря, иначе из карточки-слова */
+  function charItem(ch) {
+    const d = (H.CHARS || {})[ch];
+    if (d) return { hanzi: ch, pinyin: d[0], ru: d[1] };
+    const c = cardOf(ch);
+    return c ? { hanzi: ch, pinyin: c.pinyin, ru: c.ru, id: c.id } : null;
   }
 
   /* ── холст ── */
@@ -80,35 +90,38 @@
   views['hand-run'] = {
     render() {
       if (!hw) return '<div class="empty">Занятие не начато</div>';
-      const ch = hw.chars[hw.i];
+      const it = hw.items[hw.i];
+      const word = [...it.hanzi];
+      const ch = word[hw.ci];
       const m = modeOf(hw.mode);
-      const card = cardOf(ch);
       const total = Strokes.of(ch).length;
-      const prompt = hw.mode === 'memory'
-        ? `<div class="hw-prompt"><b>${esc(card ? card.pinyin : '')}</b><div>${esc(card ? card.ru : '')}</div></div>`
-        : hw.mode === 'dictation'
-          ? `<div class="hw-prompt"><button class="btn btn-secondary btn-sm" data-action="hand-say" data-nosound>🔊 Повторить</button></div>`
-          : '';
-      return `<div class="qbar"><button class="icon-btn" data-action="hand-quit">✕</button><div class="progress"><i style="width:${hw.i / hw.chars.length * 100}%"></i></div><div class="qcount">${hw.i + 1}/${hw.chars.length}</div><div class="qtimer"><span class="zh">${m.zh}</span></div></div>
+      const label = hw.mode === 'dictation'
+        ? `<button class="btn btn-secondary btn-sm" data-action="hand-say" data-nosound>🔊 Повторить</button>`
+        : hw.mode === 'memory'
+          ? `<b>${esc(it.pinyin || '')}</b><div>${esc(it.ru || '')}</div>`
+          : `<b>${esc(it.pinyin || '')}</b><div>${esc(it.ru || '')}</div>`;
+      const prompt = `<div class="hw-prompt">${label}</div>`;
+      return `<div class="qbar"><button class="icon-btn" data-action="hand-quit">✕</button><div class="progress"><i style="width:${hw.i / hw.items.length * 100}%"></i></div><div class="qcount">${hw.i + 1}/${hw.items.length}</div><div class="qtimer"><span class="zh">${m.zh}</span></div></div>
       ${prompt}
       <div class="hw-wrap"><canvas id="hw-c" class="hw-canvas" width="640" height="640"></canvas></div>
-      <div class="hw-info"><span>Черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg"></span></div>
+      <div class="hw-info"><span>${word.length > 1 ? `Знак <b>${hw.ci + 1}</b> из ${word.length} · ` : ''}черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg"></span></div>
       <div class="btns row2"><button class="btn btn-secondary" data-action="hand-undo">Стереть черту</button><button class="btn btn-secondary" data-action="hand-hint">Подсказать</button></div>
       <button class="btn btn-secondary btn-block btn-sm" data-action="hand-skip">Пропустить знак</button>`;
     },
     mount() { if (hw) setupCanvas(); },
   };
-  actions['hand-say'] = () => { if (hw) Speech.say(hw.chars[hw.i]); };
+  actions['hand-say'] = () => { if (hw) Speech.say(hw.items[hw.i].hanzi); };
   actions['hand-quit'] = () => { hw = null; nav('hand', {}, { replace: true }); };
   actions['hand-undo'] = () => { if (hw && hw.strokeIdx > 0) { hw.strokeIdx--; hw.tries = 0; hw.hintShown = false; render(); } };
+  actions['hand-hintbtn'] = () => {};
   actions['hand-hint'] = () => { if (hw) { hw.hintShown = true; hw.usedHint = (hw.usedHint || 0) + 1; render(); } };
-  actions['hand-skip'] = () => { if (hw) { hw.results.push({ ch: hw.chars[hw.i], ok: false, tries: hw.tries, skipped: true }); nextChar(); } };
+  actions['hand-skip'] = () => { if (hw) { hw.results.push({ ch: hw.items[hw.i].hanzi, ok: false, tries: hw.tries, skipped: true }); nextItem(); } };
 
-  function nextChar() {
-    hw.i++; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false;
-    if (hw.i >= hw.chars.length) return finish();
+  function nextItem() {
+    hw.i++; hw.ci = 0; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false; hw.said = false;
+    if (hw.i >= hw.items.length) return finish();
     render();
-    if (hw.mode === 'dictation') setTimeout(() => Speech.say(hw.chars[hw.i]), 400);
+    if (hw.mode === 'dictation') setTimeout(() => Speech.say(hw.items[hw.i].hanzi), 400);
   }
 
   function setupCanvas() {
@@ -116,7 +129,7 @@
     if (!cv) return;
     const ctx = cv.getContext('2d');
     const S = cv.width;
-    const ch = hw.chars[hw.i];
+    const ch = [...hw.items[hw.i].hanzi][hw.ci];
     const medians = Strokes.of(ch);
     const pt = p => Strokes.toScreen(p, S);
     let drawing = false, cur = [];
@@ -196,7 +209,7 @@
     };
     cv.addEventListener('pointerdown', start); cv.addEventListener('pointermove', move);
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end); cv.addEventListener('pointerleave', end);
-    if (hw.mode === 'dictation' && !hw.said) { hw.said = true; setTimeout(() => Speech.say(ch), 350); }
+    if (hw.mode === 'dictation' && !hw.said) { hw.said = true; setTimeout(() => Speech.say(hw.items[hw.i].hanzi), 350); }
   }
 
   function judge(drawn, medians, paint) {
@@ -208,11 +221,13 @@
       hw.strokeIdx++; hw.tries = 0; hw.hintShown = false;
       Sound.ok();
       if (hw.strokeIdx >= medians.length) {
-        hw.results.push({ ch: hw.chars[hw.i], ok: true, tries: hw.totalTries || 0, hints: hw.usedHint || 0 });
+        const word = [...hw.items[hw.i].hanzi];
+        if (hw.ci < word.length - 1) { hw.ci++; hw.strokeIdx = 0; toast('Знак написан · ' + word[hw.ci - 1], 900); render(); return; }
+        hw.results.push({ ch: hw.items[hw.i].hanzi, ok: true, tries: hw.totalTries || 0, hints: hw.usedHint || 0 });
         hw.done++;
         hw.totalTries = 0; hw.usedHint = 0;
-        toast('Знак написан · ' + hw.chars[hw.i], 1200);
-        setTimeout(nextChar, 500);
+        toast('Написано · ' + hw.items[hw.i].hanzi, 1200);
+        setTimeout(nextItem, 500);
         return;
       }
       render();
@@ -232,7 +247,7 @@
       id: uid(), ts: hw.startedAt, endedAt: Date.now(), durationMs: Date.now() - hw.startedAt,
       mode: 'hand', difficulty: hw.mode, level: hw.level, deckIds: [], deckName: 'Письмо от руки' + (hw.title ? ' · ' + hw.title : ''),
       show: 'hand', guess: ['stroke'], order: 'random', timer: 0,
-      total: hw.results.length, planned: hw.chars.length, aborted: false,
+      total: hw.results.length, planned: hw.items.length, aborted: false,
       correct: ok, partial: 0, wrong: hw.results.length - ok,
       percent: Math.round(ok / Math.max(1, hw.results.length) * 100),
       words: hw.results.filter(r => r.ok).map(r => r.ch),
