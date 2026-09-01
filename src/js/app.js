@@ -186,7 +186,7 @@ window.App = (() => {
     if (moved) window.scrollTo(0, 0);
     else if (keep) window.scrollTo(0, keep);
     document.body.classList.toggle('no-tabs', state.view === 'quiz' || state.view === 'exam');
-    if (pendingReload && state.view !== 'quiz' && state.view !== 'exam') { pendingReload = false; toast('Применяю обновление…', 2500); setTimeout(() => location.reload(), 700); }
+    if (pendingReload && !['quiz', 'exam', 'hand-run', 'phon-run', 'sprint', 'fight'].includes(state.view)) { pendingReload = false; toast('Применяю обновление…', 2500); setTimeout(() => location.reload(), 700); }
     const tab = TAB_OF[state.view];
     $$('#tabbar .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     if (v.mount) v.mount(state.params);

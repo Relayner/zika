@@ -64,7 +64,7 @@ window.Quiz = (() => {
     return picked.map(card => {
       if (cfg.mode === 'write') {
         /* лёгкий — с пиньинем (учимся выбирать среди омофонов), средний — по переводу, сложный — на слух */
-        const show = cfg.difficulty === 'medium' ? 'ru' : cfg.difficulty === 'hard' ? 'audio' : 'both';
+        const show = cfg.difficulty === 'medium' ? 'ru' : cfg.difficulty === 'hard' ? (cfg.noVoice ? 'ru' : 'audio') : 'both';
         return { cardId: card.id, show, guess: ['hanzi'], card };
       }
       const show = cfg.show === 'mixed' ? PARTS[rnd(3)] : cfg.show;

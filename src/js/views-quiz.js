@@ -67,7 +67,7 @@
       return `<div class="vh"><div class="seal">练</div><div class="grow"><h1 class="title">Тренировка</h1><div class="sub">У каждого режима — свои настройки</div></div></div>
       <div class="panel"><div class="flabel">Режим</div><div class="chips">${MODES.map(x => chip(x === m, MODE_TITLES[x], 'setup-mode', x)).join('')}</div><div class="hint">${MODE_HINTS[m]}</div>
         ${m === 'write' ? '<button class="btn btn-secondary btn-sm btn-block mt" data-action="kbd-tip">Как включить китайскую клавиатуру</button>' : ''}
-        ${m === 'listen' && !Speech.available() ? '<div class="warn mt">Китайский голос не найден. iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Китайский, затем перезапустите приложение.</div>' : ''}
+        ${((m === 'listen') || (m === 'write' && c.difficulty === 'hard')) && !Speech.available() ? '<div class="warn mt">Китайский голос не найден. iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Китайский, затем перезапустите приложение.</div>' : ''}
         ${m === 'sentence' ? `<div class="hint">В банке ${Sentences.ITEMS.length} фраз — вопросы с однозначным ответом.</div>` : ''}</div>
       ${hasDecks ? `<div class="panel"><div class="flabel">Колоды <span class="muted">· карточек: ${n}</span></div><div class="chips">${allDecks().map(d => chip(c.deckIds.includes(d.id), esc(d.name) + ` <small>${cardsOfDeck(d.id).length}</small>`, 'setup-deck', d.id)).join('')}</div></div>` : ''}
       ${isQuiz ? `<div class="panel"><div class="flabel">Показывать</div>${seg(c, 'show', [['hanzi', 'Иероглиф'], ['pinyin', 'Пиньинь'], ['ru', 'Перевод'], ['mixed', 'Смешанно']])}
@@ -125,7 +125,10 @@
     cfg.mode = mode;
     if (mode === 'listen') { cfg.show = 'audio'; cfg.guess = ['answer']; }
     if (mode === 'sentence') { cfg.show = 'sentence'; cfg.guess = ['answer']; }
-    if (mode === 'write') { cfg.guess = ['hanzi']; if (!cfg.show) cfg.show = 'write'; }
+    if (mode === 'write') {
+      cfg.guess = ['hanzi']; if (!cfg.show) cfg.show = 'write';
+      if (cfg.difficulty === 'hard' && !Speech.available()) { toast('Нет китайского голоса — сложный уровень идёт по переводу', 3000); cfg.noVoice = true; }
+    }
     if (mode === 'quiz') { if (!cfg.show) cfg.show = 'mixed'; if (!cfg.guess) cfg.guess = []; }
     let questions;
     if (mode === 'sentence') {
@@ -234,21 +237,28 @@
     const cv = $('#qw-c');
     if (!cv || !quiz || quiz.answered) return;
     const q = quiz.questions[quiz.i];
-    try { await Strokes.load(); } catch (e) { toast(e.message, 2500); state.settings.writeDraw = false; persist(); render(); return; }
-    const word = [...q.card.hanzi.replace(/[…\s]/g, '')];
-    if (!word.every(ch => Strokes.has(ch))) { toast('Для этого слова нет траекторий — отвечайте клавиатурой', 2500); state.settings.writeDraw = false; persist(); render(); return; }
+    const css = Math.max(cv.getBoundingClientRect().width, 280), dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = cv.height = Math.round(css * dpr);
     const S = cv.width, ctx = cv.getContext('2d');
+    const cs = getComputedStyle(document.documentElement), cvar = (n, d) => (cs.getPropertyValue(n) || '').trim() || d;
+    const C = { done: cvar('--hw-done', '#2b1d18'), live: cvar('--hw-live', '#6e1b2b'), grid: cvar('--hw-grid', 'rgba(180,140,60,0.4)') };
+    const gridOnly = () => { ctx.clearRect(0, 0, S, S); ctx.strokeStyle = C.grid; ctx.lineWidth = 2; ctx.strokeRect(1, 1, S - 2, S - 2);
+      ctx.setLineDash([7, 9]); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.moveTo(0, S / 2); ctx.lineTo(S, S / 2);
+      ctx.moveTo(0, 0); ctx.lineTo(S, S); ctx.moveTo(S, 0); ctx.lineTo(0, S); ctx.stroke(); ctx.setLineDash([]); };
+    gridOnly();   /* клетка видна сразу, пока грузятся траектории */
+    const pr0 = $('#qw-progress'); if (pr0 && !Strokes.ready()) pr0.textContent = 'Загружаю траектории…';
+    try { await Strokes.load(); } catch (e) { toast(e.message, 2500); state.settings.writeDraw = false; persist(); render(); return; }
+    /* пока грузилось, вопрос мог смениться — не пишем в чужой холст */
+    if (!quiz || quiz.questions[quiz.i] !== q || !cv.isConnected || quiz.answered) return;
+    const word = [...q.card.hanzi.replace(/[…\s]/g, '')];
+    if (!word.length || !word.every(ch => Strokes.has(ch))) { toast('Для этого слова нет траекторий — отвечайте клавиатурой', 2500); state.settings.writeDraw = false; persist(); render(); return; }
     const qw = quiz.qw = { ci: 0, si: 0, errs: 0, hints: 0, hint: false, written: '', paint: null };
     const pt = p => Strokes.toScreen(p, S);
     let drawing = false, cur = [];
     function paint() {
       const ch = word[qw.ci], med = Strokes.of(ch);
-      ctx.clearRect(0, 0, S, S);
-      ctx.strokeStyle = 'rgba(180,140,60,0.4)'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, S - 2, S - 2);
-      ctx.setLineDash([7, 9]); ctx.lineWidth = 1.2; ctx.beginPath();
-      ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.moveTo(0, S / 2); ctx.lineTo(S, S / 2);
-      ctx.moveTo(0, 0); ctx.lineTo(S, S); ctx.moveTo(S, 0); ctx.lineTo(0, S); ctx.stroke(); ctx.setLineDash([]);
-      ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055; ctx.strokeStyle = 'rgba(230,225,215,0.92)';
+      gridOnly();
+      ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055; ctx.strokeStyle = C.done;
       for (let i = 0; i < qw.si; i++) { ctx.beginPath(); med[i].forEach((p, k) => { const [x, y] = pt(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); }
       if (qw.hint && qw.si < med.length) {
         const m = med[qw.si];
@@ -256,7 +266,7 @@
         ctx.beginPath(); m.forEach((p, k) => { const [x, y] = pt(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]);
         const [sx, sy] = pt(m[0]); ctx.fillStyle = 'rgba(46,125,91,0.95)'; ctx.beginPath(); ctx.arc(sx, sy, S * 0.026, 0, 7); ctx.fill(); ctx.restore();
       }
-      if (cur.length > 1) { ctx.lineWidth = S * 0.055; ctx.strokeStyle = 'rgba(109,26,36,0.9)'; ctx.beginPath(); cur.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); }
+      if (cur.length > 1) { ctx.lineWidth = S * 0.055; ctx.strokeStyle = C.live; ctx.beginPath(); cur.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); }
       const pr = $('#qw-progress');
       if (pr) pr.innerHTML = (word.length > 1 ? `Знак <b>${qw.ci + 1}</b> из ${word.length} · ` : '') + `черта <b>${qw.si + 1}</b> из ${med.length}`;
     }

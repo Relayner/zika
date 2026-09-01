@@ -17,13 +17,15 @@
     render() {
       const prof = Skill.profile(state);
       const hs = (prof.hand || {}).score;
-      const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : hs < 90 ? 'memory' : 'dictation';
-      const cur = state.settings.handMode || 'trace';
+      const voice = Speech.available();
+      const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : (hs < 90 || !voice) ? 'memory' : 'dictation';
+      const cur = modeOf(state.settings.handMode).k;   /* неизвестное значение из бэкапа → обводка */
       const decks = builtinDecks.filter(d => d.level);
       const cards = state.settings.handDeck || 'hsk1';
       return `<div class="vh"><div class="seal">手</div><div class="grow"><h1 class="title">Письмо от руки</h1><div class="sub">手写 · черта за чертой, в верном порядке</div></div><button class="icon-btn" data-action="hand-info" aria-label="Как это работает">i</button></div>
       <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}${m.k === recMode ? ' ·☆' : ''}</button>`).join('')}</div>
-        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}${cur !== recMode ? ` · по вашей форме советуем «${modeOf(recMode).t}»` : ' · это ваша ступень по форме'}</div></div>
+        <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}${cur !== recMode ? ` · по вашей форме советуем «${modeOf(recMode).t}»` : ' · это ваша ступень по форме'}</div>
+        ${!voice ? '<div class="warn mt">Китайский голос не найден — диктант недоступен. iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Китайский.</div>' : ''}</div>
       <div class="panel"><div class="flabel">Откуда брать знаки</div><div class="seg wrap">${decks.map(d => `<button class="${cards === d.id ? 'on' : ''}" data-action="hand-deck" data-id="${d.id}">${esc(d.name)}</button>`).join('')}</div></div>
       <div class="panel"><div class="flabel">Уроки письма</div>
         ${H.COURSE.map(c => `<button class="row tap" data-action="hand-course" data-id="${c.id}"><div><div class="row-t"><span class="zh">${c.zh}</span> · ${esc(c.ru)}</div><div class="row-s">${esc(c.can)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`).join('')}</div>
@@ -70,8 +72,10 @@
       .map(it => (typeof it === 'string' ? charItem(it) : it))
       .filter(it => it && it.hanzi && [...it.hanzi].every(ch => Strokes.has(ch)));
     if (!list.length) return toast('Нет знаков с данными о чертах');
-    hw = { items: list.slice(0, 12), i: 0, ci: 0, strokeIdx: 0, tries: 0, results: [], mode: state.settings.handMode || 'trace',
-      level, title: title || '', startedAt: Date.now(), hintShown: false, done: 0 };
+    let mode = modeOf(state.settings.handMode).k;
+    if (mode === 'dictation' && !Speech.available()) { toast('Нет китайского голоса — пишем по памяти, с подписью', 3000); mode = 'memory'; }
+    hw = { items: list.slice(0, 12), i: 0, ci: 0, strokeIdx: 0, tries: 0, results: [], mode,
+      level, title: title || '', startedAt: Date.now(), hintShown: false, done: 0, msg: '', finishing: false, timer: null };
     nav('hand-run');
   }
   /* Знак курса: подпись берём из словаря, иначе из карточки-слова */
@@ -104,31 +108,52 @@
       return `<div class="qbar"><button class="icon-btn" data-action="hand-quit">✕</button><div class="progress"><i style="width:${hw.i / hw.items.length * 100}%"></i></div><div class="qcount">${hw.i + 1}/${hw.items.length}</div><div class="qtimer"><span class="zh">${m.zh}</span></div></div>
       ${prompt}
       <div class="hw-wrap"><canvas id="hw-c" class="hw-canvas" width="640" height="640"></canvas></div>
-      <div class="hw-info"><span>${word.length > 1 ? `Знак <b>${hw.ci + 1}</b> из ${word.length} · ` : ''}черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg"></span></div>
+      <div class="hw-info"><span>${word.length > 1 ? `Знак <b>${hw.ci + 1}</b> из ${word.length} · ` : ''}черта <b>${hw.strokeIdx + 1}</b> из ${total}</span><span id="hw-msg" class="hw-msg ${hw.msg ? 'bad' : ''}">${esc(hw.msg || '')}</span></div>
       <div class="btns row2"><button class="btn btn-secondary" data-action="hand-undo">Стереть черту</button><button class="btn btn-secondary" data-action="hand-hint">Подсказать</button></div>
       <button class="btn btn-secondary btn-block btn-sm" data-action="hand-skip">Пропустить знак</button>`;
     },
     mount() { if (hw) setupCanvas(); },
   };
   actions['hand-say'] = () => { if (hw) Speech.say(hw.items[hw.i].hanzi); };
-  actions['hand-quit'] = () => { hw = null; nav('hand', {}, { replace: true }); };
-  actions['hand-undo'] = () => { if (hw && hw.strokeIdx > 0) { hw.strokeIdx--; hw.tries = 0; hw.hintShown = false; render(); } };
-  actions['hand-hintbtn'] = () => {};
-  actions['hand-hint'] = () => { if (hw) { hw.hintShown = true; hw.usedHint = (hw.usedHint || 0) + 1; render(); } };
-  actions['hand-skip'] = () => { if (hw) { hw.results.push({ ch: hw.items[hw.i].hanzi, ok: false, tries: hw.tries, skipped: true }); nextItem(); } };
+  /* пока идёт пауза после дописанного слова, действия не принимаем — иначе дубли и обращение к пустому состоянию */
+  const busy = () => !hw || hw.finishing;
+  actions['hand-quit'] = () => { if (hw && hw.timer) clearTimeout(hw.timer); hw = null; nav('hand', {}, { replace: true }); };
+  actions['hand-undo'] = () => { if (!busy() && hw.strokeIdx > 0) { hw.strokeIdx--; hw.tries = 0; hw.hintShown = false; hw.msg = ''; render(); } };
+  actions['hand-hint'] = () => { if (!busy()) { hw.hintShown = true; hw.usedHint = (hw.usedHint || 0) + 1; render(); } };
+  /* пропускаем именно знак: в двусложном слове второй знак остаётся */
+  actions['hand-skip'] = () => {
+    if (busy()) return;
+    const word = [...hw.items[hw.i].hanzi];
+    if (hw.ci < word.length - 1) { hw.ci++; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false; hw.msg = ''; hw.partial = true; render(); return; }
+    hw.results.push({ ch: hw.items[hw.i].hanzi, ok: false, tries: hw.tries, skipped: true });
+    nextItem();
+  };
 
   function nextItem() {
-    hw.i++; hw.ci = 0; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false; hw.said = false;
+    if (!hw) return;
+    hw.finishing = false; hw.timer = null; hw.partial = false;
+    hw.i++; hw.ci = 0; hw.strokeIdx = 0; hw.tries = 0; hw.hintShown = false; hw.said = false; hw.msg = '';
     if (hw.i >= hw.items.length) return finish();
-    render();
-    if (hw.mode === 'dictation') setTimeout(() => Speech.say(hw.items[hw.i].hanzi), 400);
+    render();   /* озвучка диктанта — один раз, из setupCanvas */
+  }
+
+  /* Цвета холста берём из темы: захардкоженные под тёмный фон черты на светлой теме были невидимы */
+  function hwColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (n, d) => (cs.getPropertyValue(n) || '').trim() || d;
+    return { done: v('--hw-done', '#2b1d18'), live: v('--hw-live', '#6e1b2b'), ghost: v('--hw-ghost', '90,70,60'), grid: v('--hw-grid', 'rgba(180,140,60,0.45)') };
   }
 
   function setupCanvas() {
     const cv = $('#hw-c');
     if (!cv) return;
+    /* буфер под плотность экрана — иначе на iPhone черты мыльные */
+    /* размер от разметки ненадёжен (экран ещё не выложен, панель скрыта) — берём не меньше номинала */
+    const css = Math.max(cv.getBoundingClientRect().width, 320), dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = cv.height = Math.round(css * dpr);
     const ctx = cv.getContext('2d');
     const S = cv.width;
+    const C = hwColors();
     const ch = [...hw.items[hw.i].hanzi][hw.ci];
     const medians = Strokes.of(ch);
     const pt = p => Strokes.toScreen(p, S);
@@ -137,7 +162,7 @@
     function grid() {
       ctx.clearRect(0, 0, S, S);
       ctx.fillStyle = 'rgba(255,255,255,0.02)'; ctx.fillRect(0, 0, S, S);
-      ctx.strokeStyle = 'rgba(180,140,60,0.45)'; ctx.lineWidth = 2;
+      ctx.strokeStyle = C.grid; ctx.lineWidth = 2;
       ctx.strokeRect(1, 1, S - 2, S - 2);
       ctx.setLineDash([8, 10]); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.moveTo(0, S / 2); ctx.lineTo(S, S / 2);
@@ -146,18 +171,18 @@
     }
     function ghost() {
       /* образец знака: в обводке ярко, с подсказкой — бледно, по памяти и в диктанте не показываем */
-      const a = hw.mode === 'trace' ? 0.3 : hw.mode === 'hint' ? 0.12 : 0;
+      const a = hw.mode === 'trace' ? 0.38 : hw.mode === 'hint' ? 0.24 : 0;
       if (!a) return;
       ctx.save();
-      ctx.font = Math.round(S * 0.82) + 'px "Noto Serif SC", serif';
+      ctx.font = Math.round(S * 0.82) + 'px "Noto Serif SC", "PingFang SC", "Hiragino Sans GB", serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = `rgba(160,160,160,${a})`;
+      ctx.fillStyle = `rgba(${C.ghost},${a})`;
       ctx.fillText(ch, S / 2, S / 2 + S * 0.03);
       ctx.restore();
     }
     function doneStrokes() {
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055;
-      ctx.strokeStyle = 'rgba(230,225,215,0.92)';
+      ctx.strokeStyle = C.done;
       for (let i = 0; i < hw.strokeIdx; i++) {
         const m = medians[i];
         ctx.beginPath();
@@ -185,7 +210,7 @@
     function live() {
       if (cur.length < 2) return;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = S * 0.055;
-      ctx.strokeStyle = 'rgba(109,26,36,0.9)';
+      ctx.strokeStyle = C.live;
       ctx.beginPath();
       cur.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
       ctx.stroke();
@@ -198,7 +223,7 @@
       const t = e.touches ? e.touches[0] : e;
       return [(t.clientX - r.left) / r.width * S, (t.clientY - r.top) / r.height * S];
     };
-    const start = e => { e.preventDefault(); drawing = true; cur = [pos(e)]; paint(); };
+    const start = e => { e.preventDefault(); if (busy()) return; drawing = true; cur = [pos(e)]; paint(); };
     const move = e => { if (!drawing) return; e.preventDefault(); cur.push(pos(e)); paint(); };
     const end = e => {
       if (!drawing) return;
@@ -213,12 +238,12 @@
   }
 
   function judge(drawn, medians, paint) {
-    const msg = $('#hw-msg');
+    if (busy() || hw.strokeIdx >= medians.length) return;
     const expected = medians[hw.strokeIdx];
     const tol = hw.mode === 'trace' ? { start: 30, mean: 26 } : { start: 26, mean: 22 };
     const res = Strokes.match(expected, drawn, tol);
     if (res.ok) {
-      hw.strokeIdx++; hw.tries = 0; hw.hintShown = false;
+      hw.strokeIdx++; hw.tries = 0; hw.hintShown = false; hw.msg = '';
       Sound.ok();
       if (hw.strokeIdx >= medians.length) {
         const word = [...hw.items[hw.i].hanzi];
@@ -227,7 +252,8 @@
         hw.done++;
         hw.totalTries = 0; hw.usedHint = 0;
         toast('Написано · ' + hw.items[hw.i].hanzi, 1200);
-        setTimeout(nextItem, 500);
+        hw.finishing = true;
+        hw.timer = setTimeout(nextItem, 500);
         return;
       }
       render();
@@ -235,7 +261,8 @@
     }
     hw.tries++; hw.totalTries = (hw.totalTries || 0) + 1;
     Sound.fail();
-    if (msg) { msg.textContent = res.why; msg.classList.add('bad'); }
+    hw.msg = res.why;
+    const msg = $('#hw-msg'); if (msg) { msg.textContent = res.why; msg.classList.add('bad'); }
     paint();
     if (hw.tries >= 2) render();
   }
