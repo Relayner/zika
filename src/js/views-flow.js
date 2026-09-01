@@ -18,6 +18,9 @@
     if (!fl) return;
     const fresh = state.attempts.length - fl.baseline;
     if (fresh > fl.done) fl.done = fresh;
+    /* разбор звучания попытки не пишет — засчитываем по отметке урока */
+    const cur = fl.queue[fl.i];
+    if (cur && cur.t === 'phon' && cur.lessonId && ((state.settings.phon || {})[cur.lessonId]) && fl.i === fl.done) { fl.done++; fl.baseline--; }
     if (fl.done > fl.i) fl.i = Math.min(fl.queue.length, fl.done);
   }
 
@@ -44,6 +47,8 @@
     sync();
     const s = fl.queue[fl.i];
     if (!s) return;
+    if (s.t === 'phon') { App.actions['phon-open']({ dataset: { id: s.lessonId } }); if (!s.lessonId) nav('phon'); return; }
+    if (s.t === 'handBasics') { state.settings.handLevel = 0; state.settings.handMode = 'trace'; persist(); App.actions['hand-lesson']({ dataset: { id: s.lessonId } }); return; }
     if (s.t === 'review') {
       if (!SRS.dueCount(state)) { toast('Повторять уже нечего — шаг пропущен'); fl.i++; fl.baseline--; render(); return; }
       return App.startReview();

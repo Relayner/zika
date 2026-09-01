@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <title>字卡 — Карточки китайского</title>
-<meta name="description" content="Флэш-карточки китайского: иероглиф, пиньинь, перевод. HSK 1–3, тесты, статистика.">
+<meta name="description" content="Флэш-карточки китайского: иероглиф, пиньинь, перевод. С нуля до HSK 4: звучание, письмо от руки, уроки, экзамены.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -684,6 +684,13 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .ph-fb { text-align: center; }
 .ph-fb.ok { border-color: var(--jade, #2e7d5b); }
 .ph-fb.bad { border-color: var(--danger, #b3392f); }
+
+/* Начните отсюда */
+.start-here { border-color: var(--jade, #2e7d5b); }
+.sh-steps { display: flex; flex-direction: column; gap: 8px; }
+.sh-step { display: flex; align-items: center; gap: 12px; text-align: left; background: var(--card, #fffdf6); border: 1.5px solid var(--line, #e4d8c2); border-radius: 12px; padding: 10px 12px; font: inherit; color: inherit; }
+.sh-step .zh { font-size: 24px; color: var(--jade, #2e7d5b); min-width: 30px; text-align: center; }
+.sh-step div { flex: 1; } .sh-step b { display: block; } .sh-step small { color: var(--ink-2, #6b6156); }
 
 </style>
 </head>
@@ -2916,12 +2923,20 @@ window.Flow = (() => {
       attemptsYesterday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === yest).length,
       attemptsToday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === today).length,
       daysStreak: (state.campaign || {}).days || 0,
+      beginner: !(state.attempts || []).length || Boss.levelOf(state) === 1 && (state.attempts || []).length < 5,
+      phonDone: Object.keys((state.settings || {}).phon || {}).length,
+      handBasicsDone: ['h0-01', 'h0-02', 'h0-03'].filter(id => ((((state.settings || {}).hand || {}).lessons || {})[id] || {}).runs).length,
     };
   }
 
   /* локальный план — фолбэк и основа */
   function localPlan(state) {
     const s = statsFor(state);
+    /* новичок: сначала звучание и основы письма, один урок HSK 1 — и хватит на день */
+    if (s.beginner && (s.phonDone < 8 || s.handBasicsDone < 3)) {
+      const mix = { phon: Math.min(2, 8 - s.phonDone), handBasics: s.handBasicsDone < 3 ? 1 : 0, sprint: s.phonDone >= 4 ? 1 : 0, review: s.due > 0 ? 1 : 0, drill: 0, hand: 0, boss: 0 };
+      return { focus: 'listen', mix, message: s.phonDone === 0 ? 'Первый день. Разберёмся, как звучит китайский, и проведём первые черты.' : 'Продолжаем со звучания — потом первые слова.', src: 'local' };
+    }
     const mix = { review: 0, sprint: 2, drill: 2, hand: 1, boss: 0 };
     if (s.due > 0) mix.review = s.due > 15 ? 2 : 1;
     if (s.weakest === 'hand') mix.hand = 2;
@@ -2959,6 +2974,16 @@ window.Flow = (() => {
   function buildQueue(state, plan) {
     const q = [];
     const lvl = Skill.recLevel(state, Skill.profile(state));
+    /* ступень с нуля: непройденные уроки звучания по порядку */
+    if (plan.mix.phon && window.PHON) {
+      const done = (state.settings || {}).phon || {};
+      PHON.LESSONS.filter(l => !done[l.id]).slice(0, plan.mix.phon).forEach(l => q.push({ t: 'phon', lessonId: l.id, title: 'Звучание · ' + l.ru, d: l.kind === 'drill' ? 'тренировка на слух' : 'разбор с примерами' }));
+    }
+    if (plan.mix.handBasics && window.HANDWRITING) {
+      const ls = ((state.settings || {}).hand || {}).lessons || {};
+      const next = HANDWRITING.COURSE.filter(c => c.lvl === 0).find(c => !(ls[c.id] || {}).runs);
+      if (next) q.push({ t: 'handBasics', lessonId: next.id, title: 'Основы письма · ' + next.ru, d: 'черты в клетке, с обводкой' });
+    }
     const deck = ['hsk1', 'hsk2', 'hsk3', 'freq1'][Math.min(3, lvl - 1)];
     /* повторений кладём не больше, чем реально есть чего повторять: тренер мог ошибиться */
     const due = SRS.dueCount(state);
@@ -3099,6 +3124,7 @@ window.CHANGELOG = [
       ['Различение трудных звуков', 'j/q/x против zh/ch/sh и z/c/s — то, обо что русское ухо спотыкается годами. Слышите слог, выбираете, с какого звука он начинается.'],
     ],
     minor: [
+      ['Старт для тех, кто с нуля', 'На главной у новичка появляется маршрут «Начните отсюда»: Звучание → Письмо → Поток. Дракон в первые дни только приветствует — ругать ещё не за что. Поток для новичка собирает день из уроков звучания и основ письма, а не кидает сразу в HSK.'],
       ['Правила записи пиньиня', 'Почему ju читается как «цзюй», откуда берутся yi и wu — с проверкой на настоящих словах.'],
       ['Урок засчитывается с 70%', 'Разборы отмечаются прочитанными, тренировки — сданными. Прогресс виден на входе в раздел.'],
     ],
@@ -3684,9 +3710,18 @@ window.Dragon = (() => {
       return { mood: m, img: MOODS[m].img, title: MOODS[m].title, text: phrase(m, { toCap: t.toCap || 400 }, now), t };
     }
     const t = Campaign.todayState(campaign, attempts, now.getTime());
-    const u = urgency(t, now);
+    /* новичок: пока нет попыток или поход не набрал трёх дней — дракон только приветствует, ругать не за что */
+    const fresh = !(attempts || []).length || !campaign || (campaign.days || 0) < 3;
+    const u = fresh ? -1 : urgency(t, now);
     const m = moodIdx(u);
     if (m >= 0) return { mood: m, img: MOODS[m].img, title: MOODS[m].title, text: phrase(m, t, now), t, u, quiet: false };
+    if (fresh && !t.done) {
+      const lines = !(attempts || []).length
+        ? ['Лун кланяется: «Добро пожаловать. Начни со звучания — остальное приложится».', 'Лун разливает чай: «Первые дни я только приветствую. Загляни в Звучание».', 'Лун улыбается: «Ничего не знать — нормально. Один урок сегодня — уже поход».']
+        : ['Лун кивает: «Первые дни самые важные. {n} очков — и день зачтён».', 'Лун греет чай: «Не спеши, просто приходи каждый день. Сегодня ещё {n}».', 'Лун подмигивает: «Третий зачтённый день откроет первый ранг. Осталось {n}».'];
+      const seed = now.getDate() * 7 + now.getHours();
+      return { mood: 0, img: 'dragon-1', title: 'Наставник Лун приветствует', text: lines[seed % lines.length].replace('{n}', String(Math.round(t.toCap))), t, u, quiet: true, kind: 'welcome' };
+    }
     /* Спокойные состояния — дракон всё равно на месте */
     const c = t.ultra ? CALM.ultra : t.done ? CALM.done : CALM.morning;
     const seed = now.getDate() * 7 + now.getHours();
@@ -5218,7 +5253,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260901-2314';
+  const VERSION = '20260901-2318';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5498,6 +5533,18 @@ window.App = (() => {
       : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button>`;
     return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
   }
+  /* Новичку — одна понятная дверь: пока нет ни одной попытки, показываем маршрут первого дня */
+  function startHere() {
+    if ((state.attempts || []).length) return '';
+    const phonDone = Object.keys((state.settings || {}).phon || {}).length;
+    return `<div class="panel ornate start-here"><div class="flabel">Начните отсюда</div>
+      <div class="sh-steps">
+        <button class="sh-step" data-go="phon"><span class="zh">音</span><div><b>1. Звучание</b><small>как устроен слог, четыре тона · ${phonDone}/8</small></div><span class="chev">›</span></button>
+        <button class="sh-step" data-go="hand"><span class="zh">手</span><div><b>2. Письмо</b><small>восемь черт и порядок · уровень «С нуля»</small></div><span class="chev">›</span></button>
+        <button class="sh-step" data-action="flow-open" data-nosound><span class="zh">流</span><div><b>3. Поток</b><small>дальше день соберёт тренер</small></div><span class="chev">›</span></button>
+      </div>
+      <div class="hint" style="margin:8px 0 0">Ничего не знать — нормально. Первые дни дракон только приветствует.</div></div>`;
+  }
   /* Что подошло по сроку повторения */
   function reviewPanel() {
     const n = SRS.dueCount(state);
@@ -5563,8 +5610,9 @@ window.App = (() => {
       const pv = PROVERBS[doy % PROVERBS.length];
       const mastered = Object.values(state.cardStats).filter(s => s.mastered).length;
       return `
-      <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Карточки китайского · HSK 1–3</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
+      <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Китайский с нуля до HSK 4</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
       ${App.Profile.homePanel()}
+      ${startHere()}
       ${dragonPanel()}
       ${reviewPanel()}
       ${pushInvite()}
@@ -5584,7 +5632,7 @@ window.App = (() => {
         <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
         <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
-        <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–3</small></button>
+        <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–4</small></button>
         <button class="big-btn t-cards" data-go="decks"><svg class="deco" viewBox="0 0 100 100"><rect x="30" y="10" width="46" height="64" rx="7" fill="none" stroke="currentColor" stroke-width="6" transform="rotate(12 53 42)"/><rect x="18" y="22" width="46" height="64" rx="7" fill="currentColor" transform="rotate(-6 41 54)"/></svg><span class="bi">卡</span><span>Колоды</span><small>${fmt.plural(state.cards.length, 'своя карточка', 'свои карточки', 'своих карточек')}</small></button>
         <button class="big-btn t-bars" data-go="stats"><svg class="deco" viewBox="0 0 100 100"><rect x="12" y="58" width="16" height="32" rx="3" fill="currentColor"/><rect x="36" y="40" width="16" height="50" rx="3" fill="currentColor"/><rect x="60" y="22" width="16" height="68" rx="3" fill="currentColor"/><path d="M14 50 L44 30 L68 12 L90 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><span class="bi">计</span><span>Статистика</span><small>${fmt.plural(ov.attempts, 'попытка', 'попытки', 'попыток')} · освоено ${mastered}</small></button>
       </div>
@@ -6417,7 +6465,7 @@ window.App = (() => {
   }
   views.hsk = {
     render() {
-      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–3</h1><div class="sub">Встроенные словари и экзамены · стандарт HSK 2.0</div></div></div>
+      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–4</h1><div class="sub">Встроенные словари и настоящие экзамены</div></div></div>
       ${builtinDecks.filter(d => d.level).map(levelCard).join('')}
       <div class="panel ornate level"><div class="level-h"><div class="level-n">HSKK</div><div class="level-d">говорение · устный экзамен</div></div>
         <div class="hint" style="margin:0 0 12px">Повторяете за диктором, описываете картинку и отвечаете голосом — приложение распознаёт вашу речь и оценивает.</div>
@@ -8080,6 +8128,9 @@ window.BossMusic = (() => {
     if (!fl) return;
     const fresh = state.attempts.length - fl.baseline;
     if (fresh > fl.done) fl.done = fresh;
+    /* разбор звучания попытки не пишет — засчитываем по отметке урока */
+    const cur = fl.queue[fl.i];
+    if (cur && cur.t === 'phon' && cur.lessonId && ((state.settings.phon || {})[cur.lessonId]) && fl.i === fl.done) { fl.done++; fl.baseline--; }
     if (fl.done > fl.i) fl.i = Math.min(fl.queue.length, fl.done);
   }
 
@@ -8106,6 +8157,8 @@ window.BossMusic = (() => {
     sync();
     const s = fl.queue[fl.i];
     if (!s) return;
+    if (s.t === 'phon') { App.actions['phon-open']({ dataset: { id: s.lessonId } }); if (!s.lessonId) nav('phon'); return; }
+    if (s.t === 'handBasics') { state.settings.handLevel = 0; state.settings.handMode = 'trace'; persist(); App.actions['hand-lesson']({ dataset: { id: s.lessonId } }); return; }
     if (s.t === 'review') {
       if (!SRS.dueCount(state)) { toast('Повторять уже нечего — шаг пропущен'); fl.i++; fl.baseline--; render(); return; }
       return App.startReview();

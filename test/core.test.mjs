@@ -514,6 +514,7 @@ console.log(process.exitCode ? 'SOME TESTS FAILED' : 'srs group passed');
 
 /* ── оценка навыков и поток ── */
 require('../src/js/skill.js');
+for (const f of ['phonetics', 'handwriting', 'program']) { if (!global[f === 'phonetics' ? 'PHON' : f === 'handwriting' ? 'HANDWRITING' : 'PROGRAM']) require('../src/js/' + f + '.js'); }
 require('../src/js/flow.js');
 t('skill profile', () => {
   const now = Date.now();
@@ -537,12 +538,18 @@ t('skill profile', () => {
   assert.equal(p3.read.score, 40);
 });
 t('flow plan and bonus', () => {
+  /* новичок без единой попытки — сначала звучание и основы письма, без дриллов и боссов */
   const st = { attempts: [], settings: {}, cardStats: {}, campaign: { days: 0 } };
   const plan = Flow.localPlan(st);
-  assert.ok(plan.mix.sprint >= 1 && plan.message);
+  assert.ok(plan.mix.phon >= 1 && plan.mix.handBasics === 1 && !plan.mix.drill && !plan.mix.boss && plan.message, JSON.stringify(plan.mix));
   const q = Flow.buildQueue(st, plan);
   assert.ok(q.length >= 3, 'очередь собралась: ' + q.length);
   assert.ok(q.every(x => x.title));
+  assert.equal(q[0].t, 'phon', 'первый шаг — звучание');
+  /* опытный — обычный план с уроками */
+  const st2 = { attempts: Array.from({ length: 8 }, (_, i) => ({ mode: 'quiz', percent: 90, total: 20, ts: Date.now() - i * 864e5, deckIds: ['hsk2'], aborted: false })), settings: { phon: Object.fromEntries(['p-01','p-02','p-03','p-04','p-05','p-06','p-07','p-08'].map(k => [k, true])) }, cardStats: {}, campaign: { days: 6 } };
+  const plan2 = Flow.localPlan(st2);
+  assert.ok(plan2.mix.sprint >= 1 && !plan2.mix.phon, JSON.stringify(plan2.mix));
   assert.equal(Flow.streakBonus(1), 2);
   assert.equal(Flow.streakBonus(5), 50);
   assert.equal(Flow.streakBonus(10), 60, 'потолок бонуса');

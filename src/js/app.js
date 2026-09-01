@@ -280,6 +280,18 @@ window.App = (() => {
       : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button>`;
     return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
   }
+  /* Новичку — одна понятная дверь: пока нет ни одной попытки, показываем маршрут первого дня */
+  function startHere() {
+    if ((state.attempts || []).length) return '';
+    const phonDone = Object.keys((state.settings || {}).phon || {}).length;
+    return `<div class="panel ornate start-here"><div class="flabel">Начните отсюда</div>
+      <div class="sh-steps">
+        <button class="sh-step" data-go="phon"><span class="zh">音</span><div><b>1. Звучание</b><small>как устроен слог, четыре тона · ${phonDone}/8</small></div><span class="chev">›</span></button>
+        <button class="sh-step" data-go="hand"><span class="zh">手</span><div><b>2. Письмо</b><small>восемь черт и порядок · уровень «С нуля»</small></div><span class="chev">›</span></button>
+        <button class="sh-step" data-action="flow-open" data-nosound><span class="zh">流</span><div><b>3. Поток</b><small>дальше день соберёт тренер</small></div><span class="chev">›</span></button>
+      </div>
+      <div class="hint" style="margin:8px 0 0">Ничего не знать — нормально. Первые дни дракон только приветствует.</div></div>`;
+  }
   /* Что подошло по сроку повторения */
   function reviewPanel() {
     const n = SRS.dueCount(state);
@@ -345,8 +357,9 @@ window.App = (() => {
       const pv = PROVERBS[doy % PROVERBS.length];
       const mastered = Object.values(state.cardStats).filter(s => s.mastered).length;
       return `
-      <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Карточки китайского · HSK 1–3</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
+      <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Китайский с нуля до HSK 4</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
       ${App.Profile.homePanel()}
+      ${startHere()}
       ${dragonPanel()}
       ${reviewPanel()}
       ${pushInvite()}
@@ -366,7 +379,7 @@ window.App = (() => {
         <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>
         <button class="big-btn t-brush" data-go="setup"><svg class="deco" viewBox="0 0 100 100"><path d="M8 78 C 30 40, 46 46, 60 30 C 70 18, 86 12, 96 10 C 84 22, 76 36, 64 48 C 50 62, 36 74, 12 84 Z" fill="currentColor"/></svg><span class="bi">练</span><span>Тренировка</span><small>выбор · карточки · письмо · аудио</small></button>
-        <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–3</small></button>
+        <button class="big-btn t-seal" data-go="hsk"><svg class="deco" viewBox="0 0 100 100"><rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="3" fill="currentColor"/></svg><span class="bi">考</span><span>HSK-тест</span><small>уровни 1–4</small></button>
         <button class="big-btn t-cards" data-go="decks"><svg class="deco" viewBox="0 0 100 100"><rect x="30" y="10" width="46" height="64" rx="7" fill="none" stroke="currentColor" stroke-width="6" transform="rotate(12 53 42)"/><rect x="18" y="22" width="46" height="64" rx="7" fill="currentColor" transform="rotate(-6 41 54)"/></svg><span class="bi">卡</span><span>Колоды</span><small>${fmt.plural(state.cards.length, 'своя карточка', 'свои карточки', 'своих карточек')}</small></button>
         <button class="big-btn t-bars" data-go="stats"><svg class="deco" viewBox="0 0 100 100"><rect x="12" y="58" width="16" height="32" rx="3" fill="currentColor"/><rect x="36" y="40" width="16" height="50" rx="3" fill="currentColor"/><rect x="60" y="22" width="16" height="68" rx="3" fill="currentColor"/><path d="M14 50 L44 30 L68 12 L90 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><span class="bi">计</span><span>Статистика</span><small>${fmt.plural(ov.attempts, 'попытка', 'попытки', 'попыток')} · освоено ${mastered}</small></button>
       </div>

@@ -473,7 +473,7 @@
   }
   views.hsk = {
     render() {
-      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–3</h1><div class="sub">Встроенные словари и экзамены · стандарт HSK 2.0</div></div></div>
+      return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">HSK 1–4</h1><div class="sub">Встроенные словари и настоящие экзамены</div></div></div>
       ${builtinDecks.filter(d => d.level).map(levelCard).join('')}
       <div class="panel ornate level"><div class="level-h"><div class="level-n">HSKK</div><div class="level-d">говорение · устный экзамен</div></div>
         <div class="hint" style="margin:0 0 12px">Повторяете за диктором, описываете картинку и отвечаете голосом — приложение распознаёт вашу речь и оценивает.</div>

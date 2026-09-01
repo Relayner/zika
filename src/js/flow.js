@@ -17,12 +17,20 @@ window.Flow = (() => {
       attemptsYesterday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === yest).length,
       attemptsToday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === today).length,
       daysStreak: (state.campaign || {}).days || 0,
+      beginner: !(state.attempts || []).length || Boss.levelOf(state) === 1 && (state.attempts || []).length < 5,
+      phonDone: Object.keys((state.settings || {}).phon || {}).length,
+      handBasicsDone: ['h0-01', 'h0-02', 'h0-03'].filter(id => ((((state.settings || {}).hand || {}).lessons || {})[id] || {}).runs).length,
     };
   }
 
   /* локальный план — фолбэк и основа */
   function localPlan(state) {
     const s = statsFor(state);
+    /* новичок: сначала звучание и основы письма, один урок HSK 1 — и хватит на день */
+    if (s.beginner && (s.phonDone < 8 || s.handBasicsDone < 3)) {
+      const mix = { phon: Math.min(2, 8 - s.phonDone), handBasics: s.handBasicsDone < 3 ? 1 : 0, sprint: s.phonDone >= 4 ? 1 : 0, review: s.due > 0 ? 1 : 0, drill: 0, hand: 0, boss: 0 };
+      return { focus: 'listen', mix, message: s.phonDone === 0 ? 'Первый день. Разберёмся, как звучит китайский, и проведём первые черты.' : 'Продолжаем со звучания — потом первые слова.', src: 'local' };
+    }
     const mix = { review: 0, sprint: 2, drill: 2, hand: 1, boss: 0 };
     if (s.due > 0) mix.review = s.due > 15 ? 2 : 1;
     if (s.weakest === 'hand') mix.hand = 2;
@@ -60,6 +68,16 @@ window.Flow = (() => {
   function buildQueue(state, plan) {
     const q = [];
     const lvl = Skill.recLevel(state, Skill.profile(state));
+    /* ступень с нуля: непройденные уроки звучания по порядку */
+    if (plan.mix.phon && window.PHON) {
+      const done = (state.settings || {}).phon || {};
+      PHON.LESSONS.filter(l => !done[l.id]).slice(0, plan.mix.phon).forEach(l => q.push({ t: 'phon', lessonId: l.id, title: 'Звучание · ' + l.ru, d: l.kind === 'drill' ? 'тренировка на слух' : 'разбор с примерами' }));
+    }
+    if (plan.mix.handBasics && window.HANDWRITING) {
+      const ls = ((state.settings || {}).hand || {}).lessons || {};
+      const next = HANDWRITING.COURSE.filter(c => c.lvl === 0).find(c => !(ls[c.id] || {}).runs);
+      if (next) q.push({ t: 'handBasics', lessonId: next.id, title: 'Основы письма · ' + next.ru, d: 'черты в клетке, с обводкой' });
+    }
     const deck = ['hsk1', 'hsk2', 'hsk3', 'freq1'][Math.min(3, lvl - 1)];
     /* повторений кладём не больше, чем реально есть чего повторять: тренер мог ошибиться */
     const due = SRS.dueCount(state);

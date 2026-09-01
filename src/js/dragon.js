@@ -79,9 +79,18 @@ window.Dragon = (() => {
       return { mood: m, img: MOODS[m].img, title: MOODS[m].title, text: phrase(m, { toCap: t.toCap || 400 }, now), t };
     }
     const t = Campaign.todayState(campaign, attempts, now.getTime());
-    const u = urgency(t, now);
+    /* новичок: пока нет попыток или поход не набрал трёх дней — дракон только приветствует, ругать не за что */
+    const fresh = !(attempts || []).length || !campaign || (campaign.days || 0) < 3;
+    const u = fresh ? -1 : urgency(t, now);
     const m = moodIdx(u);
     if (m >= 0) return { mood: m, img: MOODS[m].img, title: MOODS[m].title, text: phrase(m, t, now), t, u, quiet: false };
+    if (fresh && !t.done) {
+      const lines = !(attempts || []).length
+        ? ['Лун кланяется: «Добро пожаловать. Начни со звучания — остальное приложится».', 'Лун разливает чай: «Первые дни я только приветствую. Загляни в Звучание».', 'Лун улыбается: «Ничего не знать — нормально. Один урок сегодня — уже поход».']
+        : ['Лун кивает: «Первые дни самые важные. {n} очков — и день зачтён».', 'Лун греет чай: «Не спеши, просто приходи каждый день. Сегодня ещё {n}».', 'Лун подмигивает: «Третий зачтённый день откроет первый ранг. Осталось {n}».'];
+      const seed = now.getDate() * 7 + now.getHours();
+      return { mood: 0, img: 'dragon-1', title: 'Наставник Лун приветствует', text: lines[seed % lines.length].replace('{n}', String(Math.round(t.toCap))), t, u, quiet: true, kind: 'welcome' };
+    }
     /* Спокойные состояния — дракон всё равно на месте */
     const c = t.ultra ? CALM.ultra : t.done ? CALM.done : CALM.morning;
     const seed = now.getDate() * 7 + now.getHours();
