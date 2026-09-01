@@ -12,36 +12,66 @@
   ];
   const modeOf = k => MODES.find(m => m.k === k) || MODES[0];
 
-  /* ── выбор занятия ── */
+  /* ── выбор занятия ──
+     Уровень — настоящий фильтр: он задаёт и уроки, и случайный набор. Уроки письма — те же блоки, что в программе,
+     поэтому написать можно каждое слово уровня, а не сорок знаков из курса. */
+  const LEVELS = [
+    { n: 0, t: 'С нуля', d: 'черты, порядок, строение знака' },
+    { n: 1, t: 'HSK 1' }, { n: 2, t: 'HSK 2' }, { n: 3, t: 'HSK 3' }, { n: 4, t: 'HSK 4' },
+  ];
+  const DECK_OF = { 1: 'hsk1', 2: 'hsk2', 3: 'hsk3', 4: 'freq1' };
+  const hstate = () => (state.settings.hand || (state.settings.hand = { lessons: {} }));
+  const lessonState = id => (hstate().lessons[id] || (hstate().lessons[id] = { written: [], runs: 0 }));
+  const writable = w => w && !/[…\s]/.test(w) && (!Strokes.ready() || [...w].every(ch => Strokes.has(ch)));
+  const curLevel = () => { const n = +state.settings.handLevel; return LEVELS.some(l => l.n === n) ? n : 1; };
+
+  /* уроки уровня: 0 — курс черт, 1–4 — блоки программы */
+  function lessonsOf(lvl) {
+    if (lvl === 0) return H.COURSE.filter(c => c.lvl === 0).map(c => ({ id: c.id, zh: c.zh, ru: c.ru, can: c.can, lvl: 0, words: c.chars.split(' ').filter(Boolean), course: true }));
+    return (window.PROGRAM ? PROGRAM.byLevel(lvl) : []).map(b => ({ id: 'w-' + b.id, zh: b.zh, ru: b.ru, can: b.can, lvl, words: b.words.filter(writable) }));
+  }
+  const cardsOfLevel = lvl => (DECK_OF[lvl] ? cardsOfDeck(DECK_OF[lvl]) : []);
+
   views.hand = {
     render() {
       const prof = Skill.profile(state);
       const hs = (prof.hand || {}).score;
       const voice = Speech.available();
       const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : (hs < 90 || !voice) ? 'memory' : 'dictation';
-      const cur = modeOf(state.settings.handMode).k;   /* неизвестное значение из бэкапа → обводка */
-      const decks = builtinDecks.filter(d => d.level);
-      const cards = state.settings.handDeck || 'hsk1';
+      const cur = modeOf(state.settings.handMode).k;
+      const lvl = curLevel();
+      const lessons = lessonsOf(lvl);
+      const total = lessons.reduce((n, l) => n + l.words.length, 0);
+      const written = lessons.reduce((n, l) => n + lessonState(l.id).written.filter(w => l.words.includes(w)).length, 0);
+      const rows = lessons.map(l => {
+        const st = lessonState(l.id);
+        const done = l.words.filter(w => st.written.includes(w)).length;
+        const full = l.words.length && done >= l.words.length;
+        return `<button class="row tap ${full ? 'ph-done' : ''}" data-action="hand-lesson" data-id="${l.id}">
+          <div><div class="row-t"><span class="zh">${l.zh}</span> · ${esc(l.ru)}${full ? ' <span class="ph-tick">✓</span>' : ''}${st.runs ? ` <b class="blk-runs">×${st.runs}</b>` : ''}</div><div class="row-s">${esc(l.can)}</div></div>
+          <div class="row-r"><span class="badge ${full ? 'good' : done ? 'mid' : ''}">${done}/${l.words.length}</span><span class="chev">›</span></div></button>`;
+      }).join('');
       return `<div class="vh"><div class="seal">手</div><div class="grow"><h1 class="title">Письмо от руки</h1><div class="sub">手写 · черта за чертой, в верном порядке</div></div><button class="icon-btn" data-action="hand-info" aria-label="Как это работает">i</button></div>
+      <div class="panel"><div class="flabel">Уровень</div><div class="seg wrap">${LEVELS.map(l => `<button class="${lvl === l.n ? 'on' : ''}" data-action="hand-level" data-n="${l.n}">${l.t}</button>`).join('')}</div>
+        <div class="hint" style="margin:8px 0 0">${lvl === 0 ? 'Основы письма: ' + LEVELS[0].d : `${total} ${fmt.plural(total, 'слово', 'слова', 'слов').replace(/^\d+ /, '')} уровня · написано ${written}`}${!Strokes.ready() ? ' · загружаю траектории…' : ''}</div></div>
       <div class="panel"><div class="flabel">Как писать</div><div class="seg wrap">${MODES.map(m => `<button class="${cur === m.k ? 'on' : ''}" data-action="hand-mode" data-k="${m.k}"><span class="zh">${m.zh}</span> ${m.t}${m.k === recMode ? ' ·☆' : ''}</button>`).join('')}</div>
         <div class="hint" style="margin:10px 0 0">${esc(modeOf(cur).d)}${cur !== recMode ? ` · по вашей форме советуем «${modeOf(recMode).t}»` : ' · это ваша ступень по форме'}</div>
         ${!voice ? '<div class="warn mt">Китайский голос не найден — диктант недоступен. iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Китайский.</div>' : ''}</div>
-      <div class="panel"><div class="flabel">Откуда брать знаки</div><div class="seg wrap">${decks.map(d => `<button class="${cards === d.id ? 'on' : ''}" data-action="hand-deck" data-id="${d.id}">${esc(d.name)}</button>`).join('')}</div></div>
-      <div class="panel"><div class="flabel">Уроки письма</div>
-        ${H.COURSE.map(c => `<button class="row tap" data-action="hand-course" data-id="${c.id}"><div><div class="row-t"><span class="zh">${c.zh}</span> · ${esc(c.ru)}</div><div class="row-s">${esc(c.can)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`).join('')}</div>
-      <button class="btn btn-primary btn-block btn-lg" data-action="hand-start">Начать · 8 знаков</button>
-      <div class="panel"><div class="flabel">Основа</div>
+      ${lvl > 0 ? `<button class="btn btn-primary btn-block btn-lg" data-action="hand-start">Начать · 8 случайных слов HSK ${lvl}</button>` : ''}
+      <div class="panel"><div class="flabel">${lvl === 0 ? 'Уроки основ' : 'Уроки письма HSK ' + lvl + ' · по темам программы'}</div>${rows || '<div class="hint">Уроков нет</div>'}</div>
+      <div class="panel"><div class="flabel">Справочник</div>
         <button class="row tap" data-action="hand-theory" data-k="strokes"><div><div class="row-t">Восемь черт 笔画</div><div class="row-s">как ведётся каждая</div></div><span class="chev">›</span></button>
         <button class="row tap" data-action="hand-theory" data-k="rules"><div><div class="row-t">Правила порядка 笔顺</div><div class="row-s">семь правил, по которым пишут все знаки</div></div><span class="chev">›</span></button>
         <button class="row tap" data-action="hand-theory" data-k="struct"><div><div class="row-t">Строение знака 结构</div><div class="row-s">из каких частей собирается иероглиф</div></div><span class="chev">›</span></button></div>`;
     },
+    mount() { if (!Strokes.ready()) Strokes.load().then(() => { if (state.view === 'hand') render(); }).catch(() => {}); },
   };
+  actions['hand-level'] = el => { state.settings.handLevel = +el.dataset.n; persist(); render(); };
   actions['hand-mode'] = el => { state.settings.handMode = el.dataset.k; persist(); render(); };
-  actions['hand-deck'] = el => { state.settings.handDeck = el.dataset.id; persist(); render(); };
   actions['hand-info'] = () => sheet(`<h3 class="sh-t">Как устроено письмо от руки</h3><div class="install-note">
     <p>Знак пишется <b>по чертам и в правильном порядке</b>. Приложение сверяет каждую черту: откуда начали, куда вели и совпал ли путь.</p>
     <p>Черта не засчитывается, если ведёте её в обратную сторону — в китайском направление черты часть нормы, а не мелочь.</p>
-    <p>Клетка 田字格 с диагоналями — та же, по которой учатся в китайской школе: она держит пропорции.</p>
+    <p>Уровень наверху задаёт всё: и уроки, и случайный набор. Уроки повторяют темы программы, так что написать можно каждое слово уровня.</p>
     <p>Ошиблись дважды на одной черте — появится подсказка. Очки за знак зависят от того, сколько подсказок понадобилось.</p></div>
     <button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
   actions['hand-theory'] = el => {
@@ -53,19 +83,28 @@
         : H.STRUCT.map(r => `<div class="th-row"><span class="zh th-ex">${r.ex.split(' ')[0]}</span><div><b>${esc(r.t)} · <span class="zh">${r.zh}</span></b><div class="hint" style="margin:2px 0 0">${esc(r.d)} Например: <span class="zh">${esc(r.ex)}</span></div></div></div>`).join(''));
     sheet(`<h3 class="sh-t">${k === 'strokes' ? 'Восемь черт 笔画' : k === 'rules' ? 'Правила порядка 笔顺' : 'Строение знака 结构'}</h3><div class="theory">${body}</div><button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
   };
-  actions['hand-course'] = el => { const c = H.COURSE.find(x => x.id === el.dataset.id); if (c) startHand(c.chars.split(' ').filter(Boolean), c.lvl || 1, c.ru); };
+  /* урок: сначала ещё не написанные слова, потом остальные — так за несколько заходов покрывается весь блок */
+  actions['hand-lesson'] = el => {
+    const lvl = curLevel();
+    const l = lessonsOf(lvl).find(x => x.id === el.dataset.id);
+    if (!l) return;
+    const st = lessonState(l.id);
+    const fresh = l.words.filter(w => !st.written.includes(w)), old = l.words.filter(w => st.written.includes(w));
+    const order = [...HskReal.shuffle(fresh), ...HskReal.shuffle(old)];
+    const items = l.course ? order : order.map(w => { const c = cardsOfLevel(lvl).find(x => x.hanzi === w); return c ? { hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru, id: c.id } : w; });
+    startHand(items, lvl || 1, l.ru, l.id);
+  };
   actions['hand-start'] = async () => {
-    const deck = state.settings.handDeck || 'hsk1';
-    try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }   /* без данных known() всем отказывал */
-    const cards = cardsOfDeck(deck).filter(c => Strokes.known(c.hanzi) && c.hanzi.length <= 2);
-    if (!cards.length) return toast('Для этой колоды нет данных о чертах');
+    const lvl = curLevel();
+    try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }
+    const cards = cardsOfLevel(lvl).filter(c => writable(c.hanzi));
+    if (!cards.length) return toast('Для этого уровня нет данных о чертах');
     const pick = HskReal.shuffle(cards).slice(0, 8);
-    startHand(pick.map(c => ({ hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru, id: c.id })),
-      (builtinDecks.find(d => d.id === deck) || {}).level || 1, (builtinDecks.find(d => d.id === deck) || {}).name);
+    startHand(pick.map(c => ({ hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru, id: c.id })), lvl, 'HSK ' + lvl);
   };
 
   /* Единица занятия — слово с подписью: иначе в режимах «по памяти» и «диктант» писать нечего */
-  async function startHand(items, level, title) {
+  async function startHand(items, level, title, lessonId) {
     toast('Готовлю клетку…', 1200);
     try { await Strokes.load(); } catch (e) { return toast(e.message, 3000); }
     const list = items
@@ -74,7 +113,7 @@
     if (!list.length) return toast('Нет знаков с данными о чертах');
     let mode = modeOf(state.settings.handMode).k;
     if (mode === 'dictation' && !Speech.available()) { toast('Нет китайского голоса — пишем по памяти, с подписью', 3000); mode = 'memory'; }
-    hw = { items: list.slice(0, 12), i: 0, ci: 0, strokeIdx: 0, tries: 0, results: [], mode,
+    hw = { items: list.slice(0, 12), i: 0, ci: 0, strokeIdx: 0, tries: 0, results: [], mode, lessonId: lessonId || null,
       level, title: title || '', startedAt: Date.now(), hintShown: false, done: 0, msg: '', finishing: false, timer: null };
     nav('hand-run');
   }
@@ -250,6 +289,8 @@
         if (hw.ci < word.length - 1) { hw.ci++; hw.strokeIdx = 0; toast('Знак написан · ' + word[hw.ci - 1], 900); render(); return; }
         hw.results.push({ ch: hw.items[hw.i].hanzi, ok: true, tries: hw.totalTries || 0, hints: hw.usedHint || 0 });
         hw.done++;
+        /* прогресс урока пишем сразу — выход посреди занятия его не теряет */
+        if (hw.lessonId) { const ls = lessonState(hw.lessonId); if (!ls.written.includes(hw.items[hw.i].hanzi)) { ls.written.push(hw.items[hw.i].hanzi); persist(); } }
         hw.totalTries = 0; hw.usedHint = 0;
         toast('Написано · ' + hw.items[hw.i].hanzi, 1200);
         hw.finishing = true;
@@ -280,6 +321,7 @@
       words: hw.results.filter(r => r.ok).map(r => r.ch),
       questions: hw.results.map(r => ({ cardId: (cardOf(r.ch) || {}).id, hanzi: r.ch, ok: r.ok, fraction: r.ok ? 1 : 0, ms: 0, answer: {} })),
     };
+    if (hw.lessonId) lessonState(hw.lessonId).runs++;
     state.lastHand = { results: hw.results.slice(), mode: m, level: hw.level };
     hw = null;
     saveAttempt(a).then(() => { Sound.finish(ok === a.total); nav('hand-result', { id: a.id }, { replace: true }); });

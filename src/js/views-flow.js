@@ -50,7 +50,7 @@
     }
     if (s.t === 'sprint') { const b = PROGRAM.byId(s.blockId); if (b) { App.actions['prog-open']({ dataset: { id: s.blockId } }); return; } }
     if (s.t === 'drill') { App.trainDeck(s.deck); return; }
-    if (s.t === 'hand') { state.settings.handDeck = s.deck; persist(); nav('hand'); return; }
+    if (s.t === 'hand') { state.settings.handLevel = s.lvl || 1; persist(); nav('hand'); return; }
     if (s.t === 'boss') { nav('boss'); return; }
   };
   actions['flow-finish'] = () => {

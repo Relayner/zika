@@ -77,7 +77,7 @@ window.Flow = (() => {
     const drillMode = { listen: 'listen', read: 'quiz', write: 'write', speak: null, hand: null }[plan.focus] || 'quiz';
     for (let i = 0; i < (plan.mix.drill || 0); i++)
       q.push({ t: 'drill', mode: drillMode || 'quiz', deck, title: 'Тренировка · ' + (Skill.KINDS[plan.focus] || {}).ru, d: 'слабое место дня' });
-    for (let i = 0; i < (plan.mix.hand || 0); i++) q.push({ t: 'hand', deck, title: 'Письмо от руки 手写', d: 'знаки уровня, черта за чертой' });
+    for (let i = 0; i < (plan.mix.hand || 0); i++) q.push({ t: 'hand', deck, lvl, title: 'Письмо от руки 手写', d: 'слова уровня, черта за чертой' });
     if (plan.mix.boss) q.push({ t: 'boss', title: 'Босс', d: 'если готов — вызовите любого' });
     return q;
   }
