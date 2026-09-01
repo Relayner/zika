@@ -13,6 +13,7 @@ window.Skill = (() => {
   function kindsOf(a) {
     if (a.mode === 'hand') return ['hand'];
     if (a.mode === 'boss') return ['speak', 'listen'];
+    if (a.mode === 'phon') return ['listen'];
     if (a.mode === 'listen') return ['listen'];
     if (a.mode === 'write') return ['write'];
     if (a.mode === 'sentence') return ['write', 'read'];

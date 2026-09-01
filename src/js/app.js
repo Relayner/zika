@@ -16,10 +16,10 @@ window.App = (() => {
   const LABELS = {
     part: { hanzi: 'Иероглиф', pinyin: 'Пиньинь', ru: 'Перевод', both: 'Пиньинь + перевод', hp: 'Иероглиф + пиньинь', audio: 'На слух', sentence: 'Фраза', answer: 'Ответ', all: 'Всё остальное' },
     diff: { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', flip: 'Самопроверка', exam: 'Экзамен' },
-    mode: { flow: 'Поток', hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
+    mode: { phon: 'Звучание', flow: 'Поток', hand: 'Письмо от руки', boss: 'Бой с боссом', sprint: 'Проверка себя', quiz: 'Выбор ответа', flip: 'Карточки', write: 'Письмо', listen: 'Аудирование', sentence: 'Фразы', hsk: 'Словарный тест HSK' },
     order: { random: 'Случайно', weak: 'Слабые', new: 'Новые' },
   };
-  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', flow: 'home', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
+  const TAB_OF = { home: 'home', settings: 'home', profile: 'home', decks: 'decks', deck: 'decks', card: 'decks', import: 'decks', learn: 'decks', program: 'decks', feed: 'decks', sprint: 'decks', 'sprint-result': 'decks', boss: 'hsk', fight: 'hsk', 'fight-result': 'hsk', hand: 'setup', 'hand-run': 'setup', 'hand-result': 'setup', flow: 'home', phon: 'setup', 'phon-run': 'setup', 'phon-result': 'setup', setup: 'setup', quiz: 'setup', result: 'setup', hsk: 'hsk', stats: 'stats', attempt: 'stats' };
 
   /* ── встроенные HSK ── */
   const builtinDecks = [1, 2, 3].map(l => ({ id: 'hsk' + l, name: 'HSK ' + l, builtin: true, level: l, desc: ['базовая лексика', 'повседневная лексика', 'расширенная лексика'][l - 1] }));
@@ -361,6 +361,7 @@ window.App = (() => {
       </div>
       <div class="grid2">
         <button class="big-btn t-flow" data-action="flow-open" data-nosound><svg class="deco" viewBox="0 0 100 100"><path d="M10 30 Q 35 10, 50 30 T 90 30 M10 55 Q 35 35, 50 55 T 90 55 M10 80 Q 35 60, 50 80 T 90 80" fill="none" stroke="currentColor" stroke-width="7"/></svg><span class="bi">流</span><span>Поток</span><small>система соберёт ваш день</small></button>
+        <button class="big-btn t-phon" data-go="phon"><svg class="deco" viewBox="0 0 100 100"><path d="M18 50 Q 32 22, 46 50 T 74 50" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><circle cx="84" cy="50" r="6" fill="currentColor"/></svg><span class="bi">音</span><span>Звучание</span><small>с нуля · слог, тоны, запись</small></button>
         <button class="big-btn t-hand" data-go="hand"><svg class="deco" viewBox="0 0 100 100"><path d="M20 14 h60 v6 h-60 z M46 20 v62 h8 v-62 z M30 44 h40 v6 h-40 z" fill="currentColor"/></svg><span class="bi">手</span><span>Письмо</span><small>от руки · черта за чертой</small></button>
         <button class="big-btn t-boss" data-go="boss"><svg class="deco" viewBox="0 0 100 100"><path d="M50 8 L62 34 L90 38 L69 58 L75 88 L50 74 L25 88 L31 58 L10 38 L38 34 Z" fill="currentColor"/></svg><span class="bi">斗</span><span>Боссы</span><small>голосом · раз в 10 минут</small></button>
         <button class="big-btn t-prog" data-go="program"><svg class="deco" viewBox="0 0 100 100"><path d="M14 16 h72 v14 h-72 z M14 42 h50 v12 h-50 z M14 66 h64 v12 h-64 z" fill="currentColor"/></svg><span class="bi">学</span><span>Программа</span><small>блоки · грамматика · спринты</small></button>

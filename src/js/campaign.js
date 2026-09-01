@@ -19,13 +19,15 @@ window.Campaign = (() => {
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
     hand: { trace: 5, hint: 8, memory: 11, dictation: 13 },   /* письмо от руки, знак ~12-20 с */
+    phon: 3,                                            /* дрилл на слух, ~7 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
 
   function questionPoints(a, q) {
     let base;
-    if (a.mode === 'hand') base = BASE.hand[a.difficulty] || BASE.hand.trace;
+    if (a.mode === 'phon') base = BASE.phon;
+    else if (a.mode === 'hand') base = BASE.hand[a.difficulty] || BASE.hand.trace;
     else if (a.mode === 'flip') base = BASE.flip;
     else if (a.mode === 'hsk') base = a.format === 'real' ? BASE.exam : BASE.hsk;
     else if (BASE[a.mode] && typeof BASE[a.mode] === 'object') base = BASE[a.mode][a.difficulty] || 3;

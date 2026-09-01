@@ -648,3 +648,19 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .wn-sec { margin-bottom: 14px; }
 .draw-sw { margin-bottom: 10px; }
 .hw-canvas.qw { width: min(80vw, 300px); height: min(80vw, 300px); }
+/* Фонетика */
+.big-btn.t-phon { color: var(--jade, #2e7d5b); }
+.ph-done { opacity: .7; }
+.ph-tick { color: var(--jade, #2e7d5b); }
+.ph-grp { margin-bottom: 14px; }
+.ph-row { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; border-bottom: 1px dashed var(--line, #e4d8c2); }
+.ph-row b { min-width: 62px; }
+.ph-s { font-size: 22px; color: var(--bordeaux, #6d1a24); cursor: pointer; }
+.ph-formula { text-align: center; font-size: 22px; margin: 6px 0 14px; }
+.ph-formula .big { font-size: 30px; color: var(--bordeaux, #6d1a24); }
+.ph-ex { margin-top: 6px; cursor: pointer; }
+.ph-q { font-size: 19px; text-align: center; line-height: 1.5; }
+.ph-opt { font-size: 17px; }
+.ph-fb { text-align: center; }
+.ph-fb.ok { border-color: var(--jade, #2e7d5b); }
+.ph-fb.bad { border-color: var(--danger, #b3392f); }
