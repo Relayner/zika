@@ -16,7 +16,7 @@
     quiz: { deckIds: ['hsk1'], show: 'hanzi', guess: ['pinyin', 'ru'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
     flip: { deckIds: ['hsk1'], show: 'hanzi', count: 20, order: 'random', timer: 0 },
     write: { deckIds: ['hsk1'], difficulty: 'easy', count: 10, order: 'random', timer: 0 },
-    listen: { deckIds: ['hsk1', 'hsk2', 'hsk3', 'freq1'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
+    listen: { deckIds: ['hsk1'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
     sentence: { difficulty: 'easy', count: 10, order: 'random', timer: 0 },
   };
   const DIFF_HINT = { easy: '4 варианта ответа.', medium: '8 вариантов, похожих на правильный.', hard: 'Ввод с клавиатуры: пиньинь с тонами (можно цифрами), для иероглифов — китайская клавиатура.' };
@@ -107,7 +107,7 @@
     startSession('quiz', { deckIds: [], difficulty: 'medium', count: Math.min(30, cards.length), order: 'random', timer: 0, show: 'mixed', guess: [], review: true },
       { cards, deckName: 'Повторение 复习' });
   };
-  App.trainDeck = id => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [id]; saveSetup(); closeSheet(); nav('setup'); };
+  App.trainDeck = (id, mode) => { const s = getSetup(); if (mode && DEF_BY[mode]) s.mode = mode; if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
     <div class="install-note">

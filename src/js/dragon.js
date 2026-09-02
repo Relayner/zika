@@ -62,7 +62,7 @@ window.Dragon = (() => {
     const h = now.getHours() + now.getMinutes() / 60;
     if (h < 12) return -1;
     const timeF = Math.min(1, (h - 12) / 10);
-    const remF = Math.min(1, t.toCap / Campaign.CAP);
+    const remF = Math.min(1, t.toCap / (t.cap || Campaign.CAP));
     return Math.min(1, timeF * 0.65 + remF * 0.35);
   }
   const moodIdx = u => (u < 0 ? -1 : u < 0.33 ? 0 : u < 0.52 ? 1 : u < 0.74 ? 2 : 3);

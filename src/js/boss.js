@@ -64,6 +64,7 @@ window.Boss = (() => {
     const studied = { 1: 0, 2: 0, 3: 0, 4: 0 };
     for (const [id, v] of Object.entries(cs)) {
       if (!v || (!v.asked && !v.mastered)) continue;
+      if (!v.mastered && ((v.correct != null ? v.correct : v.right) || 0) / v.asked < 0.5) continue;   /* «спрошено» ≠ «знаю»: считаем то, что отвечают хотя бы через раз */
       const pref = String(id).split(':')[0];
       const l = decks[pref];
       if (l) studied[l]++;
@@ -71,7 +72,7 @@ window.Boss = (() => {
     const prog = (state.settings && state.settings.program) || {};
     for (const [bid, v] of Object.entries(prog)) {
       const lv = +String(bid).slice(1, 2);
-      if (studied[lv] != null && v && v.seen) studied[lv] += v.seen.length;
+      if (studied[lv] != null && v && v.seen) studied[lv] += (v.seal === 'done' || v.seal === 'gold') ? v.seen.length : Math.floor(v.seen.length / 2);   /* незакрытый блок — полвеса */
     }
     let lvl = 1;
     for (const l of [2, 3, 4]) if (studied[l] >= 20) lvl = l;   /* верхняя грань — где набралось хотя бы 20 слов */

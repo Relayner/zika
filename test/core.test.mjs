@@ -465,7 +465,7 @@ t('decay units by mode', () => {
 t('decay by level gap', () => {
   if (!global.Boss) { require('../src/js/boss.js'); }
   const st = { settings: {}, cardStats: {} };
-  for (let i = 0; i < 25; i++) st.cardStats['hsk3:x' + i] = { asked: 3, right: 2 };
+  for (let i = 0; i < 25; i++) st.cardStats['hsk3:x' + i] = { asked: 3, correct: 2 };
   const low = Campaign.decay(st, { mode: 'hsk', format: 'real', level: 1, deckIds: ['hsk1'], points: 100, questions: [{ hanzi: 'z1' }] });
   assert.ok(low.mult < 0.7, 'контент на два уровня ниже сильно дешевле: ' + low.mult);
   const up = Campaign.decay(st, { mode: 'hsk', format: 'real', level: 4, deckIds: ['freq1'], points: 100, questions: [{ hanzi: 'z2' }] });
@@ -547,12 +547,58 @@ t('flow plan and bonus', () => {
   assert.ok(q.every(x => x.title));
   assert.equal(q[0].t, 'phon', 'первый шаг — звучание');
   /* опытный — обычный план с уроками */
-  const st2 = { attempts: Array.from({ length: 8 }, (_, i) => ({ mode: 'quiz', percent: 90, total: 20, ts: Date.now() - i * 864e5, deckIds: ['hsk2'], aborted: false })), settings: { phon: Object.fromEntries(['p-01','p-02','p-03','p-04','p-05','p-06','p-07','p-08'].map(k => [k, true])) }, cardStats: {}, campaign: { days: 6 } };
+  const st2 = { attempts: Array.from({ length: 8 }, (_, i) => ({ mode: 'quiz', percent: 90, total: 20, ts: Date.now() - i * 864e5, deckIds: ['hsk2'], aborted: false })), settings: { phon: Object.fromEntries(PHON.LESSONS.map(l => [l.id, true])) }, cardStats: {}, campaign: { days: 6 } };
   const plan2 = Flow.localPlan(st2);
   assert.ok(plan2.mix.sprint >= 1 && !plan2.mix.phon, JSON.stringify(plan2.mix));
   assert.equal(Flow.streakBonus(1), 2);
   assert.equal(Flow.streakBonus(5), 50);
   assert.equal(Flow.streakBonus(10), 60, 'потолок бонуса');
+});
+t('phonetics pinyin tools', () => {
+  assert.equal(PHON.retone('ma', 1), 'mā'); assert.equal(PHON.retone('you', 3), 'yǒu'); assert.equal(PHON.retone('liu', 4), 'liù');
+  assert.equal(PHON.retone('lü', 4), 'lǜ'); assert.equal(PHON.retone('xie', 4), 'xiè'); assert.equal(PHON.retone('shui', 3), 'shuǐ'); assert.equal(PHON.retone('ma', 5), 'ma');
+  assert.equal(PHON.misspell('ju'), 'jü'); assert.equal(PHON.misspell('yi'), 'i'); assert.equal(PHON.misspell('you'), 'iou'); assert.equal(PHON.misspell('wu'), 'u');
+  assert.equal(PHON.misspell('wo'), 'uo'); assert.equal(PHON.misspell('yue'), 'üe'); assert.equal(PHON.misspell('lü'), 'lu'); assert.equal(PHON.misspell('ma'), null);
+  assert.deepEqual(PHON.parts('zhong'), { ini: 'zh', fin: 'ong' }); assert.deepEqual(PHON.parts('ai'), { ini: '', fin: 'ai' });
+  const all = PHON.syllables();
+  assert.ok(all.length > 300, 'слогов: ' + all.length);
+  const hao = all.filter(s => s.h === '好'); assert.ok(hao.length >= 1 && hao.every(s => s.poly === (hao.length > 1)), 'многочтения помечены');
+  assert.ok(PHON.byFinal('an').length >= 3 && PHON.byFinal('an').every(s => s.fin === 'an' && s.ini), 'an не захватывает ang');
+  assert.ok(PHON.byFinal('ang').length >= 3 && PHON.byFinal('ing').length >= 3 && PHON.byFinal('in').length >= 3);
+  assert.ok(PHON.byInitial('r').length >= 3, 'r есть в материале');
+  assert.ok(PHON.byInitial('s').every(s => !s.bare.startsWith('sh')));
+  const fins = [...PHON.FINALS, ...PHON.NASALS].flatMap(g => g.list.map(x => x[0]));
+  assert.equal(new Set(fins).size, 36, 'все финали: ' + fins.join(' '));
+  assert.equal(PHON.LESSONS.length, 11);
+  assert.ok(PHON.LESSONS.some(l => l.part === 'tones') && PHON.LESSONS.some(l => l.drill === 'final'));
+  [...PHON.INITIALS, ...PHON.FINALS, ...PHON.NASALS].forEach(g => g.list.forEach(x => assert.ok(x[2] && x[2].length === 1 && x[3], 'пример для ' + x[0])));
+  /* в пиньине всех примеров тон и буквы согласованы с таблицей */
+  assert.ok(PHON.minimalPairs().length >= 20 && PHON.minimalPairs()[0].lvl <= 2, 'пары начинаются с лёгких');
+});
+t('campaign: newcomer cap, first chest, hand keys', () => {
+  assert.equal(Campaign.capFor({ days: 0, log: [] }), Campaign.CAP_START);
+  assert.equal(Campaign.capFor({ days: 1, log: [{}, {}, {}] }), Campaign.CAP);
+  const now = Date.now();
+  const t0 = Campaign.todayState({ days: 0, log: [] }, [], now);
+  assert.equal(t0.cap, Campaign.CAP_START); assert.equal(t0.toCap, Campaign.CAP_START);
+  const att = [{ ts: now, points: Campaign.CAP_START + 5, aborted: false, mode: 'quiz', total: 10, questions: [] }];
+  assert.ok(Campaign.todayState({ log: [] }, att, now).done, 'разгонный переход зачтён');
+  assert.ok(!Campaign.todayState({ log: [{}, {}, {}] }, att, now).done, 'с четвёртого дня — обычные 400');
+  const c1 = { days: 0, log: [] };
+  assert.equal(Campaign.grantChests(c1, att, now), 1, 'сундук новобранца');
+  assert.equal(Campaign.grantChests(c1, att, now), 0, 'один раз');
+  assert.equal(Campaign.grantChests({ days: 5, log: [{}, {}, {}] }, att, now), 0, 'ветерану — нет');
+  assert.deepEqual(Campaign.contentKeys({ mode: 'hand', questions: [{ hanzi: '你', cardId: 'hsk1:你' }] }), ['h:你']);
+});
+t('level counts known, not asked', () => {
+  const cs = {}; for (let i = 0; i < 25; i++) cs['freq1:w' + i] = { asked: 2, correct: 0 };
+  assert.equal(Boss.levelOf({ cardStats: cs, settings: {} }), 1, 'спрошено ≠ знаю');
+  const cs2 = {}; for (let i = 0; i < 25; i++) cs2['hsk2:w' + i] = { asked: 2, correct: 2 };
+  assert.equal(Boss.levelOf({ cardStats: cs2, settings: {} }), 2);
+  const st = { attempts: [{ mode: 'quiz', percent: 90, total: 10, ts: Date.now(), deckIds: ['hsk1'], aborted: false }], settings: {}, cardStats: {} };
+  assert.equal(Skill.recLevel(st, Skill.profile(st)), 1, 'одна попытка уровень не поднимает');
+  const m = Stats.cardStats([{ ts: 1, questions: [{ hanzi: 'x', ok: true }, { cardId: 'hsk1:a', ok: true }] }]);
+  assert.ok(!('undefined' in m) && m['hsk1:a'].asked === 1, 'без карточки — без записи');
 });
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'skill/flow group passed');
 

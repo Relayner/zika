@@ -2550,6 +2550,7 @@ window.Stats = (() => {
     const m = {};
     const sorted = attempts.slice().sort((a, b) => a.ts - b.ts);
     for (const a of sorted) for (const q of a.questions || []) {
+      if (!q.cardId) continue;   /* дриллы звучания и черты карточек не имеют */
       const s = m[q.cardId] || (m[q.cardId] = { asked: 0, correct: 0, partial: 0, wrong: 0, lastAt: 0, lastOk: null, streak: 0, timeMs: 0 });
       s.asked++;
       if (q.ok) { s.correct++; s.streak++; } else { s.streak = 0; if (q.fraction > 0) s.partial++; else s.wrong++; }
@@ -2878,10 +2879,14 @@ window.Skill = (() => {
   /* Рекомендованный уровень материала: рабочий уровень Boss.levelOf, но не ниже уровня, где точность просела */
   function recLevel(state, prof) {
     const base = Boss.levelOf(state);
-    const scores = Object.values(prof).filter(v => v.score != null && v.score !== undefined).map(v => v.score);
-    const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-    if (avg == null) return base;
-    if (avg >= 85 && base < 4) return base + 1;   /* уверенно — можно тянуться выше */
+    /* «выше уровня» — только на объёме: навыки с ≥30 вопросами, всего ≥60, и ≥20 слов уже в обороте.
+       Одна удачная попытка из 10 вопросов уровень не поднимает. */
+    const rich = Object.entries(prof).filter(([k, v]) => k !== 'vocab' && v.score != null && (v.data || 0) >= 30);
+    const total = Object.entries(prof).reduce((a, [k, v]) => a + (k === 'vocab' ? 0 : (v.data || 0)), 0);
+    const seen = (prof.vocab || {}).seen || 0;
+    if (!rich.length || total < 60 || seen < 20) return base;
+    const avg = rich.reduce((a, [, v]) => a + v.score, 0) / rich.length;
+    if (avg >= 85 && base < 4) return base + 1;   /* уверенно и на данных — можно тянуться выше */
     return base;
   }
   return { KINDS, kindsOf, profile, weakest, recLevel, HALF_LIFE };
@@ -2907,7 +2912,9 @@ window.Flow = (() => {
       attemptsYesterday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === yest).length,
       attemptsToday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === today).length,
       daysStreak: (state.campaign || {}).days || 0,
-      beginner: !(state.attempts || []).length || Boss.levelOf(state) === 1 && (state.attempts || []).length < 5,
+      /* новичок: попыток «по делу» (не звучание и не поток) меньше пяти — или курс звучания начат и не закончен, а попыток меньше двадцати */
+      beginner: (() => { const real = (state.attempts || []).filter(a => a.mode !== 'phon' && a.mode !== 'flow').length; const pd = Object.keys((state.settings || {}).phon || {}).length; const pn = window.PHON ? PHON.LESSONS.length : 11;
+        return !(state.attempts || []).length || (Boss.levelOf(state) === 1 && (real < 5 || (pd > 0 && pd < pn && real < 20))); })(),
       phonDone: Object.keys((state.settings || {}).phon || {}).length,
       handBasicsDone: ['h0-01', 'h0-02', 'h0-03'].filter(id => ((((state.settings || {}).hand || {}).lessons || {})[id] || {}).runs).length,
     };
@@ -2917,24 +2924,27 @@ window.Flow = (() => {
   function localPlan(state) {
     const s = statsFor(state);
     /* новичок: сначала звучание и основы письма, один урок HSK 1 — и хватит на день */
-    if (s.beginner && (s.phonDone < 8 || s.handBasicsDone < 3)) {
-      const mix = { phon: Math.min(2, 8 - s.phonDone), handBasics: s.handBasicsDone < 3 ? 1 : 0, sprint: s.phonDone >= 4 ? 1 : 0, review: s.due > 0 ? 1 : 0, drill: 0, hand: 0, boss: 0 };
+    const phonN = window.PHON ? PHON.LESSONS.length : 11;
+    if (s.beginner && (s.phonDone < phonN || s.handBasicsDone < 3)) {
+      /* три шага звучания, один урок черт, с третьего урока — первый блок HSK 1: вместе это как раз разгонный переход */
+      const mix = { phon: Math.min(3, phonN - s.phonDone), handBasics: s.handBasicsDone < 3 ? 1 : 0, sprint: s.phonDone >= 2 ? 1 : 0, review: s.due > 0 ? 1 : 0, drill: 0, hand: 0, boss: 0 };
       return { focus: 'listen', mix, message: s.phonDone === 0 ? 'Первый день. Разберёмся, как звучит китайский, и проведём первые черты.' : 'Продолжаем со звучания — потом первые слова.', src: 'local' };
     }
     const mix = { review: 0, sprint: 2, drill: 2, hand: 1, boss: 0 };
     if (s.due > 0) mix.review = s.due > 15 ? 2 : 1;
     if (s.weakest === 'hand') mix.hand = 2;
-    if (s.attemptsYesterday > 0) mix.boss = 1;
+    if (s.attemptsYesterday > 0 && (state.attempts || []).length >= 10) mix.boss = 1;   /* босс — не раньше десятка попыток */
     const total = Object.values(mix).reduce((a, b) => a + b, 0);
     if (s.attemptsToday === 0 && total > 7) mix.drill = 1;
     return { focus: s.weakest || 'read', mix, message: s.due > 10 ? 'Сначала вернём то, что уплывает, — потом новое.' : 'Ровный день: немного повторений, немного нового.' , src: 'local' };
   }
 
   /* план дня: кэш на сутки, пересчёт через Fable */
-  async function planFor(state) {
+  async function planFor(state, fresh) {
     const today = Stats.dayKey(Date.now());
     const cached = state.settings.flowPlan;
-    if (cached && cached.day === today && cached.plan) return cached.plan;
+    /* план тренера живёт до конца дня; местный — час, потом снова пробуем тренера */
+    if (!fresh && cached && cached.day === today && cached.plan && (!cached.until || cached.until > Date.now())) return cached.plan;
     let plan = null;
     const conf = window.PUSH_CONF || {};
     if (conf.url && navigator.onLine !== false) {
@@ -2949,7 +2959,7 @@ window.Flow = (() => {
       } catch (e) { /* сеть подвела — локальный план */ }
     }
     if (!plan) plan = localPlan(state);
-    state.settings.flowPlan = { day: today, plan };
+    state.settings.flowPlan = { day: today, plan, until: plan.src === 'fable' ? null : Date.now() + 3600e3 };
     App.persist();
     return plan;
   }
@@ -2984,9 +2994,9 @@ window.Flow = (() => {
     }
     const drillMode = { listen: 'listen', read: 'quiz', write: 'write', speak: null, hand: null }[plan.focus] || 'quiz';
     for (let i = 0; i < (plan.mix.drill || 0); i++)
-      q.push({ t: 'drill', mode: drillMode || 'quiz', deck, title: 'Тренировка · ' + (Skill.KINDS[plan.focus] || {}).ru, d: 'слабое место дня' });
+      q.push({ t: 'drill', mode: drillMode || 'quiz', deck, title: 'Тренировка · ' + ((Skill.KINDS[plan.focus] || {}).ru || 'по словам уровня'), d: 'слабое место дня' });
     for (let i = 0; i < (plan.mix.hand || 0); i++) q.push({ t: 'hand', deck, lvl, title: 'Письмо от руки 手写', d: 'слова уровня, черта за чертой' });
-    if (plan.mix.boss) q.push({ t: 'boss', title: 'Босс', d: 'если готов — вызовите любого' });
+    if (plan.mix.boss && (state.attempts || []).length >= 10) q.push({ t: 'boss', title: 'Босс', d: 'если готов — вызовите любого' });
     return q;
   }
 
@@ -2998,27 +3008,36 @@ window.Flow = (() => {
 ;
 /* Фонетика 语音: слог, инициали, финали, тоны. Ступень «с нуля» — до HSK 1. */
 window.PHON = (() => {
-  /* Инициали по способу произнесения — так их и подают в институтском курсе */
+  /* Инициали по способу произнесения — так их и подают в институтском курсе.
+     Четвёртое поле — реальное слово-пример: его и озвучиваем, а не голые буквы. */
   const INITIALS = [
-    { g: 'Губные', ru: 'знакомы русскому уху', list: [['b', 'как «б», но без голоса'], ['p', '«п» с сильным придыханием'], ['m', 'как «м»'], ['f', 'как «ф»']] },
-    { g: 'Переднеязычные', ru: 'кончик языка у зубов', list: [['d', 'как «д» без голоса'], ['t', '«т» с придыханием'], ['n', 'как «н»'], ['l', 'как «л»']] },
-    { g: 'Заднеязычные', ru: 'спинка языка у нёба', list: [['g', 'как «г» без голоса'], ['k', '«к» с придыханием'], ['h', 'как «х», глубже']] },
-    { g: 'Мягкие', ru: 'язык плоско, губы растянуты', list: [['j', 'как «цзь», мягко'], ['q', 'как «ць» с придыханием'], ['x', 'как «сь», мягко']] },
-    { g: 'Загнутые', ru: 'кончик языка загнут к нёбу', list: [['zh', 'как «чж» с загнутым языком'], ['ch', '«ч» твёрдое с придыханием'], ['sh', '«ш» твёрдое'], ['r', 'между «р» и «ж»']] },
-    { g: 'Свистящие', ru: 'язык у нижних зубов', list: [['z', 'как «цз»'], ['c', '«ц» с придыханием'], ['s', 'как «с»']] },
+    { g: 'Губные', ru: 'знакомы русскому уху', list: [['b', 'как «б», но без голоса', '八', 'bā'], ['p', '«п» с сильным придыханием', '爬', 'pá'], ['m', 'как «м»', '妈', 'mā'], ['f', 'как «ф»', '飞', 'fēi']] },
+    { g: 'Переднеязычные', ru: 'кончик языка у зубов', list: [['d', 'как «д» без голоса', '大', 'dà'], ['t', '«т» с придыханием', '他', 'tā'], ['n', 'как «н»', '你', 'nǐ'], ['l', 'как «л»', '来', 'lái']] },
+    { g: 'Заднеязычные', ru: 'спинка языка у нёба', list: [['g', 'как «г» без голоса', '高', 'gāo'], ['k', '«к» с придыханием', '看', 'kàn'], ['h', 'как «х», глубже', '好', 'hǎo']] },
+    { g: 'Мягкие', ru: 'язык плоско, губы растянуты', list: [['j', 'как «цзь», мягко', '家', 'jiā'], ['q', 'как «ць» с придыханием', '七', 'qī'], ['x', 'как «сь», мягко', '西', 'xī']] },
+    { g: 'Загнутые', ru: 'кончик языка загнут к нёбу', list: [['zh', 'как «чж» с загнутым языком', '中', 'zhōng'], ['ch', '«ч» твёрдое с придыханием', '吃', 'chī'], ['sh', '«ш» твёрдое', '是', 'shì'], ['r', 'между «р» и «ж»', '日', 'rì']] },
+    { g: 'Свистящие', ru: 'язык у нижних зубов', list: [['z', 'как «цз»', '字', 'zì'], ['c', '«ц» с придыханием', '菜', 'cài'], ['s', 'как «с»', '三', 'sān']] },
   ];
-  /* Финали: простые и самые ходовые составные */
+  /* Финали — все, кроме носовых (они в NASALS): 7 простых, 4 составных, группы на i-, u-, ü-. */
   const FINALS = [
-    { g: 'Простые', list: [['a', 'как «а»'], ['o', 'как «о»'], ['e', 'между «э» и «ы»'], ['i', 'как «и»'], ['u', 'как «у»'], ['ü', 'как «ю» в «тюль»']] },
-    { g: 'Составные', list: [['ai', '«ай»'], ['ei', '«эй»'], ['ao', '«ао»'], ['ou', '«оу»'], ['ia', '«я»'], ['ie', '«е»'], ['ua', '«уа»'], ['uo', '«уо»']] },
-    { g: 'Носовые', list: [['an', '«ань», язык у зубов'], ['ang', '«ан» в нос'], ['en', '«энь»'], ['eng', '«эн» в нос'], ['in', '«инь»'], ['ing', '«ин» в нос']] },
+    { g: 'Простые', ru: 'один гласный', list: [['a', 'как «а»', '妈', 'mā'], ['o', 'как «о»', '波', 'bō'], ['e', 'между «э» и «ы»', '饿', 'è'], ['i', 'как «и»', '一', 'yī'], ['u', 'как «у»', '五', 'wǔ'], ['ü', 'как «ю» в «тюль»', '鱼', 'yú'], ['er', '«ар» с загнутым языком', '二', 'èr']] },
+    { g: 'Составные', ru: 'скольжение от первого гласного ко второму', list: [['ai', '«ай»', '爱', 'ài'], ['ei', '«эй»', '北', 'běi'], ['ao', '«ао»', '好', 'hǎo'], ['ou', '«оу»', '走', 'zǒu']] },
+    { g: 'На i-', ru: 'начинаются с короткого «и»', list: [['ia', '«я»', '家', 'jiā'], ['ie', '«е»', '谢', 'xiè'], ['iao', '«яо»', '小', 'xiǎo'], ['iu', '«ёу» — полная форма iou', '六', 'liù']] },
+    { g: 'На u-', ru: 'начинаются с короткого «у»', list: [['ua', '«уа»', '花', 'huā'], ['uo', '«уо»', '多', 'duō'], ['uai', '«уай»', '快', 'kuài'], ['ui', '«уэй» — полная форма uei', '水', 'shuǐ']] },
+    { g: 'На ü-', ru: 'после j, q, x, y точки не пишут', list: [['üe', '«юэ»', '月', 'yuè']] },
+  ];
+  /* Носовые финали: -n против -ng — главная ловушка для русского уха */
+  const NASALS = [
+    { g: 'На -n', ru: 'кончик языка у зубов, как мягкое «нь»', list: [['an', '«ань»', '三', 'sān'], ['en', '«энь»', '很', 'hěn'], ['in', '«инь»', '新', 'xīn'], ['ian', '«ень»', '天', 'tiān'], ['uan', '«уань»', '短', 'duǎn'], ['un', '«унь» — полная форма uen', '春', 'chūn'], ['üan', '«юань»', '远', 'yuǎn'], ['ün', '«юнь»', '云', 'yún']] },
+    { g: 'На -ng', ru: 'спинка языка к нёбу, звук уходит в нос', list: [['ang', '«ан» в нос', '上', 'shàng'], ['eng', '«эн» в нос', '冷', 'lěng'], ['ing', '«ин» в нос', '星', 'xīng'], ['ong', '«ун» в нос', '东', 'dōng'], ['iang', '«ян» в нос', '想', 'xiǎng'], ['iong', '«юн» в нос', '用', 'yòng'], ['uang', '«уан» в нос', '双', 'shuāng'], ['ueng', '«уэн» в нос — редкая', '翁', 'wēng']] },
   ];
   /* Правила записи — то, обо что спотыкаются на письме */
   const SPELLING = [
-    { t: 'ü теряет точки после j, q, x', d: 'После j, q, x пишут ju, qu, xu — но читают всегда «ü». После n и l точки остаются: nü, lü.', ok: 'jú 橘', bad: 'jǘ' },
-    { t: 'i в начале слога становится y', d: 'Слог без инициали, начинающийся на i, пишется через y: i → yi, ia → ya, ie → ye.', ok: 'yī 一', bad: 'ī' },
-    { t: 'u в начале слога становится w', d: 'То же с u: u → wu, ua → wa, uo → wo.', ok: 'wǔ 五', bad: 'ǔ' },
-    { t: 'ü в начале слога пишется yu', d: 'ü → yu, üe → yue. Точки исчезают, чтение сохраняется.', ok: 'yǔ 语', bad: 'ǚ' },
+    { t: 'ü теряет точки после j, q, x', d: 'После j, q, x пишут ju, qu, xu — но читают всегда «ü». После n и l точки остаются: nü, lü.', ok: 'jú 橘', bad: 'jǘ', key: 'jqx' },
+    { t: 'i в начале слога становится y', d: 'Слог без инициали, начинающийся на i, пишется через y: i → yi, ia → ya, ie → ye, iou → you.', ok: 'yī 一', bad: 'ī', key: 'y' },
+    { t: 'u в начале слога становится w', d: 'То же с u: u → wu, ua → wa, uo → wo, uei → wei.', ok: 'wǔ 五', bad: 'ǔ', key: 'w' },
+    { t: 'ü в начале слога пишется yu', d: 'ü → yu, üe → yue, üan → yuan. Точки исчезают, чтение сохраняется.', ok: 'yǔ 语', bad: 'ǚ', key: 'yu' },
+    { t: 'После n и l точки остаются', d: 'nü и lü — единственные места, где ü пишется с точками: 女 nǚ, 绿 lǜ. Без точек это другие слоги: nu, lu.', ok: 'nǚ 女', bad: 'nǔ', key: 'nl' },
   ];
   /* Четыре тона + нейтральный */
   const TONES = [
@@ -3034,69 +3053,151 @@ window.PHON = (() => {
     { t: '不 перед четвёртым тоном', d: 'bù становится bú: 不是 → bú shì. Перед остальными тонами остаётся bù.', ex: ['不是', 'bú shì', 'не является'] },
     { t: '一 в счёте и перед тонами', d: 'В счёте yī. Перед четвёртым тоном — yí (一样 yíyàng), перед остальными — yì (一起 yìqǐ).', ex: ['一起', 'yìqǐ', 'вместе'] },
   ];
-  /* Уроки ступени 0 */
+  /* Уроки ступени 0 — в порядке прохождения. Идентификаторы старых уроков сохранены: прогресс не теряется. */
   const LESSONS = [
     { id: 'p-01', zh: '音节', ru: 'Как устроен слог', can: 'Понимаю, из чего собран китайский слог', kind: 'theory', part: 'syllable' },
+    { id: 'p-11', zh: '四声', ru: 'Четыре тона', can: 'Знаю, как звучит каждый тон', kind: 'theory', part: 'tones' },
+    { id: 'p-06', zh: '听声', ru: 'Слышу тон', can: 'Слышу и называю тон', kind: 'drill', drill: 'tone' },
     { id: 'p-02', zh: '声母', ru: 'Начала слога', can: 'Узнаю инициали на слух', kind: 'theory', part: 'initials' },
-    { id: 'p-03', zh: '难音', ru: 'Трудные для русского уха', can: 'Различаю j/q/x, zh/ch/sh и z/c/s', kind: 'drill', drill: 'initial' },
-    { id: 'p-04', zh: '韵母', ru: 'Концы слога', can: 'Узнаю финали, различаю -n и -ng', kind: 'theory', part: 'finals' },
-    { id: 'p-05', zh: '拼写', ru: 'Правила записи', can: 'Пишу пиньинь без ошибок', kind: 'drill', drill: 'spelling' },
-    { id: 'p-06', zh: '四声', ru: 'Четыре тона', can: 'Слышу и называю тон', kind: 'drill', drill: 'tone' },
+    { id: 'p-03', zh: '难音', ru: 'Трудные для русского уха', can: 'Различаю j/q/x, zh/ch/sh, z/c/s и придыхание', kind: 'drill', drill: 'initial' },
+    { id: 'p-04', zh: '韵母', ru: 'Концы слога', can: 'Узнаю финали на слух', kind: 'theory', part: 'finals' },
+    { id: 'p-09', zh: '鼻音', ru: 'Носовые концы', can: 'Различаю -n и -ng', kind: 'theory', part: 'nasals' },
+    { id: 'p-10', zh: '辨韵', ru: 'Слышу конец слога', can: 'Отличаю an от ang, in от ing на слух', kind: 'drill', drill: 'final' },
+    { id: 'p-05', zh: '拼写', ru: 'Правила записи', can: 'Пишу пиньинь без ошибок', kind: 'drill', drill: 'spelling', theory: 'spelling' },
     { id: 'p-07', zh: '辨音', ru: 'Тон меняет смысл', can: 'Различаю слова, которые отличаются только тоном', kind: 'drill', drill: 'pair' },
     { id: 'p-08', zh: '变调', ru: 'Тон плывёт', can: 'Знаю, где тон меняется в речи', kind: 'theory', part: 'changes' },
   ];
 
-  /* ── материал для дриллов берём из словаря приложения ── */
+  /* ── разбор пиньиня ── */
   const MARK = { 'ā': ['a', 1], 'á': ['a', 2], 'ǎ': ['a', 3], 'à': ['a', 4], 'ē': ['e', 1], 'é': ['e', 2], 'ě': ['e', 3], 'è': ['e', 4],
     'ī': ['i', 1], 'í': ['i', 2], 'ǐ': ['i', 3], 'ì': ['i', 4], 'ō': ['o', 1], 'ó': ['o', 2], 'ǒ': ['o', 3], 'ò': ['o', 4],
     'ū': ['u', 1], 'ú': ['u', 2], 'ǔ': ['u', 3], 'ù': ['u', 4], 'ǖ': ['ü', 1], 'ǘ': ['ü', 2], 'ǚ': ['ü', 3], 'ǜ': ['ü', 4] };
+  const TONED = { a: 'aāáǎà', e: 'eēéěè', i: 'iīíǐì', o: 'oōóǒò', u: 'uūúǔù', 'ü': 'üǖǘǚǜ' };
   function split(py) {
     let bare = '', tone = 0;
     for (const ch of String(py)) { const m = MARK[ch]; if (m) { bare += m[0]; tone = m[1]; } else bare += ch; }
     return { bare: bare.toLowerCase(), tone: tone || 5 };
   }
+  /* обратно: голый слог + номер тона → пиньинь со знаком по правилу (a, e, o в ou, иначе последний гласный) */
+  function retone(bare, tone) {
+    if (!tone || tone === 5) return bare;
+    let idx = -1;
+    if (bare.includes('a')) idx = bare.indexOf('a');
+    else if (bare.includes('e')) idx = bare.indexOf('e');
+    else if (bare.includes('ou')) idx = bare.indexOf('o');
+    else for (let i = bare.length - 1; i >= 0; i--) if (TONED[bare[i]]) { idx = i; break; }
+    if (idx < 0) return bare;
+    return bare.slice(0, idx) + TONED[bare[idx]][tone] + bare.slice(idx + 1);
+  }
+  const INI = ['zh', 'ch', 'sh', 'b', 'p', 'm', 'f', 'd', 't', 'n', 'l', 'g', 'k', 'h', 'j', 'q', 'x', 'r', 'z', 'c', 's'];
+  function parts(bare) { const ini = INI.find(i => bare.indexOf(i) === 0) || ''; return { ini, fin: bare.slice(ini.length) }; }
+  /* как слог записали бы «по звуку», нарушив правило; null — правило не задето */
+  function misspell(bare) {
+    if (/^(j|q|x)u/.test(bare)) return bare.replace('u', 'ü');
+    if (/^yu/.test(bare)) return 'ü' + bare.slice(2);
+    if (/^yi/.test(bare)) return bare.slice(1);
+    if (/^y/.test(bare)) return 'i' + bare.slice(1);
+    if (/^wu/.test(bare)) return bare.slice(1);
+    if (/^w/.test(bare)) return 'u' + bare.slice(1);
+    if (/^(n|l)ü/.test(bare)) return bare.replace('ü', 'u');
+    return null;
+  }
+  function ruleOf(bare) {
+    if (/^(j|q|x)u/.test(bare)) return 'jqx';
+    if (/^yu/.test(bare)) return 'yu';
+    if (/^y/.test(bare)) return 'y';
+    if (/^w/.test(bare)) return 'w';
+    if (/^(n|l)ü/.test(bare)) return 'nl';
+    return null;
+  }
+
+  /* ── материал для дриллов берём из словаря приложения ── */
   let cacheOne = null;
-  /* односложные слова с чистым слогом */
+  /* односложные слова с чистым слогом; многочтения (好 hǎo/hào) помечены — озвучка выберет одно, в дрилл им нельзя */
   function syllables() {
     if (cacheOne) return cacheOne;
-    const out = [];
-    const push = (h, py, ru, lvl) => { if (h.length !== 1 || /\s/.test(py)) return; const s = split(py); out.push({ h, py, ru, lvl, bare: s.bare, tone: s.tone }); };
+    const seen = new Map(), out = [];
+    const push = (h, py, ru, lvl) => {
+      if (!h || h.length !== 1 || /\s/.test(py) || !/^[a-zü]+$/i.test(split(py).bare)) return;
+      const s = split(py), k = h + ':' + s.bare + ':' + s.tone;
+      if (seen.has(k)) return;
+      const p = parts(s.bare);
+      const it = { h, py, ru, lvl, bare: s.bare, tone: s.tone, ini: p.ini, fin: p.fin, poly: false };
+      seen.set(k, it); out.push(it);
+    };
     ['1', '2', '3'].forEach(l => (window.HSK[l] || []).forEach(c => push(c[0], c[1], c[2], +l)));
     (window.FREQ || []).forEach(c => push(c[0], c[1], c[2], 4));
+    const byH = {};
+    out.forEach(s => (byH[s.h] = byH[s.h] || []).push(s));
+    Object.values(byH).forEach(list => { if (list.length > 1) list.forEach(s => { s.poly = true; }); });
     return (cacheOne = out);
   }
-  /* пары, различающиеся только тоном */
+  const clean = s => !s.poly && s.tone < 5;
+  /* пары, различающиеся только тоном; сначала те, что целиком из HSK 1–2 */
   let cachePairs = null;
   function minimalPairs() {
     if (cachePairs) return cachePairs;
     const g = {};
-    syllables().forEach(s => { if (s.tone < 5) (g[s.bare] = g[s.bare] || []).push(s); });
+    syllables().forEach(s => { if (clean(s)) (g[s.bare] = g[s.bare] || []).push(s); });
     const out = [];
     Object.entries(g).forEach(([bare, list]) => {
       const byTone = {};
-      list.forEach(s => { if (!byTone[s.tone]) byTone[s.tone] = s; });
+      list.slice().sort((a, b) => a.lvl - b.lvl).forEach(s => { if (!byTone[s.tone]) byTone[s.tone] = s; });
       const tones = Object.keys(byTone);
-      if (tones.length >= 2) out.push({ bare, items: tones.map(t => byTone[t]) });
+      if (tones.length >= 2) { const items = tones.map(t => byTone[t]); out.push({ bare, items, lvl: Math.max(...items.map(i => i.lvl)) }); }
     });
+    out.sort((a, b) => a.lvl - b.lvl);
     return (cachePairs = out);
   }
-  /* слоги с нужной инициалью — для дрилла на различение */
-  /* z/c/s не должны захватывать zh/ch/sh — иначе в дрилле оба варианта верны */
+  /* слоги с нужной инициалью / финалью — для дриллов на различение; z/c/s не захватывают zh/ch/sh */
   const RETRO = { z: 'zh', c: 'ch', s: 'sh' };
   function startsWith(s, ini) {
     if (s.bare.indexOf(ini) !== 0) return false;
     const r = RETRO[ini];
     return r ? s.bare.indexOf(r) !== 0 : true;
   }
-  function byInitial(ini) { return syllables().filter(s => startsWith(s, ini) && s.tone < 5); }
-  const CONFUSE = [['j', 'zh'], ['q', 'ch'], ['x', 'sh'], ['z', 'zh'], ['c', 'ch'], ['s', 'sh']];
+  const prefer = (list, maxLvl, min) => { const lo = list.filter(s => s.lvl <= maxLvl); return lo.length >= min ? lo : list; };
+  function byInitial(ini, maxLvl = 2) { return prefer(syllables().filter(s => clean(s) && startsWith(s, ini)), maxLvl, 3); }
+  function byFinal(fin, maxLvl = 2) { return prefer(syllables().filter(s => clean(s) && s.ini && s.fin === fin), maxLvl, 3); }
+  const CONFUSE = [['j', 'zh'], ['q', 'ch'], ['x', 'sh'], ['z', 'zh'], ['c', 'ch'], ['s', 'sh'], ['b', 'p'], ['d', 't'], ['g', 'k'], ['r', 'l']];
+  const NG_PAIRS = [['an', 'ang'], ['en', 'eng'], ['in', 'ing'], ['ian', 'iang'], ['uan', 'uang']];
 
-  return { INITIALS, FINALS, SPELLING, TONES, CHANGES, LESSONS, CONFUSE, split, syllables, minimalPairs, byInitial };
+  return { INITIALS, FINALS, NASALS, SPELLING, TONES, CHANGES, LESSONS, CONFUSE, NG_PAIRS, split, retone, parts, misspell, ruleOf, syllables, minimalPairs, byInitial, byFinal };
 })();
 
 ;
 /* Что нового: большие фишки → приятные мелочи → исправления. Показывается один раз после обновления. */
 window.CHANGELOG = [
+  {
+    v: '20260902',
+    title: 'Старт с нуля: полный курс звучания и разгон для новичка',
+    features: [
+      ['Звучание — полный курс с нуля', '11 уроков: четыре тона с озвучкой, все 36 финалей, носовые -n и -ng отдельным разбором и дриллом на слух, правила записи — сначала разбор, потом проверка. Примеры озвучиваются настоящими словами, а не буквами.'],
+      ['Разгон для новичка', 'Первые три дня похода переход стоит 120 очков — столько и даёт полный день начинающего. За первый переход — сундук новобранца. Каждый прочитанный разбор звучания — 10 очков.'],
+      ['Поток помнит, где вы остановились', 'Недоигранный поток восстанавливается после перезапуска и повторного тапа. Пока тренер думает — экран «собираю день», а не тишина. Пропущенные шаги бонус за серию не дают. Кнопка ↻ собирает день заново.'],
+    ],
+    minor: [
+      'Дракон ведёт новичка в «Звучание», а не в квиз по иероглифам',
+      'Пуши первые три дня — один спокойный вечером, без угроз',
+      'Дрилл тонов — поровну на каждый тон; дрилл инициалей — с r/l и придыханием b/p, d/t, g/k',
+      'После последнего урока звучания — кнопка «Дальше: письмо с нуля»',
+      'Слова с несколькими чтениями (好 hǎo/hào) в дриллы на слух не попадают',
+      '«Что нового» не всплывает при самом первом запуске',
+    ],
+    fixes: [
+      'Уровень считал «спрошено» вместо «знаю»: два аудирования по всем колодам поднимали до HSK 4 и резали очки новичку в пять раз',
+      'Рекомендуемый уровень прыгал на HSK 2 после одной удачной попытки из десяти вопросов',
+      'Аудирование по умолчанию — только HSK 1, а не все четыре колоды',
+      'Спринт: допуск ошибок округляется вверх — при 15 вопросах прощаются 2, а не 1',
+      'Дриллы на слух не запускаются без китайского голоса — раньше шли в тишине',
+      'Разбор инициалей озвучивал несуществующие слоги ja, qa, xa',
+      'Статистика карточек больше не заводит запись «undefined» из дриллов и черт',
+      'Письмо от руки и спринт не делят новизну одних и тех же слов',
+      'Поток: шаг «Тренировка · undefined» и запуск не того режима тренировки',
+      'Пустой план от тренера больше не превращается в «на сегодня всё сделано»',
+      'Совет по ступени письма — не раньше 30 написанных знаков',
+    ],
+  },
   {
     v: '20260901',
     title: 'Звучание с нуля: слог, тоны и запись пиньиня',
@@ -3429,7 +3530,7 @@ window.Campaign = (() => {
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
     hand: { trace: 5, hint: 8, memory: 11, dictation: 13 },   /* письмо от руки, знак ~12-20 с */
-    phon: 3,                                            /* дрилл на слух, ~7 с */
+    phon: 4,                                            /* дрилл на слух, ~7 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
@@ -3465,6 +3566,7 @@ window.Campaign = (() => {
   /* Единицы содержания попытки: то, что нужно было знать */
   function contentKeys(a) {
     if (Array.isArray(a.lines) && a.lines.length) return a.lines.map(x => 'l:' + String(x).slice(0, 40));         /* реплики босса */
+    if (a.mode === 'hand') return (a.questions || []).map(q => 'h:' + (q.hanzi || q.cardId || '')).filter(x => x.length > 2);   /* письмо — своя новизна, не делит её со спринтом */
     if (Array.isArray(a.words) && a.words.length) return a.words.map(x => 'w:' + x);                              /* слова спринта */
     const qs = a.questions || [];
     const out = [];
@@ -3531,7 +3633,7 @@ window.Campaign = (() => {
   const key = ts => Stats.dayKey(ts);
   function addDays(k, n) { const [y, m, d] = k.split('-').map(Number); return key(new Date(y, m - 1, d + n, 12).getTime()); }
   function dayPoints(attempts, k) { let p = 0; for (const a of attempts) if (key(a.ts) === k) p += pts(a); return Math.round(p * 10) / 10; }
-  const dayResult = p => (p >= ULTRA ? 'ultra' : p >= CAP ? 'done' : 'miss');
+const dayResult = (p, cap = CAP) => (p >= ULTRA ? 'ultra' : p >= cap ? 'done' : 'miss');
 
   function create() { return { schema: 1, days: 0, startedAt: null, processedThrough: null, log: [], rankPeak: 0, stats: { done: 0, ultra: 0, miss: 0 } }; }
 
@@ -3548,7 +3650,7 @@ window.Campaign = (() => {
     if (!c.processedThrough || c.processedThrough >= today) { c.rankPeak = Math.max(c.rankPeak || 0, rankIndex(effectiveDays(c, attempts, now))); return added; }
     let k = addDays(c.processedThrough, 1), guard = 0;
     while (k < today && guard++ < 5000) {
-      const p = dayPoints(attempts, k), r = dayResult(p);
+      const p = dayPoints(attempts, k), r = dayResult(p, capFor(c));
       if (r === 'ultra') c.days += 2; else if (r === 'done') c.days += 1; else c.days = Math.max(0, c.days - 1);
       c.stats[r] = (c.stats[r] || 0) + 1;
       const e = { d: k, p, r };
@@ -3560,9 +3662,13 @@ window.Campaign = (() => {
     c.rankPeak = Math.max(c.rankPeak || 0, rankIndex(effectiveDays(c, attempts, now)));
     return added;
   }
+  /* Разгон: первые три дня похода переход стоит 120 очков — столько даёт полный день новичка (звучание, черты, один урок).
+     Дальше — обычные 400. Считаем по записанным дням, а не по счётчику похода: откат ветерана разгоном не станет. */
+  const CAP_START = 120;
+  const capFor = c => ((c && c.log ? c.log.length : 0) < 3 ? CAP_START : CAP);
   function todayState(c, attempts, now = Date.now()) {
-    const k = key(now), p = dayPoints(attempts, k);
-    return { key: k, points: p, done: p >= CAP, ultra: p >= ULTRA, bonus: p >= ULTRA ? 2 : p >= CAP ? 1 : 0, toCap: Math.max(0, CAP - p), toUltra: Math.max(0, ULTRA - p) };
+    const k = key(now), p = dayPoints(attempts, k), cap = capFor(c);
+    return { key: k, points: p, cap, done: p >= cap, ultra: p >= ULTRA, bonus: p >= ULTRA ? 2 : p >= cap ? 1 : 0, toCap: Math.max(0, cap - p), toUltra: Math.max(0, ULTRA - p) };
   }
   const effectiveDays = (c, attempts, now) => ((c && c.days) || 0) + todayState(c, attempts, now).bonus;
   function rankIndex(days) {
@@ -3596,6 +3702,8 @@ window.Campaign = (() => {
     const grant = d => { if (!c.chests.granted.includes(d)) { c.chests.granted.push(d); c.chests.pending++; n++; } };
     for (const e of c.log || []) if (e.r === 'ultra') grant(e.d);
     const t = todayState(c, attempts, now); if (t.ultra) grant(t.key);
+    /* сундук новобранца: первый переход в первые три дня похода */
+    if (t.done && !t.ultra && c.chests.first == null && (c.log || []).length < 3) { c.chests.first = t.key; c.chests.pending++; n++; }   /* марш-бросок уже дал сундук */
     if (c.chests.granted.length > 500) c.chests.granted = c.chests.granted.slice(-500);
     return n;
   }
@@ -3609,7 +3717,7 @@ window.Campaign = (() => {
     c.chestLog.push(entry); if (c.chestLog.length > 200) c.chestLog = c.chestLog.slice(-200);
     return entry;
   }
-  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, contentKeys, novelty, RANK_DAYS, RANK_AT, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
+  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, contentKeys, novelty, RANK_DAYS, RANK_AT, CAP, CAP_START, capFor, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
 })();
 
 ;
@@ -3677,7 +3785,7 @@ window.Dragon = (() => {
     const h = now.getHours() + now.getMinutes() / 60;
     if (h < 12) return -1;
     const timeF = Math.min(1, (h - 12) / 10);
-    const remF = Math.min(1, t.toCap / Campaign.CAP);
+    const remF = Math.min(1, t.toCap / (t.cap || Campaign.CAP));
     return Math.min(1, timeF * 0.65 + remF * 0.35);
   }
   const moodIdx = u => (u < 0 ? -1 : u < 0.33 ? 0 : u < 0.52 ? 1 : u < 0.74 ? 2 : 3);
@@ -5220,7 +5328,7 @@ window.Push = (() => {
       if (!CONF.url) return;
       const sub = await getSub();
       if (!sub) return;
-      fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
+      fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), cap: t.cap || 400, days: (window.App && App.state && App.state.campaign && App.state.campaign.log ? App.state.campaign.log.length : 0), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
     } catch (e) { /* ignore */ }
   }
   async function test() {
@@ -5237,7 +5345,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260901-2318';
+  const VERSION = '20260902-0015';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5512,9 +5620,15 @@ window.App = (() => {
   function dragonPanel() {
     const ds = Dragon.state(state.campaign, state.attempts);
     if (!ds) return '';
-    const btn = ds.quiet && ds.kind !== 'morning'
-      ? `<button class="btn btn-secondary btn-sm" data-go="setup">Ещё позаниматься</button>`
-      : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button>`;
+    /* новичка кнопка ведёт в «Звучание», а не в квиз по иероглифам */
+    const phonN = Object.keys(state.settings.phon || {}).length, phonAll = window.PHON ? PHON.LESSONS.length : 11;
+    const beginner = !state.attempts.length || (state.attempts.length < 10 && phonN < phonAll);
+    const go = beginner ? 'phon' : 'setup';
+    const btn = ds.kind === 'welcome'
+      ? `<button class="btn btn-primary btn-sm" data-go="${go}">${beginner ? 'Начать со звучания' : 'Тренироваться'}</button>`
+      : ds.quiet && ds.kind !== 'morning'
+      ? `<button class="btn btn-secondary btn-sm" data-go="${go}">Ещё позаниматься</button>`
+      : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="${go}">${beginner ? 'Звучание' : 'Тренироваться'} · ещё ${Math.round(ds.t.toCap)}</button>`;
     return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
   }
   /* Новичку — одна понятная дверь: пока нет ни одной попытки, показываем маршрут первого дня */
@@ -5523,7 +5637,7 @@ window.App = (() => {
     const phonDone = Object.keys((state.settings || {}).phon || {}).length;
     return `<div class="panel ornate start-here"><div class="flabel">Начните отсюда</div>
       <div class="sh-steps">
-        <button class="sh-step" data-go="phon"><span class="zh">音</span><div><b>1. Звучание</b><small>как устроен слог, четыре тона · ${phonDone}/8</small></div><span class="chev">›</span></button>
+        <button class="sh-step" data-go="phon"><span class="zh">音</span><div><b>1. Звучание</b><small>как устроен слог, четыре тона · ${phonDone}/${window.PHON ? PHON.LESSONS.length : 11}</small></div><span class="chev">›</span></button>
         <button class="sh-step" data-go="hand"><span class="zh">手</span><div><b>2. Письмо</b><small>восемь черт и порядок · уровень «С нуля»</small></div><span class="chev">›</span></button>
         <button class="sh-step" data-action="flow-open" data-nosound><span class="zh">流</span><div><b>3. Поток</b><small>дальше день соберёт тренер</small></div><span class="chev">›</span></button>
       </div>
@@ -5621,7 +5735,7 @@ window.App = (() => {
         <button class="big-btn t-bars" data-go="stats"><svg class="deco" viewBox="0 0 100 100"><rect x="12" y="58" width="16" height="32" rx="3" fill="currentColor"/><rect x="36" y="40" width="16" height="50" rx="3" fill="currentColor"/><rect x="60" y="22" width="16" height="68" rx="3" fill="currentColor"/><path d="M14 50 L44 30 L68 12 L90 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><span class="bi">计</span><span>Статистика</span><small>${fmt.plural(ov.attempts, 'попытка', 'попытки', 'попыток')} · освоено ${mastered}</small></button>
       </div>
       <h2 class="h2">Недавние попытки</h2>
-      ${recent.length ? recent.map(attemptRow).join('') : '<div class="empty">Ещё не было ни одной попытки. Начните с тренировки или HSK-теста.</div>'}`;
+      ${recent.length ? recent.map(attemptRow).join('') : '<div class="empty">Ещё не было ни одной попытки. Начните со звучания — первый разбор занимает пять минут.</div>'}`;
     },
   };
 
@@ -5728,6 +5842,7 @@ window.App = (() => {
     if (!log) return;
     if (!force && state.settings.seenRelease === log.v) return;
     state.settings.seenRelease = log.v; persist();
+    if (!force && !state.attempts.length) return;   /* первый запуск: новичку нечего «обновлять» — не перекрываем приветствие */
     const sec = (t, items, cls) => items && items.length ? `<div class="wn-sec ${cls}"><div class="flabel">${t}</div>${items.map(i => Array.isArray(i) ? `<div class="wn-it"><b>${i[0]}</b><div class="hint" style="margin:2px 0 0">${i[1]}</div></div>` : `<div class="wn-fx">· ${i}</div>`).join('')}</div>` : '';
     sheet(`<h3 class="sh-t">Что нового</h3><div class="wn">${sec('Большое', log.features, 'big')}${sec('Приятное', log.minor, 'mid')}${sec('Исправлено', log.fixes, 'fix')}</div><button class="btn btn-primary btn-block mt" data-close>Отлично</button>`);
   }
@@ -5992,7 +6107,7 @@ window.App = (() => {
     quiz: { deckIds: ['hsk1'], show: 'hanzi', guess: ['pinyin', 'ru'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
     flip: { deckIds: ['hsk1'], show: 'hanzi', count: 20, order: 'random', timer: 0 },
     write: { deckIds: ['hsk1'], difficulty: 'easy', count: 10, order: 'random', timer: 0 },
-    listen: { deckIds: ['hsk1', 'hsk2', 'hsk3', 'freq1'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
+    listen: { deckIds: ['hsk1'], difficulty: 'easy', count: 20, order: 'random', timer: 0 },
     sentence: { difficulty: 'easy', count: 10, order: 'random', timer: 0 },
   };
   const DIFF_HINT = { easy: '4 варианта ответа.', medium: '8 вариантов, похожих на правильный.', hard: 'Ввод с клавиатуры: пиньинь с тонами (можно цифрами), для иероглифов — китайская клавиатура.' };
@@ -6083,7 +6198,7 @@ window.App = (() => {
     startSession('quiz', { deckIds: [], difficulty: 'medium', count: Math.min(30, cards.length), order: 'random', timer: 0, show: 'mixed', guess: [], review: true },
       { cards, deckName: 'Повторение 复习' });
   };
-  App.trainDeck = id => { const s = getSetup(); if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [id]; saveSetup(); closeSheet(); nav('setup'); };
+  App.trainDeck = (id, mode) => { const s = getSetup(); if (mode && DEF_BY[mode]) s.mode = mode; if (!s.byMode[s.mode].deckIds) s.mode = 'quiz'; s.byMode[s.mode].deckIds = [id]; saveSetup(); closeSheet(); nav('setup'); };
   actions['kbd-tip'] = () => {
     sheet(`<h3 class="sh-t">Китайская клавиатура на iPhone</h3>
     <div class="install-note">
@@ -6894,6 +7009,7 @@ window.Boss = (() => {
     const studied = { 1: 0, 2: 0, 3: 0, 4: 0 };
     for (const [id, v] of Object.entries(cs)) {
       if (!v || (!v.asked && !v.mastered)) continue;
+      if (!v.mastered && ((v.correct != null ? v.correct : v.right) || 0) / v.asked < 0.5) continue;   /* «спрошено» ≠ «знаю»: считаем то, что отвечают хотя бы через раз */
       const pref = String(id).split(':')[0];
       const l = decks[pref];
       if (l) studied[l]++;
@@ -6901,7 +7017,7 @@ window.Boss = (() => {
     const prog = (state.settings && state.settings.program) || {};
     for (const [bid, v] of Object.entries(prog)) {
       const lv = +String(bid).slice(1, 2);
-      if (studied[lv] != null && v && v.seen) studied[lv] += v.seen.length;
+      if (studied[lv] != null && v && v.seen) studied[lv] += (v.seal === 'done' || v.seal === 'gold') ? v.seen.length : Math.floor(v.seen.length / 2);   /* незакрытый блок — полвеса */
     }
     let lvl = 1;
     for (const l of [2, 3, 4]) if (studied[l] >= 20) lvl = l;   /* верхняя грань — где набралось хотя бы 20 слов */
@@ -7358,7 +7474,7 @@ window.BossMusic = (() => {
     const total = sp.qs.length;
     const errRate = sp.wrong / total;
     const clean = sp.wrong === 0;
-    const half = !clean && sp.wrong <= Math.floor(total / 10);
+    const half = !clean && sp.wrong <= Math.ceil(total / 10);
     let base = sp.qs.filter(q => q.ok).reduce((s, q) => s + q.points, 0);
     let mult = SIZE_MULT(sp.size);
     if (clean) mult *= 1.25;
@@ -7786,7 +7902,8 @@ window.BossMusic = (() => {
       const prof = Skill.profile(state);
       const hs = (prof.hand || {}).score;
       const voice = Speech.available();
-      const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : (hs < 90 || !voice) ? 'memory' : 'dictation';
+      const hd = (prof.hand || {}).data || 0;   /* одна обводка 8/8 — ещё не форма: до 30 знаков выше «с подсказкой» не советуем */
+      const recMode = hs == null || hs < 60 ? 'trace' : (hs < 75 || hd < 30) ? 'hint' : (hs < 90 || !voice) ? 'memory' : 'dictation';
       const cur = modeOf(state.settings.handMode).k;
       const lvl = curLevel();
       const lessons = lessonsOf(lvl);
@@ -8092,50 +8209,77 @@ window.BossMusic = (() => {
 })();
 
 ;
-/* Экран потока: план дня, очередь шагов, бонус за серию. */
+/* Экран потока: план дня, очередь шагов, бонус за серию. Прогресс живёт в настройках — переживает перезапуск и повторный тап. */
 (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, persist, render, saveAttempt, fmt } = App;
-  let fl = null;   /* { plan, queue, i, doneAttempts, baseline } */
+  let fl = null;   /* { plan, queue, i, done, skipped, baseline, startedAt, day } */
+  let loading = false;
+  const today = () => Stats.dayKey(Date.now());
+  const save = () => { state.settings.flowState = fl; persist(); };
+  const stepsDone = () => (fl ? Math.max(0, fl.i - (fl.skipped || 0)) : 0);   /* пропущенные шаги бонуса не дают */
 
-  async function openFlow() {
-    toast('Собираю день…', 1500);
-    const plan = await Flow.planFor(state);
-    const queue = Flow.buildQueue(state, plan);
-    if (!queue.length) return toast('На сегодня всё сделано — загляните позже');
-    fl = { plan, queue, i: 0, done: 0, baseline: state.attempts.length, startedAt: Date.now() };
-    nav('flow');
+  /* сегодняшний недоигранный поток восстанавливаем, а не собираем заново */
+  function restore() {
+    if (fl && fl.day === today()) return true;
+    const s = state.settings.flowState;
+    if (s && s.day === today() && Array.isArray(s.queue) && s.i < s.queue.length) { fl = s; return true; }
+    return false;
   }
-  actions['flow-open'] = () => { openFlow(); };
+  async function openFlow(fresh) {
+    if (loading) return;
+    if (!fresh && restore()) { nav('flow'); return; }
+    loading = true; fl = null;
+    nav('flow');
+    let plan = null, queue = [];
+    try {
+      plan = await Flow.planFor(state, fresh);
+      queue = Flow.buildQueue(state, plan);
+      /* тренер прислал пустой или неисполнимый план — собираем сами */
+      if (!queue.length && plan.src !== 'local') { plan = Flow.localPlan(state); queue = Flow.buildQueue(state, plan); }
+    } catch (e) { plan = Flow.localPlan(state); queue = Flow.buildQueue(state, plan); }
+    loading = false;
+    if (!queue.length) { toast('На сегодня всё сделано — загляните позже'); nav('home', {}, { replace: true }); return; }
+    fl = { plan, queue, i: 0, done: 0, skipped: 0, baseline: state.attempts.length, startedAt: Date.now(), day: today() };
+    save();
+    render();
+  }
+  actions['flow-open'] = () => { openFlow(false); };
+  actions['flow-rebuild'] = () => { state.settings.flowState = null; state.settings.flowPlan = null; persist(); openFlow(true); };
 
   /* завершённые попытки двигают поток вперёд */
   function sync() {
     if (!fl) return;
+    const before = fl.i + ':' + fl.done;
     const fresh = state.attempts.length - fl.baseline;
     if (fresh > fl.done) fl.done = fresh;
     /* разбор звучания попытки не пишет — засчитываем по отметке урока */
     const cur = fl.queue[fl.i];
     if (cur && cur.t === 'phon' && cur.lessonId && ((state.settings.phon || {})[cur.lessonId]) && fl.i === fl.done) { fl.done++; fl.baseline--; }
     if (fl.done > fl.i) fl.i = Math.min(fl.queue.length, fl.done);
+    if (before !== fl.i + ':' + fl.done) save();
   }
 
   views.flow = {
     render() {
-      if (!fl) return '<div class="empty">Поток не собран.</div><div class="btns"><button class="btn btn-primary btn-block" data-action="flow-open">Собрать день</button></div>';
+      if (loading) return `<div class="vh"><div class="seal">流</div><div class="grow"><h1 class="title">Поток</h1><div class="sub">собираю день…</div></div></div>
+        <div class="panel ornate fl-wait"><div class="fl-msg">Тренер смотрит на вашу форму и подбирает шаги.</div><div class="hint" style="margin:8px 0 0">Обычно несколько секунд. Без сети план соберётся на месте.</div></div>`;
+      if (!fl && !restore()) return '<div class="empty">Поток не собран.</div><div class="btns"><button class="btn btn-primary btn-block" data-action="flow-open">Собрать день</button></div>';
       sync();
       const p = fl.plan;
       const finished = fl.i >= fl.queue.length;
+      const bonus = Flow.streakBonus(stepsDone());
       const steps = fl.queue.map((s, k) => `<div class="fl-step ${k < fl.i ? 'done' : k === fl.i ? 'cur' : ''}">
         <span class="fl-n">${k < fl.i ? '✓' : k + 1}</span>
         <div class="grow"><b>${esc(s.title)}</b><div class="hint" style="margin:0">${esc(s.d)}</div></div>
         ${k === fl.i && !finished ? `<button class="btn btn-primary btn-sm" data-action="flow-go">Начать</button><button class="btn btn-secondary btn-sm" data-action="flow-skip" data-nosound>Пропустить</button>` : ''}</div>`).join('');
-      return `<div class="vh"><div class="seal">流</div><div class="grow"><h1 class="title">Поток</h1><div class="sub">${p.src === 'fable' ? 'план на день составил тренер' : 'план на день'} · фокус: ${(Skill.KINDS[p.focus] || {}).ru || p.focus}</div></div></div>
+      return `<div class="vh"><div class="seal">流</div><div class="grow"><h1 class="title">Поток</h1><div class="sub">${p.src === 'fable' ? 'план на день составил тренер' : 'план на день'} · фокус: ${(Skill.KINDS[p.focus] || {}).ru || p.focus}</div></div><button class="icon-btn" data-action="flow-rebuild" aria-label="Собрать заново" title="Собрать заново">↻</button></div>
       <div class="panel ornate"><div class="fl-msg">${esc(p.message || '')}</div>
-        <div class="hint" style="margin:8px 0 0">Шагов: ${fl.queue.length} · пройдено: ${fl.i} · бонус за серию: +${Flow.streakBonus(fl.i)} очк.</div></div>
+        <div class="hint" style="margin:8px 0 0">Шагов: ${fl.queue.length} · пройдено: ${stepsDone()}${fl.skipped ? ' · пропущено: ' + fl.skipped : ''} · бонус за серию: +${bonus} очк.</div></div>
       <div class="fl-steps">${steps}</div>
-      ${finished ? `<button class="btn btn-jade btn-block btn-lg" data-action="flow-finish">Забрать бонус · +${Flow.streakBonus(fl.i)}</button>` : `<button class="btn btn-secondary btn-block btn-sm" data-action="flow-finish" ${fl.i ? '' : 'disabled'}>Завершить досрочно${fl.i ? ' · +' + Flow.streakBonus(fl.i) : ''}</button>`}`;
+      ${finished ? `<button class="btn btn-jade btn-block btn-lg" data-action="flow-finish">Забрать бонус · +${bonus}</button>` : `<button class="btn btn-secondary btn-block btn-sm" data-action="flow-finish" ${stepsDone() ? '' : 'disabled'}>Завершить досрочно${stepsDone() ? ' · +' + bonus : ''}</button>`}`;
     },
   };
-  actions['flow-skip'] = () => { if (!fl) return; sync(); fl.i++; fl.baseline--; fl.done = Math.max(fl.done, fl.i); render(); };
+  actions['flow-skip'] = () => { if (!fl) return; sync(); fl.i++; fl.baseline--; fl.skipped = (fl.skipped || 0) + 1; fl.done = Math.max(fl.done, fl.i); save(); render(); };
   actions['flow-go'] = () => {
     if (!fl) return;
     sync();
@@ -8144,25 +8288,26 @@ window.BossMusic = (() => {
     if (s.t === 'phon') { App.actions['phon-open']({ dataset: { id: s.lessonId } }); if (!s.lessonId) nav('phon'); return; }
     if (s.t === 'handBasics') { state.settings.handLevel = 0; state.settings.handMode = 'trace'; persist(); App.actions['hand-lesson']({ dataset: { id: s.lessonId } }); return; }
     if (s.t === 'review') {
-      if (!SRS.dueCount(state)) { toast('Повторять уже нечего — шаг пропущен'); fl.i++; fl.baseline--; render(); return; }
+      if (!SRS.dueCount(state)) { toast('Повторять уже нечего — шаг пропущен'); fl.i++; fl.baseline--; save(); render(); return; }
       return App.startReview();
     }
     if (s.t === 'sprint') { const b = PROGRAM.byId(s.blockId); if (b) { App.actions['prog-open']({ dataset: { id: s.blockId } }); return; } }
-    if (s.t === 'drill') { App.trainDeck(s.deck); return; }
+    if (s.t === 'drill') { App.trainDeck(s.deck, s.mode); return; }
     if (s.t === 'hand') { state.settings.handLevel = s.lvl || 1; persist(); nav('hand'); return; }
     if (s.t === 'boss') { nav('boss'); return; }
   };
   actions['flow-finish'] = () => {
-    if (!fl || !fl.i) { fl = null; nav('home', {}, { replace: true }); return; }
-    const bonus = Flow.streakBonus(fl.i);
+    const n = stepsDone();
+    if (!fl || !n) { fl = null; state.settings.flowState = null; persist(); nav('home', {}, { replace: true }); return; }
+    const bonus = Flow.streakBonus(n);
     const f = Flow.st(state);
-    f.doneToday = fl.i; f.day = Stats.dayKey(Date.now());
-    if (fl.i > (f.streakBest || 0)) f.streakBest = fl.i;
+    f.doneToday = n; f.day = today();
+    if (n > (f.streakBest || 0)) f.streakBest = n;
     const a = { id: uid(), ts: fl.startedAt, endedAt: Date.now(), durationMs: Date.now() - fl.startedAt,
-      mode: 'flow', difficulty: 'flow', deckIds: [], deckName: 'Поток · ' + fl.i + ' шагов', show: 'flow', guess: ['flow'],
-      order: 'random', timer: 0, total: fl.i, planned: fl.queue.length, aborted: false, correct: fl.i, partial: 0, wrong: 0,
+      mode: 'flow', difficulty: 'flow', deckIds: [], deckName: 'Поток · ' + n + ' шагов', show: 'flow', guess: ['flow'],
+      order: 'random', timer: 0, total: n, planned: fl.queue.length, aborted: false, correct: n, partial: 0, wrong: 0,
       percent: 100, points: bonus, questions: [] };
-    fl = null;
+    fl = null; state.settings.flowState = null;
     saveAttempt(a).then(() => { Sound.finish(true); toast('Бонус за поток: +' + bonus, 2500); nav('home', {}, { replace: true }); });
   };
 })();
@@ -8176,103 +8321,167 @@ window.BossMusic = (() => {
 
   const prog = () => (state.settings.phon || (state.settings.phon = {}));
   const done = id => !!prog()[id];
+  const nextLesson = () => P.LESSONS.find(l => !done(l.id));
+  const EAR = { tone: 1, pair: 1, initial: 1, final: 1 };   /* дриллы, где стимул только звук */
+  const VOICE_WARN = '<div class="panel warn"><b>Нет китайского голоса</b> — дриллы на слух будут немыми. iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Китайский — скачайте голос и перезапустите приложение. Разборы можно читать и без него.</div>';
 
   /* ── список уроков ── */
   views.phon = {
     render() {
       const rows = P.LESSONS.map(l => `<button class="row tap ${done(l.id) ? 'ph-done' : ''}" data-action="phon-open" data-id="${l.id}">
         <div><div class="row-t"><span class="zh">${l.zh}</span> · ${esc(l.ru)}${done(l.id) ? ' <span class="ph-tick">✓</span>' : ''}</div><div class="row-s">${esc(l.can)}</div></div>
-        <div class="row-r"><span class="badge ${l.kind === 'drill' ? 'mid' : ''}">${l.kind === 'drill' ? 'на слух' : 'разбор'}</span><span class="chev">›</span></div></button>`).join('');
-      const n = P.LESSONS.filter(l => done(l.id)).length;
+        <div class="row-r"><span class="badge ${l.kind === 'drill' ? 'mid' : ''}">${l.kind === 'drill' ? (EAR[l.drill] ? 'на слух' : 'дрилл') : 'разбор'}</span><span class="chev">›</span></div></button>`).join('');
+      const n = P.LESSONS.filter(l => done(l.id)).length, all = n >= P.LESSONS.length;
+      const nx = nextLesson();
       return `<div class="vh"><div class="seal">音</div><div class="grow"><h1 class="title">Звучание</h1><div class="sub">语音 · с нуля: слог, тоны, запись</div></div><button class="icon-btn" data-action="phon-info" aria-label="Зачем это">i</button></div>
       <div class="panel"><div class="flabel">Пройдено ${n} из ${P.LESSONS.length}</div><div class="blk-bar"><i style="width:${Math.round(n / P.LESSONS.length * 100)}%"></i></div>
-        <div class="hint" style="margin:8px 0 0">Начните отсюда, если китайский для вас новый: сначала звук, потом знаки.</div></div>
+        <div class="hint" style="margin:8px 0 0">${all ? 'Ступень пройдена. Дальше — черты и первые слова.' : 'Начните отсюда, если китайский для вас новый: сначала звук, потом знаки.'}</div>
+        ${all ? '<div class="btns" style="margin-top:10px"><button class="btn btn-primary btn-block" data-action="phon-next-hand">Дальше: письмо с нуля 笔画</button><button class="btn btn-secondary btn-block" data-go="program">Программа · HSK 1</button></div>'
+          : nx ? `<div class="btns" style="margin-top:10px"><button class="btn btn-primary btn-block" data-action="phon-open" data-id="${nx.id}">Следующий: ${esc(nx.ru)}</button></div>` : ''}</div>
+      ${Speech.available() ? '' : VOICE_WARN}
       <div class="panel">${rows}</div>`;
     },
   };
   actions['phon-info'] = () => sheet(`<h3 class="sh-t">Зачем это нужно</h3><div class="install-note">
     <p>В китайском <b>тон — часть слова</b>, а не интонация. <span class="zh">妈 mā</span> мама и <span class="zh">马 mǎ</span> лошадь различаются только им.</p>
     <p>Слог всегда собран одинаково: <b>инициаль + финаль + тон</b>. Разобравшись с этой схемой один раз, вы сможете прочитать любой пиньинь.</p>
-    <p>Разборы можно читать в любом порядке, дриллы — тренировать сколько угодно раз.</p></div>
+    <p>Разборы можно читать в любом порядке, дриллы — тренировать сколько угодно раз. За первый прочитанный разбор — 10 очков, за дрилл — по ответам.</p></div>
     <button class="btn btn-primary btn-block mt" data-close>Понятно</button>`);
+  actions['phon-next-hand'] = () => { state.settings.handLevel = 0; state.settings.handMode = 'trace'; persist(); nav('hand'); };
 
   actions['phon-open'] = el => {
     const l = P.LESSONS.find(x => x.id === el.dataset.id);
     if (!l) return;
-    if (l.kind === 'theory') return openTheory(l);
+    if (l.kind === 'theory' || l.theory) return openTheory(l);
     startDrill(l);
   };
 
   /* ── разборы ── */
+  const say = (h, label) => `<b class="ph-s" data-action="phon-say" data-s="${attr(h)}">${esc(label)}</b>`;
+  const exRow = ([s, d, h, py]) => `<div class="ph-row">${say(h, s)}<div>${esc(d)}<span class="ph-ex" data-action="phon-say" data-s="${attr(h)}"> · <span class="zh">${esc(h)}</span> ${esc(py)} 🔊</span></div></div>`;
+  const groups = list => list.map(g => `<div class="ph-grp"><div class="flabel">${esc(g.g)}${g.ru ? ' · ' + esc(g.ru) : ''}</div>${g.list.map(exRow).join('')}</div>`).join('');
   function openTheory(l) {
-    let body = '';
-    if (l.part === 'syllable') {
-      body = `<div class="ph-formula"><span class="zh">m</span> + <span class="zh">ā</span> = <span class="zh big">mā 妈</span></div>
+    let body = '', btn = `<button class="btn btn-primary btn-block mt" data-action="phon-done" data-id="${l.id}">Понятно</button>`;
+    const part = l.part || l.theory;
+    if (part === 'syllable') {
+      body = `<div class="ph-formula"><span class="zh">m</span> + <span class="zh">ā</span> = <span class="zh big" data-action="phon-say" data-s="妈">mā 妈 🔊</span></div>
       <p>Китайский слог собирается из трёх частей, и порядок всегда один:</p>
-      <div class="ph-row"><b>Инициаль</b><div>согласный в начале. Бывает и пустой: <span class="zh">ài 爱</span></div></div>
-      <div class="ph-row"><b>Финаль</b><div>гласная часть, иногда с носовым концом: <span class="zh">an</span>, <span class="zh">ang</span></div></div>
+      <div class="ph-row"><b>Инициаль</b><div>согласный в начале. Бывает и пустой: ${say('爱', 'ài 爱')}</div></div>
+      <div class="ph-row"><b>Финаль</b><div>гласная часть, иногда с носовым концом: ${say('三', 'an 三')}, ${say('上', 'ang 上')}</div></div>
       <div class="ph-row"><b>Тон</b><div>знак над гласной. Их четыре плюс нейтральный</div></div>
       <p class="muted">Всего сочетаний около четырёхсот — меньше, чем кажется. Выучив части, вы прочитаете любое слово.</p>`;
-    } else if (l.part === 'initials') {
-      body = P.INITIALS.map(g => `<div class="ph-grp"><div class="flabel">${esc(g.g)} · ${esc(g.ru)}</div>${g.list.map(([s, d]) =>
-        `<div class="ph-row"><b class="ph-s" data-action="phon-say" data-s="${s}a">${s}</b><div>${esc(d)}</div></div>`).join('')}</div>`).join('');
-    } else if (l.part === 'finals') {
-      body = P.FINALS.map(g => `<div class="ph-grp"><div class="flabel">${esc(g.g)}</div>${g.list.map(([s, d]) =>
-        `<div class="ph-row"><b class="ph-s" data-action="phon-say" data-s="${s}">${s}</b><div>${esc(d)}</div></div>`).join('')}</div>`).join('')
-        + '<p class="muted">Разница между <b>-n</b> и <b>-ng</b> смыслоразличительна: <span class="zh">shān 山</span> гора и <span class="zh">shāng 商</span> торговля.</p>';
-    } else if (l.part === 'changes') {
+    } else if (part === 'tones') {
+      body = `<p>Один и тот же слог <span class="zh">ma</span> — пять разных слов. Нажмите на каждый и послушайте, как ходит голос:</p>
+      ${P.TONES.map(t => `<div class="ph-row ph-tone">${say(t.ex[0], t.n === 5 ? '· ma' : t.mark + ' ' + t.ex[1])}<div><b>${esc(t.t)}</b> <span class="muted">${t.zh}</span><br>${esc(t.d)}<span class="ph-ex" data-action="phon-say" data-s="${t.ex[0]}"> · <span class="zh">${t.ex[0]}</span> ${esc(t.ex[1])} — ${esc(t.ex[2])} 🔊</span></div></div>`).join('')}
+      <p class="muted">Знак тона ставят над гласной: над a или e, если они есть; в ou — над o; иначе над последней гласной. Следующий урок — на слух.</p>`;
+    } else if (part === 'initials') {
+      body = '<p>Нажмите на букву — прозвучит слово с этой инициалью. Обратите внимание на придыхание: p, t, k, q, ch, c выдыхаются сильно, как со вздохом.</p>' + groups(P.INITIALS);
+    } else if (part === 'finals') {
+      body = '<p>Финаль — всё, что после инициали. Здесь гласные финали; носовые (-n, -ng) — в следующем разборе.</p>' + groups(P.FINALS);
+    } else if (part === 'nasals') {
+      body = `<p>Разница между <b>-n</b> и <b>-ng</b> смыслоразличительна: ${say('山', 'shān 山')} гора и ${say('商', 'shāng 商')} торговля; ${say('新', 'xīn 新')} новый и ${say('星', 'xīng 星')} звезда.</p>
+      <p>Проверка: на <b>-n</b> кончик языка в конце касается зубов, на <b>-ng</b> — нет, рот остаётся открытым, а звук уходит в нос.</p>` + groups(P.NASALS);
+    } else if (part === 'spelling') {
+      body = '<p>Пиньинь пишут не всегда так, как слышат. Пять правил, которые объясняют почти все «странности»:</p>' + P.SPELLING.map(r => `<div class="ph-row"><b>${esc(r.t)}</b><div>${esc(r.d)}<div class="ph-ex"><span class="zh">${esc(r.ok)}</span> — верно · <s>${esc(r.bad)}</s> — так не пишут</div></div></div>`).join('');
+      btn = `<button class="btn btn-primary btn-block mt" data-action="phon-drill" data-id="${l.id}">К дриллу · проверить себя</button>`;
+    } else if (part === 'changes') {
       body = P.CHANGES.map(c => `<div class="ph-row"><b>${esc(c.t)}</b><div>${esc(c.d)}<div class="ph-ex" data-action="phon-say" data-s="${esc(c.ex[0])}"><span class="zh">${esc(c.ex[0])}</span> ${esc(c.ex[1])} — ${esc(c.ex[2])} 🔊</div></div></div>`).join('');
     }
-    sheet(`<h3 class="sh-t"><span class="zh">${l.zh}</span> · ${esc(l.ru)}</h3><div class="theory">${body}</div>
-      <button class="btn btn-primary btn-block mt" data-action="phon-done" data-id="${l.id}">Понятно</button>`);
+    sheet(`<h3 class="sh-t"><span class="zh">${l.zh}</span> · ${esc(l.ru)}</h3><div class="theory">${body}</div>${btn}`);
   }
   actions['phon-say'] = el => Speech.say(el.dataset.s);
-  actions['phon-done'] = el => { prog()[el.dataset.id] = true; persist(); closeSheet(); render(); };
+  actions['phon-drill'] = el => { const l = P.LESSONS.find(x => x.id === el.dataset.id); closeSheet(); if (l) startDrill(l); };
+  /* разбор засчитывается один раз и даёт 10 очков — как несколько минут чтения */
+  actions['phon-done'] = el => {
+    const id = el.dataset.id, l = P.LESSONS.find(x => x.id === id);
+    closeSheet();
+    if (prog()[id]) { render(); return; }
+    prog()[id] = true; persist();
+    const now = Date.now();
+    const a = { id: uid(), ts: now - 60e3, endedAt: now, durationMs: 60e3, mode: 'phon', difficulty: 'theory', level: 1, deckIds: [], deckName: 'Звучание · ' + (l ? l.ru : id),
+      show: 'text', guess: ['read'], order: 'random', timer: 0, total: 1, planned: 1, aborted: false, correct: 1, partial: 0, wrong: 0, percent: 100, points: 10,
+      questions: [{ hanzi: 'theory:' + id, ok: true, fraction: 1, ms: 0, answer: {} }] };
+    saveAttempt(a).then(() => { toast('Разбор засчитан · +' + a.points, 2000); render(); });
+  };
 
   /* ── дриллы ── */
   const shuffle = a => HskReal.shuffle(a);
+  const pick = (list, n) => shuffle(list).slice(0, n);
+  const note = s => s.h + ' ' + s.py + ' — ' + s.ru;
+  const prefer = (list, min) => { const lo = list.filter(s => s.lvl <= 2); return lo.length >= min ? lo : list; };
   function buildDrill(kind) {
     const qs = [];
+    const all = P.syllables().filter(s => !s.poly && s.tone < 5);
     if (kind === 'tone') {
-      const pool = shuffle(P.syllables().filter(s => s.tone < 5 && s.lvl <= 2));
-      pool.slice(0, 12).forEach(s => qs.push({ kind, say: s.h, prompt: 'Какой тон вы слышите?',
-        opts: ['1 ˉ ровный', '2 ˊ восходящий', '3 ˇ ныряющий', '4 ˋ падающий'], correct: s.tone - 1, note: s.h + ' ' + s.py + ' — ' + s.ru }));
+      /* поровну на каждый тон — иначе четвёртый забивает остальные */
+      for (let t = 1; t <= 4; t++) pick(prefer(all.filter(s => s.tone === t), 6), 3).forEach(s => qs.push({ kind, say: s.h, prompt: 'Какой тон вы слышите?',
+        opts: ['1 ˉ ровный', '2 ˊ восходящий', '3 ˇ ныряющий', '4 ˋ падающий'], correct: s.tone - 1, note: note(s) }));
     } else if (kind === 'pair') {
-      shuffle(P.minimalPairs()).slice(0, 10).forEach(p => {
-        const items = shuffle(p.items).slice(0, Math.min(4, p.items.length));
+      const pairs = P.minimalPairs();
+      const easy = pairs.filter(p => p.lvl <= 2);
+      pick(easy.length >= 8 ? easy : pairs, 10).forEach(p => {
+        const items = pick(p.items, Math.min(4, p.items.length));
         const right = items[Math.floor(Math.random() * items.length)];
         const opts = shuffle(items);
         qs.push({ kind, say: right.h, prompt: 'Одинаковый слог, разные тоны — что прозвучало?',
-          opts: opts.map(i => i.h + ' ' + i.py), correct: opts.indexOf(right), note: right.h + ' ' + right.py + ' — ' + right.ru });
+          opts: opts.map(i => i.h + ' ' + i.py), correct: opts.indexOf(right), note: note(right) });
       });
     } else if (kind === 'initial') {
-      shuffle(P.CONFUSE).forEach(([a, b]) => {
+      shuffle(P.CONFUSE).forEach(([a, b], k) => {
         const listA = P.byInitial(a), listB = P.byInitial(b);
         if (!listA.length || !listB.length) return;
-        for (let k = 0; k < 2; k++) {
-          const fromA = Math.random() < 0.5;
-          const s = shuffle(fromA ? listA : listB)[0];
+        const fromA = k % 2 === 0;
+        const s = pick(fromA ? listA : listB, 1)[0];
+        const opts = shuffle([a, b]);
+        qs.push({ kind, say: s.h, prompt: 'С какого звука начинается слог?', opts, correct: opts.indexOf(fromA ? a : b), note: note(s) });
+      });
+      /* добираем до дюжины самыми коварными парами */
+      shuffle(P.CONFUSE.slice(0, 6)).slice(0, 12 - qs.length).forEach(([a, b]) => {
+        const fromA = Math.random() < 0.5, s = pick(P.byInitial(fromA ? a : b), 1)[0];
+        if (!s) return;
+        const opts = shuffle([a, b]);
+        qs.push({ kind, say: s.h, prompt: 'С какого звука начинается слог?', opts, correct: opts.indexOf(fromA ? a : b), note: note(s) });
+      });
+    } else if (kind === 'final') {
+      /* -n против -ng */
+      shuffle(P.NG_PAIRS).forEach(([a, b]) => {
+        for (let k = 0; k < 2 && qs.length < 8; k++) {
+          const fin = k === 0 ? a : b, s = pick(P.byFinal(fin), 1)[0];
           if (!s) continue;
           const opts = shuffle([a, b]);
-          qs.push({ kind, say: s.h, prompt: 'С какого звука начинается слог?', opts,
-            correct: opts.indexOf(fromA ? a : b), note: s.h + ' ' + s.py + ' — ' + s.ru });
+          qs.push({ kind, say: s.h, prompt: 'Как заканчивается слог: -n или -ng?', opts: opts.map(o => '-' + o), correct: opts.indexOf(fin), note: note(s) });
         }
       });
+      /* какая финаль из группы */
+      const grps = [...P.FINALS, ...P.NASALS].filter(g => g.list.length >= 4);
+      let guard = 0;
+      while (qs.length < 12 && guard++ < 40) {
+        const g = pick(grps, 1)[0], fins = g.list.map(x => x[0]);
+        const fin = pick(fins, 1)[0], s = pick(P.byFinal(fin), 1)[0];
+        if (!s) continue;
+        const opts = shuffle([fin, ...pick(fins.filter(f => f !== fin), 3)]);
+        qs.push({ kind, say: s.h, prompt: 'Какой конец слога вы слышите?', opts, correct: opts.indexOf(fin), note: note(s) });
+      }
     } else if (kind === 'spelling') {
-      shuffle(P.SPELLING).forEach(r => {
+      shuffle(P.SPELLING).slice(0, 4).forEach(r => {
         const opts = shuffle([r.ok, r.bad]);
         qs.push({ kind, prompt: r.t + ' — как записать верно?', opts, correct: opts.indexOf(r.ok), note: r.d });
       });
-      /* добираем практикой на реальных словах */
-      shuffle(P.syllables().filter(s => /^(j|q|x|y|w)/.test(s.bare) && s.tone < 5)).slice(0, 6).forEach(s => {
-        const wrong = s.py.replace(/u/g, 'ü');
-        const opts = shuffle([s.py, wrong === s.py ? s.py + 'i' : wrong]);
-        qs.push({ kind, prompt: 'Как правильно записан слог для ' + s.h + '?', opts, correct: opts.indexOf(s.py), note: s.h + ' — ' + s.ru });
+      /* практика на реальных словах: неверный вариант — запись «по звуку» с нарушенным правилом */
+      const seen = new Set();
+      const cands = prefer(all.filter(s => P.misspell(s.bare) && !seen.has(s.bare) && seen.add(s.bare)), 8);
+      pick(cands, 8).forEach(s => {
+        const ok = P.retone(s.bare, s.tone), bad = P.retone(P.misspell(s.bare), s.tone);
+        if (ok === bad) return;
+        const rule = P.SPELLING.find(r => r.key === P.ruleOf(s.bare));
+        const opts = shuffle([ok, bad]);
+        qs.push({ kind, prompt: 'Как записать слог для ' + s.h + ' (' + s.ru + ')?', opts, correct: opts.indexOf(ok), note: rule ? rule.t : s.h + ' — ' + s.ru });
       });
     }
     return shuffle(qs).slice(0, 12);
   }
   function startDrill(l) {
+    if (EAR[l.drill] && !Speech.available()) return toast('Нет китайского голоса — этот дрилл на слух. Установите голос в настройках телефона.', 4000);
     const qs = buildDrill(l.drill);
     if (!qs.length) return toast('Не хватает материала для этого дрилла');
     dr = { kind: l.drill, lessonId: l.id, title: l.ru, qs, i: 0, right: 0, wrong: 0, startedAt: Date.now(), shown: null };
@@ -8327,7 +8536,7 @@ window.BossMusic = (() => {
       show: 'audio', guess: ['answer'], order: 'random', timer: 0,
       total, planned: total, aborted: false, correct: ok, partial: 0, wrong: total - ok, percent: pct,
       questions: dr.qs.map(q => ({ hanzi: q.say || q.prompt, ok: !!q.ok, fraction: q.ok ? 1 : 0, ms: 0, answer: {} })) };
-    state.lastPhon = { title: dr.title, kind: dr.kind, right: ok, total, pct };
+    state.lastPhon = { title: dr.title, kind: dr.kind, right: ok, total, pct, lessonId: dr.lessonId };
     dr = null;
     persist();
     saveAttempt(a).then(() => { Sound.finish(pct >= 70); nav('phon-result', { id: a.id }, { replace: true }); });
@@ -8336,11 +8545,16 @@ window.BossMusic = (() => {
     render(p) {
       const a = state.attempts.find(x => x.id === p.id), f = state.lastPhon;
       if (!a || !f) return '<div class="empty">Результата нет</div>';
+      const nx = nextLesson(), all = !nx;
+      const cur = P.LESSONS.find(l => l.id === f.lessonId);
+      const next = f.pct < 70 && cur ? `<button class="btn btn-primary btn-block" data-action="phon-open" data-id="${cur.id}">Ещё раз · ${esc(cur.ru)}</button>`
+        : all ? '<button class="btn btn-primary btn-block" data-action="phon-next-hand">Дальше: письмо с нуля 笔画</button>'
+        : `<button class="btn btn-primary btn-block" data-action="phon-open" data-id="${nx.id}">Дальше: ${esc(nx.ru)}</button>`;
       return `<div class="vh"><div class="seal">音</div><div class="grow"><h1 class="title">${esc(f.title)}</h1><div class="sub">${f.right} из ${f.total} · ${f.pct}%</div></div></div>
       <div class="panel ornate result-top"><div class="res-meta"><div class="big-score">${f.pct}<small>%</small></div>
         <div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${a.points}</b></span></div>
-        <div class="hint" style="margin:6px 0 0">${f.pct >= 70 ? 'Урок засчитан — можно идти дальше' : 'Ниже 70% — стоит повторить'}</div></div></div>
-      <div class="btns"><button class="btn btn-primary btn-block" data-go="phon">К урокам звучания</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
+        <div class="hint" style="margin:6px 0 0">${f.pct >= 70 ? (all ? 'Ступень «Звучание» пройдена целиком' : 'Урок засчитан — можно идти дальше') : 'Ниже 70% — стоит повторить'}</div></div></div>
+      <div class="btns">${next}<button class="btn btn-secondary btn-block" data-go="phon">К урокам звучания</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
     },
   };
 })();
@@ -8774,13 +8988,13 @@ window.BossMusic = (() => {
   }
   /* Полоса дня: линейная шкала 0…Марш-бросок; подписи стоят под своими рисками, остаток — отдельной строкой */
   function todayBar(t, compact) {
-    const capPos = Campaign.CAP / Campaign.ULTRA * 100;
+    const capPos = (t.cap || Campaign.CAP) / Campaign.ULTRA * 100;
     const w = Math.min(100, t.points / Campaign.ULTRA * 100);
     const zh = Campaign.NAMES.ultraZh;
     const status = t.ultra ? `${zh} Марш-бросок! День зачтён за два` : t.done ? `Переход зачтён ✓ · до марш-броска ещё ${pt(t.toUltra)}` : `Ещё ${pt(t.toCap)} до перехода · ${pt(t.toUltra)} до марш-броска`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${compact ? Campaign.CAP : Campaign.CAP + ' · переход'}${t.done ? ' ✓' : ''}</span><span class="end">${compact ? Campaign.ULTRA : Campaign.ULTRA + ' · ' + zh}${t.ultra ? ' ✓' : ''}</span></div>
+      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${compact ? (t.cap || Campaign.CAP) : (t.cap || Campaign.CAP) + ' · переход'}${t.done ? ' ✓' : ''}</span><span class="end">${compact ? Campaign.ULTRA : Campaign.ULTRA + ' · ' + zh}${t.ultra ? ' ✓' : ''}</span></div>
       ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {
@@ -8833,7 +9047,7 @@ window.BossMusic = (() => {
       <div class="gallery">${R().map((r, i) => `<button class="cell ${i > peak ? 'locked' : ''} ${i === idx ? 'cur' : ''}" data-action="rank-info" data-idx="${i}" data-nosound>${Cats.imgTag(i)}<div class="cell-n">${i + 1}</div><div class="cell-t">${i > peak ? '???' : esc(r.ru)}</div></button>`).join('')}</div>
       <div class="panel"><div class="flabel">Правила похода</div><div class="hint" style="margin:0">
         Очки — за каждый верный ответ (лёгкий/средний/сложный): тест ×${Campaign.BASE.quiz.easy}/${Campaign.BASE.quiz.medium}/${Campaign.BASE.quiz.hard}, письмо ×${Campaign.BASE.write.easy}/${Campaign.BASE.write.medium}/${Campaign.BASE.write.hard}, аудирование ×${Campaign.BASE.listen.easy}/${Campaign.BASE.listen.medium}/${Campaign.BASE.listen.hard}, фразы ×${Campaign.BASE.sentence.easy}/${Campaign.BASE.sentence.medium}/${Campaign.BASE.sentence.hard}, карточки ×${Campaign.BASE.flip}, экзамен ×${Campaign.BASE.hsk}; частичный ответ — половина. Бонусы: законченная тренировка от 10 вопросов +${Campaign.BONUS.finish}, без ошибок +${Campaign.BONUS.perfect}, сданный экзамен +${Campaign.BONUS.pass}.<br>
-        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (10–20 минут — смотря чем заниматься): день зачтён. <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
+        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (10–20 минут — смотря чем заниматься): день зачтён (первые три дня похода — разгон, ${Campaign.CAP_START}). <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
     },
   };
   const rar = id => Treasures.RARITY[Treasures.byId[id].rarity];

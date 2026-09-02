@@ -275,9 +275,15 @@ window.App = (() => {
   function dragonPanel() {
     const ds = Dragon.state(state.campaign, state.attempts);
     if (!ds) return '';
-    const btn = ds.quiet && ds.kind !== 'morning'
-      ? `<button class="btn btn-secondary btn-sm" data-go="setup">Ещё позаниматься</button>`
-      : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="setup">Тренироваться · ещё ${Math.round(ds.t.toCap)}</button>`;
+    /* новичка кнопка ведёт в «Звучание», а не в квиз по иероглифам */
+    const phonN = Object.keys(state.settings.phon || {}).length, phonAll = window.PHON ? PHON.LESSONS.length : 11;
+    const beginner = !state.attempts.length || (state.attempts.length < 10 && phonN < phonAll);
+    const go = beginner ? 'phon' : 'setup';
+    const btn = ds.kind === 'welcome'
+      ? `<button class="btn btn-primary btn-sm" data-go="${go}">${beginner ? 'Начать со звучания' : 'Тренироваться'}</button>`
+      : ds.quiet && ds.kind !== 'morning'
+      ? `<button class="btn btn-secondary btn-sm" data-go="${go}">Ещё позаниматься</button>`
+      : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="${go}">${beginner ? 'Звучание' : 'Тренироваться'} · ещё ${Math.round(ds.t.toCap)}</button>`;
     return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
   }
   /* Новичку — одна понятная дверь: пока нет ни одной попытки, показываем маршрут первого дня */
@@ -286,7 +292,7 @@ window.App = (() => {
     const phonDone = Object.keys((state.settings || {}).phon || {}).length;
     return `<div class="panel ornate start-here"><div class="flabel">Начните отсюда</div>
       <div class="sh-steps">
-        <button class="sh-step" data-go="phon"><span class="zh">音</span><div><b>1. Звучание</b><small>как устроен слог, четыре тона · ${phonDone}/8</small></div><span class="chev">›</span></button>
+        <button class="sh-step" data-go="phon"><span class="zh">音</span><div><b>1. Звучание</b><small>как устроен слог, четыре тона · ${phonDone}/${window.PHON ? PHON.LESSONS.length : 11}</small></div><span class="chev">›</span></button>
         <button class="sh-step" data-go="hand"><span class="zh">手</span><div><b>2. Письмо</b><small>восемь черт и порядок · уровень «С нуля»</small></div><span class="chev">›</span></button>
         <button class="sh-step" data-action="flow-open" data-nosound><span class="zh">流</span><div><b>3. Поток</b><small>дальше день соберёт тренер</small></div><span class="chev">›</span></button>
       </div>
@@ -384,7 +390,7 @@ window.App = (() => {
         <button class="big-btn t-bars" data-go="stats"><svg class="deco" viewBox="0 0 100 100"><rect x="12" y="58" width="16" height="32" rx="3" fill="currentColor"/><rect x="36" y="40" width="16" height="50" rx="3" fill="currentColor"/><rect x="60" y="22" width="16" height="68" rx="3" fill="currentColor"/><path d="M14 50 L44 30 L68 12 L90 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><span class="bi">计</span><span>Статистика</span><small>${fmt.plural(ov.attempts, 'попытка', 'попытки', 'попыток')} · освоено ${mastered}</small></button>
       </div>
       <h2 class="h2">Недавние попытки</h2>
-      ${recent.length ? recent.map(attemptRow).join('') : '<div class="empty">Ещё не было ни одной попытки. Начните с тренировки или HSK-теста.</div>'}`;
+      ${recent.length ? recent.map(attemptRow).join('') : '<div class="empty">Ещё не было ни одной попытки. Начните со звучания — первый разбор занимает пять минут.</div>'}`;
     },
   };
 
@@ -491,6 +497,7 @@ window.App = (() => {
     if (!log) return;
     if (!force && state.settings.seenRelease === log.v) return;
     state.settings.seenRelease = log.v; persist();
+    if (!force && !state.attempts.length) return;   /* первый запуск: новичку нечего «обновлять» — не перекрываем приветствие */
     const sec = (t, items, cls) => items && items.length ? `<div class="wn-sec ${cls}"><div class="flabel">${t}</div>${items.map(i => Array.isArray(i) ? `<div class="wn-it"><b>${i[0]}</b><div class="hint" style="margin:2px 0 0">${i[1]}</div></div>` : `<div class="wn-fx">· ${i}</div>`).join('')}</div>` : '';
     sheet(`<h3 class="sh-t">Что нового</h3><div class="wn">${sec('Большое', log.features, 'big')}${sec('Приятное', log.minor, 'mid')}${sec('Исправлено', log.fixes, 'fix')}</div><button class="btn btn-primary btn-block mt" data-close>Отлично</button>`);
   }

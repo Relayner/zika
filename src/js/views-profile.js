@@ -12,13 +12,13 @@
   }
   /* Полоса дня: линейная шкала 0…Марш-бросок; подписи стоят под своими рисками, остаток — отдельной строкой */
   function todayBar(t, compact) {
-    const capPos = Campaign.CAP / Campaign.ULTRA * 100;
+    const capPos = (t.cap || Campaign.CAP) / Campaign.ULTRA * 100;
     const w = Math.min(100, t.points / Campaign.ULTRA * 100);
     const zh = Campaign.NAMES.ultraZh;
     const status = t.ultra ? `${zh} Марш-бросок! День зачтён за два` : t.done ? `Переход зачтён ✓ · до марш-броска ещё ${pt(t.toUltra)}` : `Ещё ${pt(t.toCap)} до перехода · ${pt(t.toUltra)} до марш-броска`;
     return `<div class="tbar ${t.ultra ? 'ultra' : t.done ? 'done' : ''}">
       <div class="tbar-track"><i style="width:${w}%"></i><b class="tbar-mark" style="left:${capPos}%"></b><b class="tbar-mark end"></b></div>
-      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${compact ? Campaign.CAP : Campaign.CAP + ' · переход'}${t.done ? ' ✓' : ''}</span><span class="end">${compact ? Campaign.ULTRA : Campaign.ULTRA + ' · ' + zh}${t.ultra ? ' ✓' : ''}</span></div>
+      <div class="tbar-ticks"><span class="cap" style="left:${capPos}%">${compact ? (t.cap || Campaign.CAP) : (t.cap || Campaign.CAP) + ' · переход'}${t.done ? ' ✓' : ''}</span><span class="end">${compact ? Campaign.ULTRA : Campaign.ULTRA + ' · ' + zh}${t.ultra ? ' ✓' : ''}</span></div>
       ${compact ? '' : `<div class="tbar-status">${status}</div>`}</div>`;
   }
   function dayBar(days, idx) {
@@ -71,7 +71,7 @@
       <div class="gallery">${R().map((r, i) => `<button class="cell ${i > peak ? 'locked' : ''} ${i === idx ? 'cur' : ''}" data-action="rank-info" data-idx="${i}" data-nosound>${Cats.imgTag(i)}<div class="cell-n">${i + 1}</div><div class="cell-t">${i > peak ? '???' : esc(r.ru)}</div></button>`).join('')}</div>
       <div class="panel"><div class="flabel">Правила похода</div><div class="hint" style="margin:0">
         Очки — за каждый верный ответ (лёгкий/средний/сложный): тест ×${Campaign.BASE.quiz.easy}/${Campaign.BASE.quiz.medium}/${Campaign.BASE.quiz.hard}, письмо ×${Campaign.BASE.write.easy}/${Campaign.BASE.write.medium}/${Campaign.BASE.write.hard}, аудирование ×${Campaign.BASE.listen.easy}/${Campaign.BASE.listen.medium}/${Campaign.BASE.listen.hard}, фразы ×${Campaign.BASE.sentence.easy}/${Campaign.BASE.sentence.medium}/${Campaign.BASE.sentence.hard}, карточки ×${Campaign.BASE.flip}, экзамен ×${Campaign.BASE.hsk}; частичный ответ — половина. Бонусы: законченная тренировка от 10 вопросов +${Campaign.BONUS.finish}, без ошибок +${Campaign.BONUS.perfect}, сданный экзамен +${Campaign.BONUS.pass}.<br>
-        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (10–20 минут — смотря чем заниматься): день зачтён. <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
+        <b>${Campaign.NAMES.cap}</b> — ${Campaign.CAP} очков за день (10–20 минут — смотря чем заниматься): день зачтён (первые три дня похода — разгон, ${Campaign.CAP_START}). <b>${Campaign.NAMES.ultra} ${Campaign.NAMES.ultraZh}</b> — ${Campaign.ULTRA} очков: день зачтён за два. День без перехода откатывает поход на день. Ранг растёт только по дням — за один день выше не прыгнуть.</div></div>`;
     },
   };
   const rar = id => Treasures.RARITY[Treasures.byId[id].rarity];

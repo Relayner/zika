@@ -176,7 +176,7 @@
     const total = sp.qs.length;
     const errRate = sp.wrong / total;
     const clean = sp.wrong === 0;
-    const half = !clean && sp.wrong <= Math.floor(total / 10);
+    const half = !clean && sp.wrong <= Math.ceil(total / 10);
     let base = sp.qs.filter(q => q.ok).reduce((s, q) => s + q.points, 0);
     let mult = SIZE_MULT(sp.size);
     if (clean) mult *= 1.25;

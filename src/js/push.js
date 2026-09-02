@@ -40,7 +40,7 @@ window.Push = (() => {
       if (!CONF.url) return;
       const sub = await getSub();
       if (!sub) return;
-      fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
+      fetch(CONF.url + '/report', { method: 'POST', headers: { 'content-type': 'application/json' }, keepalive: true, body: JSON.stringify({ endpoint: sub.endpoint, date: t.key, points: Math.round(t.points), done: t.done, toCap: Math.round(t.toCap), cap: t.cap || 400, days: (window.App && App.state && App.state.campaign && App.state.campaign.log ? App.state.campaign.log.length : 0), tz: -new Date().getTimezoneOffset() }) }).catch(() => {});
     } catch (e) { /* ignore */ }
   }
   async function test() {

@@ -17,7 +17,9 @@ window.Flow = (() => {
       attemptsYesterday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === yest).length,
       attemptsToday: (state.attempts || []).filter(a => Stats.dayKey(a.ts) === today).length,
       daysStreak: (state.campaign || {}).days || 0,
-      beginner: !(state.attempts || []).length || Boss.levelOf(state) === 1 && (state.attempts || []).length < 5,
+      /* новичок: попыток «по делу» (не звучание и не поток) меньше пяти — или курс звучания начат и не закончен, а попыток меньше двадцати */
+      beginner: (() => { const real = (state.attempts || []).filter(a => a.mode !== 'phon' && a.mode !== 'flow').length; const pd = Object.keys((state.settings || {}).phon || {}).length; const pn = window.PHON ? PHON.LESSONS.length : 11;
+        return !(state.attempts || []).length || (Boss.levelOf(state) === 1 && (real < 5 || (pd > 0 && pd < pn && real < 20))); })(),
       phonDone: Object.keys((state.settings || {}).phon || {}).length,
       handBasicsDone: ['h0-01', 'h0-02', 'h0-03'].filter(id => ((((state.settings || {}).hand || {}).lessons || {})[id] || {}).runs).length,
     };
@@ -27,24 +29,27 @@ window.Flow = (() => {
   function localPlan(state) {
     const s = statsFor(state);
     /* новичок: сначала звучание и основы письма, один урок HSK 1 — и хватит на день */
-    if (s.beginner && (s.phonDone < 8 || s.handBasicsDone < 3)) {
-      const mix = { phon: Math.min(2, 8 - s.phonDone), handBasics: s.handBasicsDone < 3 ? 1 : 0, sprint: s.phonDone >= 4 ? 1 : 0, review: s.due > 0 ? 1 : 0, drill: 0, hand: 0, boss: 0 };
+    const phonN = window.PHON ? PHON.LESSONS.length : 11;
+    if (s.beginner && (s.phonDone < phonN || s.handBasicsDone < 3)) {
+      /* три шага звучания, один урок черт, с третьего урока — первый блок HSK 1: вместе это как раз разгонный переход */
+      const mix = { phon: Math.min(3, phonN - s.phonDone), handBasics: s.handBasicsDone < 3 ? 1 : 0, sprint: s.phonDone >= 2 ? 1 : 0, review: s.due > 0 ? 1 : 0, drill: 0, hand: 0, boss: 0 };
       return { focus: 'listen', mix, message: s.phonDone === 0 ? 'Первый день. Разберёмся, как звучит китайский, и проведём первые черты.' : 'Продолжаем со звучания — потом первые слова.', src: 'local' };
     }
     const mix = { review: 0, sprint: 2, drill: 2, hand: 1, boss: 0 };
     if (s.due > 0) mix.review = s.due > 15 ? 2 : 1;
     if (s.weakest === 'hand') mix.hand = 2;
-    if (s.attemptsYesterday > 0) mix.boss = 1;
+    if (s.attemptsYesterday > 0 && (state.attempts || []).length >= 10) mix.boss = 1;   /* босс — не раньше десятка попыток */
     const total = Object.values(mix).reduce((a, b) => a + b, 0);
     if (s.attemptsToday === 0 && total > 7) mix.drill = 1;
     return { focus: s.weakest || 'read', mix, message: s.due > 10 ? 'Сначала вернём то, что уплывает, — потом новое.' : 'Ровный день: немного повторений, немного нового.' , src: 'local' };
   }
 
   /* план дня: кэш на сутки, пересчёт через Fable */
-  async function planFor(state) {
+  async function planFor(state, fresh) {
     const today = Stats.dayKey(Date.now());
     const cached = state.settings.flowPlan;
-    if (cached && cached.day === today && cached.plan) return cached.plan;
+    /* план тренера живёт до конца дня; местный — час, потом снова пробуем тренера */
+    if (!fresh && cached && cached.day === today && cached.plan && (!cached.until || cached.until > Date.now())) return cached.plan;
     let plan = null;
     const conf = window.PUSH_CONF || {};
     if (conf.url && navigator.onLine !== false) {
@@ -59,7 +64,7 @@ window.Flow = (() => {
       } catch (e) { /* сеть подвела — локальный план */ }
     }
     if (!plan) plan = localPlan(state);
-    state.settings.flowPlan = { day: today, plan };
+    state.settings.flowPlan = { day: today, plan, until: plan.src === 'fable' ? null : Date.now() + 3600e3 };
     App.persist();
     return plan;
   }
@@ -94,9 +99,9 @@ window.Flow = (() => {
     }
     const drillMode = { listen: 'listen', read: 'quiz', write: 'write', speak: null, hand: null }[plan.focus] || 'quiz';
     for (let i = 0; i < (plan.mix.drill || 0); i++)
-      q.push({ t: 'drill', mode: drillMode || 'quiz', deck, title: 'Тренировка · ' + (Skill.KINDS[plan.focus] || {}).ru, d: 'слабое место дня' });
+      q.push({ t: 'drill', mode: drillMode || 'quiz', deck, title: 'Тренировка · ' + ((Skill.KINDS[plan.focus] || {}).ru || 'по словам уровня'), d: 'слабое место дня' });
     for (let i = 0; i < (plan.mix.hand || 0); i++) q.push({ t: 'hand', deck, lvl, title: 'Письмо от руки 手写', d: 'слова уровня, черта за чертой' });
-    if (plan.mix.boss) q.push({ t: 'boss', title: 'Босс', d: 'если готов — вызовите любого' });
+    if (plan.mix.boss && (state.attempts || []).length >= 10) q.push({ t: 'boss', title: 'Босс', d: 'если готов — вызовите любого' });
     return q;
   }
 

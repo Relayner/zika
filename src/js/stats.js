@@ -8,6 +8,7 @@ window.Stats = (() => {
     const m = {};
     const sorted = attempts.slice().sort((a, b) => a.ts - b.ts);
     for (const a of sorted) for (const q of a.questions || []) {
+      if (!q.cardId) continue;   /* дриллы звучания и черты карточек не имеют */
       const s = m[q.cardId] || (m[q.cardId] = { asked: 0, correct: 0, partial: 0, wrong: 0, lastAt: 0, lastOk: null, streak: 0, timeMs: 0 });
       s.asked++;
       if (q.ok) { s.correct++; s.streak++; } else { s.streak = 0; if (q.fraction > 0) s.partial++; else s.wrong++; }

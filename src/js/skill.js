@@ -61,10 +61,14 @@ window.Skill = (() => {
   /* Рекомендованный уровень материала: рабочий уровень Boss.levelOf, но не ниже уровня, где точность просела */
   function recLevel(state, prof) {
     const base = Boss.levelOf(state);
-    const scores = Object.values(prof).filter(v => v.score != null && v.score !== undefined).map(v => v.score);
-    const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-    if (avg == null) return base;
-    if (avg >= 85 && base < 4) return base + 1;   /* уверенно — можно тянуться выше */
+    /* «выше уровня» — только на объёме: навыки с ≥30 вопросами, всего ≥60, и ≥20 слов уже в обороте.
+       Одна удачная попытка из 10 вопросов уровень не поднимает. */
+    const rich = Object.entries(prof).filter(([k, v]) => k !== 'vocab' && v.score != null && (v.data || 0) >= 30);
+    const total = Object.entries(prof).reduce((a, [k, v]) => a + (k === 'vocab' ? 0 : (v.data || 0)), 0);
+    const seen = (prof.vocab || {}).seen || 0;
+    if (!rich.length || total < 60 || seen < 20) return base;
+    const avg = rich.reduce((a, [, v]) => a + v.score, 0) / rich.length;
+    if (avg >= 85 && base < 4) return base + 1;   /* уверенно и на данных — можно тянуться выше */
     return base;
   }
   return { KINDS, kindsOf, profile, weakest, recLevel, HALF_LIFE };

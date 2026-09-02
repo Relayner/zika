@@ -37,7 +37,8 @@
       const prof = Skill.profile(state);
       const hs = (prof.hand || {}).score;
       const voice = Speech.available();
-      const recMode = hs == null || hs < 60 ? 'trace' : hs < 75 ? 'hint' : (hs < 90 || !voice) ? 'memory' : 'dictation';
+      const hd = (prof.hand || {}).data || 0;   /* одна обводка 8/8 — ещё не форма: до 30 знаков выше «с подсказкой» не советуем */
+      const recMode = hs == null || hs < 60 ? 'trace' : (hs < 75 || hd < 30) ? 'hint' : (hs < 90 || !voice) ? 'memory' : 'dictation';
       const cur = modeOf(state.settings.handMode).k;
       const lvl = curLevel();
       const lessons = lessonsOf(lvl);

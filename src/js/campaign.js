@@ -19,7 +19,7 @@ window.Campaign = (() => {
     hsk: 3,                                             /* словарный тест */
     exam: 6,                                            /* задание настоящего экзамена, ~11 с */
     hand: { trace: 5, hint: 8, memory: 11, dictation: 13 },   /* письмо от руки, знак ~12-20 с */
-    phon: 3,                                            /* дрилл на слух, ~7 с */
+    phon: 4,                                            /* дрилл на слух, ~7 с */
   };
   const BONUS = { finish: 3, perfect: 6, pass: 30 };
   const NAMES = { cap: 'Переход', ultra: 'Марш-бросок', ultraZh: '兼程' };
@@ -55,6 +55,7 @@ window.Campaign = (() => {
   /* Единицы содержания попытки: то, что нужно было знать */
   function contentKeys(a) {
     if (Array.isArray(a.lines) && a.lines.length) return a.lines.map(x => 'l:' + String(x).slice(0, 40));         /* реплики босса */
+    if (a.mode === 'hand') return (a.questions || []).map(q => 'h:' + (q.hanzi || q.cardId || '')).filter(x => x.length > 2);   /* письмо — своя новизна, не делит её со спринтом */
     if (Array.isArray(a.words) && a.words.length) return a.words.map(x => 'w:' + x);                              /* слова спринта */
     const qs = a.questions || [];
     const out = [];
@@ -121,7 +122,7 @@ window.Campaign = (() => {
   const key = ts => Stats.dayKey(ts);
   function addDays(k, n) { const [y, m, d] = k.split('-').map(Number); return key(new Date(y, m - 1, d + n, 12).getTime()); }
   function dayPoints(attempts, k) { let p = 0; for (const a of attempts) if (key(a.ts) === k) p += pts(a); return Math.round(p * 10) / 10; }
-  const dayResult = p => (p >= ULTRA ? 'ultra' : p >= CAP ? 'done' : 'miss');
+const dayResult = (p, cap = CAP) => (p >= ULTRA ? 'ultra' : p >= cap ? 'done' : 'miss');
 
   function create() { return { schema: 1, days: 0, startedAt: null, processedThrough: null, log: [], rankPeak: 0, stats: { done: 0, ultra: 0, miss: 0 } }; }
 
@@ -138,7 +139,7 @@ window.Campaign = (() => {
     if (!c.processedThrough || c.processedThrough >= today) { c.rankPeak = Math.max(c.rankPeak || 0, rankIndex(effectiveDays(c, attempts, now))); return added; }
     let k = addDays(c.processedThrough, 1), guard = 0;
     while (k < today && guard++ < 5000) {
-      const p = dayPoints(attempts, k), r = dayResult(p);
+      const p = dayPoints(attempts, k), r = dayResult(p, capFor(c));
       if (r === 'ultra') c.days += 2; else if (r === 'done') c.days += 1; else c.days = Math.max(0, c.days - 1);
       c.stats[r] = (c.stats[r] || 0) + 1;
       const e = { d: k, p, r };
@@ -150,9 +151,13 @@ window.Campaign = (() => {
     c.rankPeak = Math.max(c.rankPeak || 0, rankIndex(effectiveDays(c, attempts, now)));
     return added;
   }
+  /* Разгон: первые три дня похода переход стоит 120 очков — столько даёт полный день новичка (звучание, черты, один урок).
+     Дальше — обычные 400. Считаем по записанным дням, а не по счётчику похода: откат ветерана разгоном не станет. */
+  const CAP_START = 120;
+  const capFor = c => ((c && c.log ? c.log.length : 0) < 3 ? CAP_START : CAP);
   function todayState(c, attempts, now = Date.now()) {
-    const k = key(now), p = dayPoints(attempts, k);
-    return { key: k, points: p, done: p >= CAP, ultra: p >= ULTRA, bonus: p >= ULTRA ? 2 : p >= CAP ? 1 : 0, toCap: Math.max(0, CAP - p), toUltra: Math.max(0, ULTRA - p) };
+    const k = key(now), p = dayPoints(attempts, k), cap = capFor(c);
+    return { key: k, points: p, cap, done: p >= cap, ultra: p >= ULTRA, bonus: p >= ULTRA ? 2 : p >= cap ? 1 : 0, toCap: Math.max(0, cap - p), toUltra: Math.max(0, ULTRA - p) };
   }
   const effectiveDays = (c, attempts, now) => ((c && c.days) || 0) + todayState(c, attempts, now).bonus;
   function rankIndex(days) {
@@ -186,6 +191,8 @@ window.Campaign = (() => {
     const grant = d => { if (!c.chests.granted.includes(d)) { c.chests.granted.push(d); c.chests.pending++; n++; } };
     for (const e of c.log || []) if (e.r === 'ultra') grant(e.d);
     const t = todayState(c, attempts, now); if (t.ultra) grant(t.key);
+    /* сундук новобранца: первый переход в первые три дня похода */
+    if (t.done && !t.ultra && c.chests.first == null && (c.log || []).length < 3) { c.chests.first = t.key; c.chests.pending++; n++; }   /* марш-бросок уже дал сундук */
     if (c.chests.granted.length > 500) c.chests.granted = c.chests.granted.slice(-500);
     return n;
   }
@@ -199,5 +206,5 @@ window.Campaign = (() => {
     c.chestLog.push(entry); if (c.chestLog.length > 200) c.chestLog = c.chestLog.slice(-200);
     return entry;
   }
-  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, contentKeys, novelty, RANK_DAYS, RANK_AT, CAP, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
+  return { ensureChests, grantChests, openChest, decay, noteUnit, unitKey, contentLevel, contentKeys, novelty, RANK_DAYS, RANK_AT, CAP, CAP_START, capFor, ULTRA, ULTRA_MULT, TOTAL_DAYS, RANKS, DAYS_PER_RANK, BASE, BONUS, NAMES, attemptPoints, questionPoints, dayPoints, addDays, create, process, todayState, effectiveDays, rankIndex, rankProgress, recent };
 })();

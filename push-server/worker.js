@@ -57,7 +57,8 @@ export default {
       const raw = await env.SUBS.get('s:' + id);
       if (!raw) return json({ ok: false, resubscribe: true });
       const rec = JSON.parse(raw);
-      rec.report = { date: String(body.date || ''), points: +body.points || 0, done: !!body.done, toCap: Math.max(0, +body.toCap || 0), at: Date.now() };
+      rec.report = { date: String(body.date || ''), points: +body.points || 0, done: !!body.done, toCap: Math.max(0, +body.toCap || 0), cap: +body.cap || 400, at: Date.now() };
+      if (body.days != null) rec.days = Math.max(0, body.days | 0);
       if (body.tz != null) rec.tz = body.tz | 0;
       await env.SUBS.put('s:' + id, JSON.stringify(rec));
       return json({ ok: true });
@@ -100,8 +101,8 @@ export default {
       const sys = [
         'Ты методист китайского в учебном приложении. По статистике ученика составь план на день.',
         'Верни СТРОГО JSON без markdown: {"focus":"навык из списка listen/read/write/hand/speak","mix":{"phon":N,"handBasics":N,"review":N,"sprint":N,"drill":N,"hand":N,"boss":N},"message":"1-2 фразы ученику по-русски, тёплые и конкретные, без воды"}',
-        'mix — сколько шагов каждого типа положить в поток (всего 4-9): phon — урок раздела «Звучание» (слог, тоны, пиньинь; всего 8 уроков), handBasics — урок основ письма (черты, порядок; всего 3), review — повторение слов по срокам, sprint — урок программы HSK, drill — тренировка слабого навыка, hand — письмо слов от руки, boss — бой с боссом (0 или 1).',
-        'Правила: если beginner=true и phonDone<8 — сначала phon (1-2 шага) и handBasics (1, пока handBasicsDone<3), sprint не больше 1, drill 0, boss 0, всего 3-5 шагов; если просрочено много слов (due больше 15) — review не меньше 2; слабый навык получает больше drill; boss только если ученик занимался вчера и не новичок.',
+        'mix — сколько шагов каждого типа положить в поток (всего 4-9): phon — урок раздела «Звучание» (слог, тоны, пиньинь; всего 11 уроков, до 3 в день), handBasics — урок основ письма (черты, порядок; всего 3), review — повторение слов по срокам, sprint — урок программы HSK, drill — тренировка слабого навыка, hand — письмо слов от руки, boss — бой с боссом (0 или 1).',
+        'Правила: если beginner=true и phonDone<11 — сначала phon (2-3 шага) и handBasics (1, пока handBasicsDone<3), sprint не больше 1 и только при phonDone>=2, drill 0, boss 0, всего 3-5 шагов; если просрочено много слов (due больше 15) — review не меньше 2; слабый навык получает больше drill; boss только если ученик занимался вчера и не новичок.',
       ].join('\n');
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -150,11 +151,14 @@ async function runCron(env) {
         if (reported && rec.report.done) continue;
         const toCap = reported ? rec.report.toCap : null;
         if (!rec.push || rec.push.day !== day) rec.push = { day, count: 0, last: 0 };
+        /* новичок (меньше трёх записанных дней): один спокойный пуш вечером, без угроз; старые подписки без отчёта — ветераны */
+        const newbie = rec.days != null && rec.days < 3;
+        if (newbie && (rec.push.count >= 1 || hour < 18)) continue;
         if (rec.push.count >= 4) continue;
         if (Date.now() - rec.push.last < 2.4 * 3600e3) continue;
-        let mood = hour < 15 ? 0 : hour < 18 ? 1 : hour < 21 ? 2 : 3;
+        let mood = newbie ? 0 : hour < 15 ? 0 : hour < 18 ? 1 : hour < 21 ? 2 : 3;
         if (toCap != null && toCap <= 120) mood = Math.max(0, mood - 1);
-        const n = toCap != null ? toCap : 400;
+        const n = toCap != null ? toCap : (newbie ? 150 : 400);
         const bank = PHRASES[mood];
         const text = bank[(new Date().getDate() + rec.push.count) % bank.length].replace('{n}', String(n));
         const res = await sendPush(rec.sub, JSON.stringify({ title: TITLES[mood], body: text, mood }), vapid);
