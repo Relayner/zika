@@ -361,22 +361,29 @@
     if (q.type === 'pickpic') return 'ABC'[q.givenIdx] + ' · ' + picWord(q.pics[q.givenIdx]);
     return q.givenIdx === 0 ? '对' : '错';
   };
-  function finishExam() {
-    stopTimers();
-    for (const q of ex.qs) if (q.ok == null) { q.ok = false; q.given = null; }
-    const res = HskReal.score(ex.qs, ex.spec);
-    const spec = ex.spec;
+  /* снимок вопроса для разбора: что звучало, что было написано, какие были картинки и варианты, что выбрали */
+  const SNAP_KEYS = ['say', 'text', 'textPy', 'sub', 'star', 'pic', 'pics', 'pool', 'opts', 'chunks', 'py', 'correct', 'answer', 'answers', 'given', 'givenIdx'];
+  function snapOf(q) { const s = { type: q.type }; for (const k of SNAP_KEYS) if (q[k] != null) s[k] = q[k]; return s; }
+  function buildAttempt(qs, level, spec, startedAt) {
+    for (const q of qs) if (q.ok == null) { q.ok = false; q.given = null; }
+    const res = HskReal.score(qs, spec);
     const a = {
-      id: uid(), ts: ex.startedAt, endedAt: Date.now(), durationMs: Date.now() - ex.startedAt,
-      mode: 'hsk', format: 'real', level: ex.level, difficulty: 'exam',
-      deckIds: ['hsk' + ex.level], deckName: 'Экзамен HSK ' + ex.level, show: 'exam', guess: ['all'], order: 'random', timer: 0,
-      total: ex.qs.length, planned: ex.qs.length, aborted: false,
-      correct: ex.qs.filter(q => q.ok).length, partial: 0, wrong: ex.qs.filter(q => !q.ok).length,
-      percent: Math.round(ex.qs.filter(q => q.ok).length / ex.qs.length * 100),
+      id: uid(), ts: startedAt, endedAt: Date.now(), durationMs: Date.now() - startedAt,
+      mode: 'hsk', format: 'real', level, difficulty: 'exam',
+      deckIds: ['hsk' + level], deckName: 'Экзамен HSK ' + level, show: 'exam', guess: ['all'], order: 'random', timer: 0,
+      total: qs.length, planned: qs.length, aborted: false,
+      correct: qs.filter(q => q.ok).length, partial: 0, wrong: qs.filter(q => !q.ok).length,
+      percent: Math.round(qs.filter(q => q.ok).length / qs.length * 100),
       score: res.score, examMax: spec.max, passed: res.passed, sections: res.sections,
-      questions: ex.qs.map(q => ({ cardId: 'ex' + ex.level + ':' + q.sec + q.part, sec: q.sec, part: q.part, hanzi: promptOf(q), pinyin: '', co: correctTextOf(q), ru: 'Верно: ' + correctTextOf(q), show: q.sec, guess: [String(q.part)], answer: { given: givenTextOf(q) }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0 })),
+      questions: qs.map(q => ({ cardId: 'ex' + level + ':' + q.sec + q.part, sec: q.sec, part: q.part, hanzi: promptOf(q), pinyin: '', co: correctTextOf(q), ru: 'Верно: ' + correctTextOf(q), show: q.sec, guess: [String(q.part)], answer: { given: givenTextOf(q) }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0, ex: snapOf(q) })),
     };
     a.points = Campaign.attemptPoints(a);
+    return a;
+  }
+  App.examAttempt = buildAttempt;
+  function finishExam() {
+    stopTimers();
+    const a = buildAttempt(ex.qs, ex.level, ex.spec, ex.startedAt);
     ex = null;
     saveAttempt(a).then(() => { Sound.finish(a.passed); nav('exam-result', { id: a.id }, { replace: true }); });
   }
@@ -399,7 +406,7 @@
         });
         stagesUi = `<div class="panel"><div class="flabel">По этапам</div>${sts.map((st, i) => `<div class="fb-row"><span class="fb-p">${i + 1} · ${SEC[st.sec][0]} ${SEC[st.sec][1]} ч.${st.part}</span><span class="fb-v" style="color:${st.ok === st.n ? 'var(--jade)' : st.ok === 0 ? 'var(--danger)' : 'var(--ink)'}"><b>${st.ok}</b> из ${st.n}</span></div>`).join('')}</div>`;
         const bad = sts.filter(st => st.errs.length);
-        if (bad.length) errsUi = `<div class="panel"><div class="flabel">Разбор ошибок</div>${bad.map(st => `<div class="err-stage">Этап ${sts.indexOf(st) + 1} · ${SEC[st.sec][1]} · часть ${st.part}</div>${st.errs.map(qq => `<div class="err-item"><div class="err-q">${esc(qq.hanzi)}</div><div class="err-a"><span class="ok-t">верно: ${esc(qq.co || '')}</span><span class="bad-t">ваш ответ: ${esc((qq.answer && qq.answer.given) || '—')}</span></div></div>`).join('')}`).join('')}</div>`;
+        if (bad.length) errsUi = `<div class="panel"><div class="flabel">Разбор ошибок</div>${bad.map(st => `<div class="err-stage">Этап ${sts.indexOf(st) + 1} · ${SEC[st.sec][1]} · часть ${st.part}</div>${st.errs.map(qq => `<button class="err-item tap" data-action="q-review" data-id="${esc(a.id)}" data-i="${a.questions.indexOf(qq)}" data-nosound><div class="err-q">${esc(qq.hanzi)}</div><div class="err-a"><span class="ok-t">верно: ${esc(qq.co || '')}</span><span class="bad-t">ваш ответ: ${esc((qq.answer && qq.answer.given) || '—')}</span><span class="chev">›</span></div></button>`).join('')}`).join('')}</div>`;
       }
       return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">Экзамен HSK ${a.level}</h1><div class="sub">настоящий формат · ${fmt.dur(a.durationMs)}</div></div></div>
       <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${Object.keys(a.sections).map(k => secRow(k, SEC[k][0], SEC[k][1])).join('')}</div>${stamp}</div>

@@ -120,14 +120,84 @@
     render(p) {
       const a = state.attempts.find(x => x.id === p.id);
       if (!a) return '<div class="empty">Попытка не найдена</div>';
-      const dir = a.show === 'mixed' ? 'смешанное направление' : a.show === 'exam' ? 'экзаменационный формат' + (a.examMax ? ', балл из ' + a.examMax : '') : LABELS.part[a.show] + ' → ' + (a.guess || []).map(x => LABELS.part[x]).join(' + ');
-      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${LABELS.mode[a.mode]}${a.level ? ' ' + a.level : ''}</h1><div class="sub">${fmt.date(a.ts)}${a.mode === 'hsk' ? '' : ' · ' + esc(a.deckName)}</div></div><button class="icon-btn" data-action="attempt-delete" data-id="${a.id}" aria-label="Удалить">🗑</button></div>
-      <div class="tiles t3">${tile(a.percent + '%', 'результат')}${tile(a.score, 'балл')}${tile(fmt.dur(a.durationMs), 'время')}</div>
+      const dir = a.show === 'mixed' ? 'смешанное направление' : a.show === 'exam' ? 'экзаменационный формат' + (a.examMax ? ', балл из ' + a.examMax : '') : LABELS.part[a.show] ? LABELS.part[a.show] + ' → ' + (a.guess || []).map(x => LABELS.part[x] || x).join(' + ') : a.mode === 'phon' ? (a.difficulty === 'theory' ? 'разбор с примерами' : 'дрилл на слух') : '';
+      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${a.format === 'real' ? 'Экзамен HSK' : a.mode === 'phon' ? esc(a.deckName) : LABELS.mode[a.mode]}${a.level && (a.mode === 'hsk' || a.mode === 'boss') ? ' ' + a.level : ''}</h1><div class="sub">${fmt.date(a.ts)}${a.mode === 'hsk' || a.mode === 'phon' ? '' : ' · ' + esc(a.deckName)}</div></div><button class="icon-btn" data-action="attempt-delete" data-id="${a.id}" aria-label="Удалить">🗑</button></div>
+      <div class="tiles t3">${tile(a.percent + '%', 'результат')}${a.score != null ? tile(a.score, 'балл') : tile('+' + Math.round(a.points != null ? a.points : Campaign.attemptPoints(a)), 'очков')}${tile(fmt.dur(a.durationMs), 'время')}</div>
       <div class="tiles t3">${tile(a.correct, 'верно')}${tile(a.partial, 'частично')}${tile(a.wrong, 'неверно')}</div>
-      <div class="panel"><div class="hint" style="margin:0">${a.mode !== 'flip' ? LABELS.diff[a.difficulty] + ' · ' : ''}${dir} · ${LABELS.order[a.order] || ''}${a.timer ? ' · таймер ' + a.timer + ' с' : ''} · ${fmt.secs(a.durationMs / a.total)} на вопрос${a.passed != null ? (a.passed ? ' · <b>сдан</b>' : ' · <b>не сдан</b>') : ''}${a.aborted ? ' · прервана на ' + a.total + ' из ' + a.planned : ''} · <b>+${Math.round(a.points != null ? a.points : Campaign.attemptPoints(a))} очк. похода</b></div></div>
-      <h2 class="h2">Вопросы</h2>${a.questions.map(questionRow).join('')}
-      <div class="btns"><button class="btn btn-secondary btn-block" data-action="retry-mistakes" data-id="${a.id}" ${a.questions.some(q => !q.ok) ? '' : 'disabled'}>Повторить ошибки</button></div>`;
+      <div class="panel"><div class="hint" style="margin:0">${[a.mode !== 'flip' && LABELS.diff[a.difficulty] ? LABELS.diff[a.difficulty] : '', dir, a.mode === 'phon' ? '' : (LABELS.order[a.order] || ''), a.timer ? 'таймер ' + a.timer + ' с' : '', a.total > 1 || a.mode !== 'phon' ? fmt.secs(a.durationMs / a.total) + ' на вопрос' : '', a.passed != null ? (a.passed ? '<b>сдан</b>' : '<b>не сдан</b>') : '', a.aborted ? 'прервана на ' + a.total + ' из ' + a.planned : '', '<b>+' + Math.round(a.points != null ? a.points : Campaign.attemptPoints(a)) + ' очк. похода</b>'].filter(Boolean).join(' · ')}</div></div>
+      <h2 class="h2">Вопросы</h2><div class="hint" style="margin:-4px 0 8px">Нажмите на вопрос — откроется разбор: что звучало, что было на картинке, какой ответ верный.</div>${a.questions.map((q, i) => questionRow(q, i, a.id)).join('')}
+      <div class="btns">${a.format === 'real' ? `<button class="btn btn-secondary btn-block" data-go="exam-result" data-params="${attr({ id: a.id })}">Итог экзамена по этапам</button><button class="btn btn-secondary btn-block" data-action="hsk-real" data-level="${a.level || 1}">Ещё вариант HSK ${a.level || 1}</button>` : `<button class="btn btn-secondary btn-block" data-action="retry-mistakes" data-id="${a.id}" ${a.questions.some(q => !q.ok) ? '' : 'disabled'}>Повторить ошибки</button>`}</div>`;
     },
+  };
+  /* ── разбор одного вопроса ── */
+  const SEC = { listening: ['听力', 'Аудирование'], reading: ['阅读', 'Чтение'], writing: ['书写', 'Письмо'] };
+  const LET = 'ABCDEF';
+  const picImg = id => `<img class="ex-pic" src="${IMG_URL('pic-' + id)}" alt="" draggable="false">`;
+  const picOf = id => (window.HskReal && HskReal.picById(id)) || null;
+  let glossMap = null;
+  function gloss(h) {
+    if (!h) return '';
+    if (!glossMap) { glossMap = {}; Object.values(cardIndex || {}).forEach(c => { if (c && c.hanzi && !glossMap[c.hanzi]) glossMap[c.hanzi] = c; }); }
+    const c = glossMap[String(h).trim()]; return c ? c.ru : '';
+  }
+  const withGloss = h => { const g = gloss(h); return `<span class="zh">${esc(h)}</span>${g ? ` <span class="muted">— ${esc(g)}</span>` : ''}`; };
+  const mark = (isOk, isGiven) => (isOk ? ' rv-ok' : isGiven ? ' rv-bad' : '');
+  const tag = (isOk, isGiven) => (isOk ? '<span class="rv-tag ok">верно</span>' : isGiven ? '<span class="rv-tag bad">ваш ответ</span>' : '');
+  const sayBtn = lines => `<button class="btn btn-secondary btn-sm" data-action="q-say" data-t="${attr(lines)}" data-nosound>🔊 Прослушать</button>`;
+  function examReview(q) {
+    const x = q.ex || {};
+    const lines = x.say != null ? (Array.isArray(x.say) ? x.say : [x.say]) : (q.sec === 'listening' && !x.type ? String(q.hanzi || '').split(' — ') : []);
+    let h = `<div class="flabel">${SEC[q.sec] ? SEC[q.sec][0] + ' ' + SEC[q.sec][1] : esc(q.sec)} · часть ${q.part}</div>`;
+    if (lines.length) h += `<div class="rv-say">${lines.map(l => `<div class="rv-line zh">${esc(l)}</div>`).join('')}<div class="mt">${sayBtn(lines)}</div></div>`;
+    if (x.text) h += `<div class="rv-text"><span class="zh">${esc(x.text)}</span>${x.textPy ? ` <span class="pinyin sm">${esc(x.textPy)}</span>` : ''}${x.py ? ` <span class="pinyin sm">（${esc(x.py)}）</span>` : ''}${x.sub ? `<div class="rv-sub">${esc(x.sub)}</div>` : ''}</div>`;
+    else if (!lines.length && !x.type) h += `<div class="rv-text zh">${esc(q.hanzi || '')}</div>`;   /* попытка до разбора: снимка нет, только текст */
+    if (x.star) h += `<div class="ex-star">★ ${esc(x.star)}</div>`;
+    if (x.type === 'tf') {
+      const p = x.pic ? picOf(x.pic) : null;
+      if (x.pic) h += `<div class="rv-pic">${picImg(x.pic)}${p ? `<div class="rv-cap">${withGloss(p.h)}${p.py ? ` <span class="pinyin sm">${esc(p.py)}</span>` : ''}</div>` : ''}</div>`;
+      h += `<div class="rv-opts">${['对 · верно', '错 · неверно'].map((t, i) => `<div class="rv-opt${mark(i === x.correct, i === x.givenIdx)}">${t}${tag(i === x.correct, i === x.givenIdx)}</div>`).join('')}</div>`;
+    } else if (x.type === 'pickpic' || x.type === 'poolpic') {
+      const list = x.type === 'pickpic' ? (x.pics || []) : (x.pool || []);
+      const okIdx = x.type === 'pickpic' ? x.correct : list.indexOf(x.answer);
+      const gvIdx = x.type === 'pickpic' ? x.givenIdx : list.indexOf(x.given);
+      h += `<div class="ex-pics rv-pics">${list.map((id, i) => { const p = picOf(id); return `<div class="ex-picbtn${mark(i === okIdx, i === gvIdx)}"><span class="ex-letter">${LET[i]}</span>${picImg(id)}${p ? `<div class="rv-cap sm">${withGloss(p.h)}</div>` : ''}${i === okIdx ? '<span class="rv-tag ok">верно</span>' : i === gvIdx ? '<span class="rv-tag bad">ваш</span>' : ''}</div>`; }).join('')}</div>`;
+    } else if (x.type === 'opts') {
+      h += `<div class="rv-opts">${(x.opts || []).map((o, i) => `<div class="rv-opt${mark(i === x.correct, i === x.givenIdx)}"><b>${LET[i]}</b> ${withGloss(o)}${tag(i === x.correct, i === x.givenIdx)}</div>`).join('')}</div>`;
+    } else if (x.type === 'pool') {
+      h += `<div class="rv-opts">${(x.pool || []).map((o, i) => `<div class="rv-opt${mark(o === x.answer, o === x.given)}"><b>${LET[i]}</b> ${withGloss(o)}${tag(o === x.answer, o === x.given)}</div>`).join('')}</div>`;
+    } else if (x.type === 'arrange') {
+      h += `<div class="chips rv-chips">${(x.chunks || []).map(c => `<span class="chip">${esc(c)}</span>`).join('')}</div>
+        <div class="rv-opts"><div class="rv-opt rv-ok"><span class="zh">${esc((x.answers || [])[0] || q.co || '')}</span>${tag(true)}</div>${q.ok ? '' : `<div class="rv-opt rv-bad"><span class="zh">${esc(x.given || (q.answer && q.answer.given) || '—')}</span>${tag(false, true)}</div>`}</div>`;
+    } else if (x.type === 'input') {
+      h += `<div class="rv-opts"><div class="rv-opt rv-ok">${withGloss(x.answer)}${tag(true)}</div>${q.ok ? '' : `<div class="rv-opt rv-bad"><span class="zh">${esc(x.given || '—')}</span>${tag(false, true)}</div>`}</div>`;
+    } else {
+      h += `<div class="rv-opts"><div class="rv-opt rv-ok">${esc(q.co || '')}${tag(true)}</div>${q.ok ? '' : `<div class="rv-opt rv-bad">${esc((q.answer && q.answer.given) || '—')}${tag(false, true)}</div>`}</div>`;
+    }
+    return h;
+  }
+  function trainReview(q) {
+    const c = q.cardId && cardIndex ? cardIndex[q.cardId] : null;
+    const parts = q.parts || {};
+    const partRow = (k, v) => `<div class="fb-row"><span class="fb-p">${LABELS.part[k] || esc(k)}</span><span class="fb-a ${v === 'exact' ? 'exact' : v === 'tones' ? 'tones' : 'wrong'}" style="text-decoration:none">${v === 'exact' ? 'верно' : v === 'tones' ? 'не те тоны' : v === 'wrong' ? 'ошибка' : esc(String(v))}</span></div>`;
+    return `<div class="sh-card"><div class="hanzi mid">${esc(q.hanzi)}</div><div class="pinyin">${esc(q.pinyin || '')}</div><div class="ru">${esc(q.ru || '')}</div></div>
+      <div class="fb-row"><span class="fb-p">Показано</span><span class="fb-v">${LABELS.part[q.show] || esc(q.show || '—')}</span></div>
+      <div class="fb-row"><span class="fb-p">Спрошено</span><span class="fb-v">${(q.guess || []).map(p => LABELS.part[p] || esc(p)).join(' + ') || '—'}</span></div>
+      <div class="fb-row"><span class="fb-p">Ваш ответ</span><span class="fb-v ${q.ok ? 'ok-t' : 'bad-t'}">${esc(App.answerText(q))}</span></div>
+      ${Object.keys(parts).length ? `<div class="flabel">По частям</div>${Object.entries(parts).map(([k, v]) => partRow(k, v)).join('')}` : ''}
+      <div class="btns mt">${sayBtn([q.hanzi])}${c ? `<button class="btn btn-secondary btn-block" data-action="stat-card" data-id="${esc(c.id)}">Карточка и история</button>` : ''}</div>`;
+  }
+  actions['q-review'] = el => {
+    const a = state.attempts.find(x => x.id === el.dataset.id); if (!a) return;
+    const i = +el.dataset.i, q = (a.questions || [])[i]; if (!q) return;
+    const st = q.ok ? '<span class="rv-tag ok">верно</span>' : q.fraction > 0 ? '<span class="rv-tag half">частично</span>' : '<span class="rv-tag bad">ошибка</span>';
+    const n = a.questions.length;
+    const head = `<div class="rv-nav"><button class="icon-btn" data-action="q-review" data-id="${esc(a.id)}" data-i="${i - 1}" ${i > 0 ? '' : 'disabled'} data-nosound aria-label="Предыдущий">‹</button><span>Вопрос ${i + 1} из ${n}</span><button class="icon-btn" data-action="q-review" data-id="${esc(a.id)}" data-i="${i + 1}" ${i < n - 1 ? '' : 'disabled'} data-nosound aria-label="Следующий">›</button></div>`;
+    sheet(`${head}<div class="rv-head">${st}${q.ms ? `<span class="muted">${fmt.secs(q.ms)}</span>` : ''}</div>${q.sec ? examReview(q) : trainReview(q)}<button class="btn btn-primary btn-block mt" data-close>Закрыть</button>`);
+  };
+  actions['q-say'] = async el => {
+    let lines = []; try { lines = JSON.parse(el.dataset.t || '[]'); } catch (e) { return; }
+    if (!Speech.available()) return toast('Нет китайского голоса — установите его в настройках телефона', 3000);
+    for (const t of lines) await Speech.speak(String(t));
   };
   actions['attempt-delete'] = async el => {
     const a = state.attempts.find(x => x.id === el.dataset.id); if (!a) return;

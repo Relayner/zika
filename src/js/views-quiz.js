@@ -412,7 +412,7 @@
       <div class="panel ornate result-top ${stamp ? 'has-stamp' : ''}">${ring(a.percent)}<div class="res-meta"><div class="big-score">${a.score}<small> ${a.examMax ? 'из ' + a.examMax + ' · порог ' + Math.round(a.examMax * 0.6) : 'балл ×' + (Quiz.MULT[a.difficulty] || 1)}</small></div><div class="res-line">${a.correct} верно · ${a.partial} частично · ${a.wrong} неверно</div><div class="res-line muted">${fmt.dur(a.durationMs)} · ${fmt.secs(a.durationMs / a.total)} на вопрос</div></div>${stamp}</div>
       ${App.Profile.resultPanel(a, lastEvents && lastEvents.id === a.id ? lastEvents : null)}
       <div class="btns"><button class="btn btn-primary btn-block" data-action="retry-mistakes" data-id="${a.id}" ${mistakes.length ? '' : 'disabled'}>Повторить ошибки${mistakes.length ? ' (' + mistakes.length + ')' : ''}</button><button class="btn btn-secondary btn-block" data-action="retry-same" data-id="${a.id}">Ещё раз</button></div>
-      ${mistakes.length ? `<h2 class="h2">Ошибки</h2>${mistakes.map(questionRow).join('')}` : '<div class="empty gold">Без единой ошибки — 太棒了!</div>'}
+      ${mistakes.length ? `<h2 class="h2">Ошибки</h2>${mistakes.map(q => questionRow(q, a.questions.indexOf(q), a.id)).join('')}` : '<div class="empty gold">Без единой ошибки — 太棒了!</div>'}
       <div class="btns"><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор всех вопросов</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
     },
     mount(p) {

@@ -117,9 +117,11 @@ window.App = (() => {
     return `<div class="ru ${size === 'big' ? 'big' : ''}">${esc(card.ru)}</div>`;
   }
   function attemptRow(a) {
-    const diff = a.mode === 'flip' ? '' : ' · ' + LABELS.diff[a.difficulty];
+    const diff = a.mode === 'flip' || !LABELS.diff[a.difficulty] ? '' : ' · ' + LABELS.diff[a.difficulty];
     const tag = a.mode === 'hsk' ? (a.passed ? ' · сдан' : ' · не сдан') : '';
-    return `<button class="row tap" data-go="attempt" data-params="${attr({ id: a.id })}"><div><div class="row-t">${LABELS.mode[a.mode] || a.mode}${a.level ? ' ' + a.level : ''}${a.mode === 'hsk' ? '' : ' · ' + esc(a.deckName)}</div><div class="row-s">${fmt.date(a.ts)}${diff} · ${fmt.plural(a.total, 'вопрос', 'вопроса', 'вопросов')} · ${fmt.dur(a.durationMs)}${tag}${a.aborted ? ' · прервана' : ''}</div></div><div class="row-r"><span class="badge ${accClass(a.percent)}">${a.percent}%</span><span class="chev">›</span></div></button>`;
+    const lvl = a.level && (a.mode === 'hsk' || a.mode === 'boss') ? ' ' + a.level : '';   /* уровень значим для экзамена и босса; у звучания и письма он служебный */
+    const name = a.mode === 'hsk' || a.mode === 'phon' || a.mode === 'flow' ? '' : ' · ' + esc(a.deckName);
+    return `<button class="row tap" data-go="attempt" data-params="${attr({ id: a.id })}"><div><div class="row-t">${a.format === 'real' ? 'Экзамен HSK' : a.mode === 'phon' ? esc(a.deckName) : (LABELS.mode[a.mode] || a.mode)}${lvl}${name}</div><div class="row-s">${fmt.date(a.ts)}${diff} · ${fmt.plural(a.total, 'вопрос', 'вопроса', 'вопросов')} · ${fmt.dur(a.durationMs)}${tag}${a.aborted ? ' · прервана' : ''}</div></div><div class="row-r"><span class="badge ${accClass(a.percent)}">${a.percent}%</span><span class="chev">›</span></div></button>`;
   }
   function answerText(q) {
     const a = q.answer || {};
@@ -129,12 +131,19 @@ window.App = (() => {
     if (a.input) return q.guess.map(p => (a.input[p] || '—')).join(' · ');
     return '—';
   }
-  function questionRow(q) {
+  const SECZ = { listening: '听', reading: '读', writing: '写' };
+  /* строка вопроса в разборе попытки; с attemptId — кнопка, открывающая подробный разбор */
+  function questionRow(q, i, attemptId) {
     const cls = q.ok ? 'ok' : q.fraction > 0 ? 'half' : 'bad';
     const mark = q.ok ? '✓' : q.fraction > 0 ? '½' : '✗';
-    const ans = esc(answerText(q));
-    return `<div class="qrow ${cls}"><div class="qrow-main"><span class="hanzi sm">${esc(q.hanzi)}</span><span class="pinyin sm">${esc(q.pinyin)}</span><div class="ru sm">${esc(q.ru)}</div></div><div class="qrow-ans">${q.ok ? '' : '<b>' + ans + '</b><br>'}${LABELS.part[q.show]} → ${q.guess.map(p => LABELS.part[p]).join('+')}${q.ms ? '<br>' + fmt.secs(q.ms) : ''}</div><div class="qrow-mark">${mark}</div></div>`;
+    const exam = !!q.sec;
+    const ans = esc(exam ? ((q.answer && q.answer.given) || '—') : answerText(q));
+    const dir = exam ? `${SECZ[q.sec] || ''} · часть ${q.part}` : `${LABELS.part[q.show] || ''} → ${(q.guess || []).map(p => LABELS.part[p] || p).join('+')}`;
+    const tap = attemptId != null && typeof i === 'number';
+    const open = tap ? `<button class="qrow tap ${cls}" data-action="q-review" data-id="${esc(String(attemptId))}" data-i="${i}" data-nosound>` : `<div class="qrow ${cls}">`;
+    return `${open}<div class="qrow-main"><span class="hanzi sm">${esc(q.hanzi)}</span><span class="pinyin sm">${esc(q.pinyin || '')}</span><div class="ru sm">${esc(q.ru || '')}</div></div><div class="qrow-ans">${q.ok ? '' : '<b>' + ans + '</b><br>'}${dir}${q.ms ? '<br>' + fmt.secs(q.ms) : ''}</div><div class="qrow-mark">${mark}</div>${tap ? '<span class="chev">›</span></button>' : '</div>'}`;
   }
+
 
   /* ── UI-помощники ── */
   let toastT = null;

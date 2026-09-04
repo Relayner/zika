@@ -677,6 +677,29 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .sh-step .zh { font-size: 24px; color: var(--jade, #2e7d5b); min-width: 30px; text-align: center; }
 .sh-step div { flex: 1; } .sh-step b { display: block; } .sh-step small { color: var(--ink-2, #6b6156); }
 
+/* ── разбор вопроса ── */
+button.qrow { width: 100%; background: transparent; border-top: 0; border-right: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.qrow:active { background: var(--half-bg); }
+.qrow .chev, .err-item .chev { color: var(--ink-3); font-size: 18px; margin-left: 2px; }
+button.err-item { display: block; width: 100%; background: transparent; border: 0; border-top: 1px dashed var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.err-item .chev { margin-left: auto; }
+.rv-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--serif); font-size: 19px; margin: 0 0 6px; }
+.rv-head { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; font-size: 13px; }
+.rv-tag { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--half-bg); color: var(--ink-2); }
+.rv-tag.ok { background: rgba(46, 125, 91, .16); color: var(--jade); } .rv-tag.bad { background: rgba(179, 57, 47, .15); color: var(--vermilion); } .rv-tag.half { background: rgba(200, 150, 40, .2); color: var(--gold); }
+.rv-say { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; }
+.rv-line { font-size: 17px; line-height: 1.5; }
+.rv-text { font-size: 18px; line-height: 1.5; margin: 0 0 10px; } .rv-sub { font-weight: 600; margin-top: 6px; font-size: 15px; }
+.rv-opts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.rv-opt { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1.5px solid var(--line-2); border-radius: 10px; font-size: 16px; }
+.rv-opt.rv-ok { border-color: var(--jade); } .rv-opt.rv-bad { border-color: var(--vermilion); }
+.rv-opt .rv-tag { margin-left: auto; flex: none; }
+.rv-pic { text-align: center; margin: 6px 0 10px; } .rv-pic .ex-pic { max-width: 220px; border-radius: 12px; }
+.rv-cap { margin-top: 6px; font-size: 15px; } .rv-cap.sm { font-size: 12.5px; text-align: center; padding: 4px 2px 2px; line-height: 1.3; }
+.rv-pics .ex-picbtn { text-align: center; } .rv-pics .ex-picbtn.rv-ok { border-color: var(--jade); } .rv-pics .ex-picbtn.rv-bad { border-color: var(--vermilion); }
+.rv-pics .ex-picbtn .rv-tag { margin: 2px 0 4px; }
+.rv-chips { margin-bottom: 8px; }
+
 </style>
 <div id="app">
   <main id="view" aria-live="polite"></main>
@@ -3169,6 +3192,23 @@ window.PHON = (() => {
 /* Что нового: большие фишки → приятные мелочи → исправления. Показывается один раз после обновления. */
 window.CHANGELOG = [
   {
+    v: '20260905',
+    title: 'Разбор каждого вопроса',
+    features: [
+      ['Разбор ошибок экзамена', 'Любой вопрос в попытке теперь открывается: что звучало (с кнопкой «Прослушать»), какая была картинка, все варианты с пометками «верно» и «ваш ответ», перевод слов из словаря. Стрелки ‹ › листают вопросы, не закрывая разбор.'],
+      ['Разбор тренировок', 'Для вопросов тренировки — что показано, что спрошено, ваш ответ по частям (пиньинь, перевод), озвучка и переход к карточке с историей.'],
+    ],
+    minor: [
+      'В строках попытки экзамена — раздел и часть вместо «undefined»',
+      'Попытка настоящего экзамена называется «Экзамен HSK», а не «Словарный тест»',
+      'Список «Разбор ошибок» на итоге экзамена тоже открывает подробный разбор',
+    ],
+    fixes: [
+      'Для экзамена вместо бесполезной «Повторить ошибки» — «Итог по этапам» и «Ещё вариант»',
+      'Старые попытки экзамена (до этого обновления) открываются в разборе текстом: транскрипт, верный и ваш ответ',
+    ],
+  },
+  {
     v: '20260902',
     title: 'Старт с нуля: полный курс звучания и разгон для новичка',
     features: [
@@ -5345,7 +5385,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260902-0015';
+  const VERSION = '20260904-2215';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5462,9 +5502,11 @@ window.App = (() => {
     return `<div class="ru ${size === 'big' ? 'big' : ''}">${esc(card.ru)}</div>`;
   }
   function attemptRow(a) {
-    const diff = a.mode === 'flip' ? '' : ' · ' + LABELS.diff[a.difficulty];
+    const diff = a.mode === 'flip' || !LABELS.diff[a.difficulty] ? '' : ' · ' + LABELS.diff[a.difficulty];
     const tag = a.mode === 'hsk' ? (a.passed ? ' · сдан' : ' · не сдан') : '';
-    return `<button class="row tap" data-go="attempt" data-params="${attr({ id: a.id })}"><div><div class="row-t">${LABELS.mode[a.mode] || a.mode}${a.level ? ' ' + a.level : ''}${a.mode === 'hsk' ? '' : ' · ' + esc(a.deckName)}</div><div class="row-s">${fmt.date(a.ts)}${diff} · ${fmt.plural(a.total, 'вопрос', 'вопроса', 'вопросов')} · ${fmt.dur(a.durationMs)}${tag}${a.aborted ? ' · прервана' : ''}</div></div><div class="row-r"><span class="badge ${accClass(a.percent)}">${a.percent}%</span><span class="chev">›</span></div></button>`;
+    const lvl = a.level && (a.mode === 'hsk' || a.mode === 'boss') ? ' ' + a.level : '';   /* уровень значим для экзамена и босса; у звучания и письма он служебный */
+    const name = a.mode === 'hsk' || a.mode === 'phon' || a.mode === 'flow' ? '' : ' · ' + esc(a.deckName);
+    return `<button class="row tap" data-go="attempt" data-params="${attr({ id: a.id })}"><div><div class="row-t">${a.format === 'real' ? 'Экзамен HSK' : a.mode === 'phon' ? esc(a.deckName) : (LABELS.mode[a.mode] || a.mode)}${lvl}${name}</div><div class="row-s">${fmt.date(a.ts)}${diff} · ${fmt.plural(a.total, 'вопрос', 'вопроса', 'вопросов')} · ${fmt.dur(a.durationMs)}${tag}${a.aborted ? ' · прервана' : ''}</div></div><div class="row-r"><span class="badge ${accClass(a.percent)}">${a.percent}%</span><span class="chev">›</span></div></button>`;
   }
   function answerText(q) {
     const a = q.answer || {};
@@ -5474,12 +5516,19 @@ window.App = (() => {
     if (a.input) return q.guess.map(p => (a.input[p] || '—')).join(' · ');
     return '—';
   }
-  function questionRow(q) {
+  const SECZ = { listening: '听', reading: '读', writing: '写' };
+  /* строка вопроса в разборе попытки; с attemptId — кнопка, открывающая подробный разбор */
+  function questionRow(q, i, attemptId) {
     const cls = q.ok ? 'ok' : q.fraction > 0 ? 'half' : 'bad';
     const mark = q.ok ? '✓' : q.fraction > 0 ? '½' : '✗';
-    const ans = esc(answerText(q));
-    return `<div class="qrow ${cls}"><div class="qrow-main"><span class="hanzi sm">${esc(q.hanzi)}</span><span class="pinyin sm">${esc(q.pinyin)}</span><div class="ru sm">${esc(q.ru)}</div></div><div class="qrow-ans">${q.ok ? '' : '<b>' + ans + '</b><br>'}${LABELS.part[q.show]} → ${q.guess.map(p => LABELS.part[p]).join('+')}${q.ms ? '<br>' + fmt.secs(q.ms) : ''}</div><div class="qrow-mark">${mark}</div></div>`;
+    const exam = !!q.sec;
+    const ans = esc(exam ? ((q.answer && q.answer.given) || '—') : answerText(q));
+    const dir = exam ? `${SECZ[q.sec] || ''} · часть ${q.part}` : `${LABELS.part[q.show] || ''} → ${(q.guess || []).map(p => LABELS.part[p] || p).join('+')}`;
+    const tap = attemptId != null && typeof i === 'number';
+    const open = tap ? `<button class="qrow tap ${cls}" data-action="q-review" data-id="${esc(String(attemptId))}" data-i="${i}" data-nosound>` : `<div class="qrow ${cls}">`;
+    return `${open}<div class="qrow-main"><span class="hanzi sm">${esc(q.hanzi)}</span><span class="pinyin sm">${esc(q.pinyin || '')}</span><div class="ru sm">${esc(q.ru || '')}</div></div><div class="qrow-ans">${q.ok ? '' : '<b>' + ans + '</b><br>'}${dir}${q.ms ? '<br>' + fmt.secs(q.ms) : ''}</div><div class="qrow-mark">${mark}</div>${tap ? '<span class="chev">›</span></button>' : '</div>'}`;
   }
+
 
   /* ── UI-помощники ── */
   let toastT = null;
@@ -6503,7 +6552,7 @@ window.App = (() => {
       <div class="panel ornate result-top ${stamp ? 'has-stamp' : ''}">${ring(a.percent)}<div class="res-meta"><div class="big-score">${a.score}<small> ${a.examMax ? 'из ' + a.examMax + ' · порог ' + Math.round(a.examMax * 0.6) : 'балл ×' + (Quiz.MULT[a.difficulty] || 1)}</small></div><div class="res-line">${a.correct} верно · ${a.partial} частично · ${a.wrong} неверно</div><div class="res-line muted">${fmt.dur(a.durationMs)} · ${fmt.secs(a.durationMs / a.total)} на вопрос</div></div>${stamp}</div>
       ${App.Profile.resultPanel(a, lastEvents && lastEvents.id === a.id ? lastEvents : null)}
       <div class="btns"><button class="btn btn-primary btn-block" data-action="retry-mistakes" data-id="${a.id}" ${mistakes.length ? '' : 'disabled'}>Повторить ошибки${mistakes.length ? ' (' + mistakes.length + ')' : ''}</button><button class="btn btn-secondary btn-block" data-action="retry-same" data-id="${a.id}">Ещё раз</button></div>
-      ${mistakes.length ? `<h2 class="h2">Ошибки</h2>${mistakes.map(questionRow).join('')}` : '<div class="empty gold">Без единой ошибки — 太棒了!</div>'}
+      ${mistakes.length ? `<h2 class="h2">Ошибки</h2>${mistakes.map(q => questionRow(q, a.questions.indexOf(q), a.id)).join('')}` : '<div class="empty gold">Без единой ошибки — 太棒了!</div>'}
       <div class="btns"><button class="btn btn-secondary btn-block" data-go="attempt" data-params="${attr({ id: a.id })}">Разбор всех вопросов</button><button class="btn btn-secondary btn-block" data-go="home">На главную</button></div>`;
     },
     mount(p) {
@@ -8923,22 +8972,29 @@ window.BossMusic = (() => {
     if (q.type === 'pickpic') return 'ABC'[q.givenIdx] + ' · ' + picWord(q.pics[q.givenIdx]);
     return q.givenIdx === 0 ? '对' : '错';
   };
-  function finishExam() {
-    stopTimers();
-    for (const q of ex.qs) if (q.ok == null) { q.ok = false; q.given = null; }
-    const res = HskReal.score(ex.qs, ex.spec);
-    const spec = ex.spec;
+  /* снимок вопроса для разбора: что звучало, что было написано, какие были картинки и варианты, что выбрали */
+  const SNAP_KEYS = ['say', 'text', 'textPy', 'sub', 'star', 'pic', 'pics', 'pool', 'opts', 'chunks', 'py', 'correct', 'answer', 'answers', 'given', 'givenIdx'];
+  function snapOf(q) { const s = { type: q.type }; for (const k of SNAP_KEYS) if (q[k] != null) s[k] = q[k]; return s; }
+  function buildAttempt(qs, level, spec, startedAt) {
+    for (const q of qs) if (q.ok == null) { q.ok = false; q.given = null; }
+    const res = HskReal.score(qs, spec);
     const a = {
-      id: uid(), ts: ex.startedAt, endedAt: Date.now(), durationMs: Date.now() - ex.startedAt,
-      mode: 'hsk', format: 'real', level: ex.level, difficulty: 'exam',
-      deckIds: ['hsk' + ex.level], deckName: 'Экзамен HSK ' + ex.level, show: 'exam', guess: ['all'], order: 'random', timer: 0,
-      total: ex.qs.length, planned: ex.qs.length, aborted: false,
-      correct: ex.qs.filter(q => q.ok).length, partial: 0, wrong: ex.qs.filter(q => !q.ok).length,
-      percent: Math.round(ex.qs.filter(q => q.ok).length / ex.qs.length * 100),
+      id: uid(), ts: startedAt, endedAt: Date.now(), durationMs: Date.now() - startedAt,
+      mode: 'hsk', format: 'real', level, difficulty: 'exam',
+      deckIds: ['hsk' + level], deckName: 'Экзамен HSK ' + level, show: 'exam', guess: ['all'], order: 'random', timer: 0,
+      total: qs.length, planned: qs.length, aborted: false,
+      correct: qs.filter(q => q.ok).length, partial: 0, wrong: qs.filter(q => !q.ok).length,
+      percent: Math.round(qs.filter(q => q.ok).length / qs.length * 100),
       score: res.score, examMax: spec.max, passed: res.passed, sections: res.sections,
-      questions: ex.qs.map(q => ({ cardId: 'ex' + ex.level + ':' + q.sec + q.part, sec: q.sec, part: q.part, hanzi: promptOf(q), pinyin: '', co: correctTextOf(q), ru: 'Верно: ' + correctTextOf(q), show: q.sec, guess: [String(q.part)], answer: { given: givenTextOf(q) }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0 })),
+      questions: qs.map(q => ({ cardId: 'ex' + level + ':' + q.sec + q.part, sec: q.sec, part: q.part, hanzi: promptOf(q), pinyin: '', co: correctTextOf(q), ru: 'Верно: ' + correctTextOf(q), show: q.sec, guess: [String(q.part)], answer: { given: givenTextOf(q) }, parts: {}, fraction: q.ok ? 1 : 0, ok: q.ok, ms: q.ms || 0, ex: snapOf(q) })),
     };
     a.points = Campaign.attemptPoints(a);
+    return a;
+  }
+  App.examAttempt = buildAttempt;
+  function finishExam() {
+    stopTimers();
+    const a = buildAttempt(ex.qs, ex.level, ex.spec, ex.startedAt);
     ex = null;
     saveAttempt(a).then(() => { Sound.finish(a.passed); nav('exam-result', { id: a.id }, { replace: true }); });
   }
@@ -8961,7 +9017,7 @@ window.BossMusic = (() => {
         });
         stagesUi = `<div class="panel"><div class="flabel">По этапам</div>${sts.map((st, i) => `<div class="fb-row"><span class="fb-p">${i + 1} · ${SEC[st.sec][0]} ${SEC[st.sec][1]} ч.${st.part}</span><span class="fb-v" style="color:${st.ok === st.n ? 'var(--jade)' : st.ok === 0 ? 'var(--danger)' : 'var(--ink)'}"><b>${st.ok}</b> из ${st.n}</span></div>`).join('')}</div>`;
         const bad = sts.filter(st => st.errs.length);
-        if (bad.length) errsUi = `<div class="panel"><div class="flabel">Разбор ошибок</div>${bad.map(st => `<div class="err-stage">Этап ${sts.indexOf(st) + 1} · ${SEC[st.sec][1]} · часть ${st.part}</div>${st.errs.map(qq => `<div class="err-item"><div class="err-q">${esc(qq.hanzi)}</div><div class="err-a"><span class="ok-t">верно: ${esc(qq.co || '')}</span><span class="bad-t">ваш ответ: ${esc((qq.answer && qq.answer.given) || '—')}</span></div></div>`).join('')}`).join('')}</div>`;
+        if (bad.length) errsUi = `<div class="panel"><div class="flabel">Разбор ошибок</div>${bad.map(st => `<div class="err-stage">Этап ${sts.indexOf(st) + 1} · ${SEC[st.sec][1]} · часть ${st.part}</div>${st.errs.map(qq => `<button class="err-item tap" data-action="q-review" data-id="${esc(a.id)}" data-i="${a.questions.indexOf(qq)}" data-nosound><div class="err-q">${esc(qq.hanzi)}</div><div class="err-a"><span class="ok-t">верно: ${esc(qq.co || '')}</span><span class="bad-t">ваш ответ: ${esc((qq.answer && qq.answer.given) || '—')}</span><span class="chev">›</span></div></button>`).join('')}`).join('')}</div>`;
       }
       return `<div class="vh"><div class="seal">考</div><div class="grow"><h1 class="title">Экзамен HSK ${a.level}</h1><div class="sub">настоящий формат · ${fmt.dur(a.durationMs)}</div></div></div>
       <div class="panel ornate result-top has-stamp"><div class="res-meta"><div class="big-score">${a.score}<small> из ${a.examMax} · порог ${Math.round(a.examMax * 0.6)}</small></div>${Object.keys(a.sections).map(k => secRow(k, SEC[k][0], SEC[k][1])).join('')}</div>${stamp}</div>
@@ -9249,14 +9305,84 @@ window.BossMusic = (() => {
     render(p) {
       const a = state.attempts.find(x => x.id === p.id);
       if (!a) return '<div class="empty">Попытка не найдена</div>';
-      const dir = a.show === 'mixed' ? 'смешанное направление' : a.show === 'exam' ? 'экзаменационный формат' + (a.examMax ? ', балл из ' + a.examMax : '') : LABELS.part[a.show] + ' → ' + (a.guess || []).map(x => LABELS.part[x]).join(' + ');
-      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${LABELS.mode[a.mode]}${a.level ? ' ' + a.level : ''}</h1><div class="sub">${fmt.date(a.ts)}${a.mode === 'hsk' ? '' : ' · ' + esc(a.deckName)}</div></div><button class="icon-btn" data-action="attempt-delete" data-id="${a.id}" aria-label="Удалить">🗑</button></div>
-      <div class="tiles t3">${tile(a.percent + '%', 'результат')}${tile(a.score, 'балл')}${tile(fmt.dur(a.durationMs), 'время')}</div>
+      const dir = a.show === 'mixed' ? 'смешанное направление' : a.show === 'exam' ? 'экзаменационный формат' + (a.examMax ? ', балл из ' + a.examMax : '') : LABELS.part[a.show] ? LABELS.part[a.show] + ' → ' + (a.guess || []).map(x => LABELS.part[x] || x).join(' + ') : a.mode === 'phon' ? (a.difficulty === 'theory' ? 'разбор с примерами' : 'дрилл на слух') : '';
+      return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${a.format === 'real' ? 'Экзамен HSK' : a.mode === 'phon' ? esc(a.deckName) : LABELS.mode[a.mode]}${a.level && (a.mode === 'hsk' || a.mode === 'boss') ? ' ' + a.level : ''}</h1><div class="sub">${fmt.date(a.ts)}${a.mode === 'hsk' || a.mode === 'phon' ? '' : ' · ' + esc(a.deckName)}</div></div><button class="icon-btn" data-action="attempt-delete" data-id="${a.id}" aria-label="Удалить">🗑</button></div>
+      <div class="tiles t3">${tile(a.percent + '%', 'результат')}${a.score != null ? tile(a.score, 'балл') : tile('+' + Math.round(a.points != null ? a.points : Campaign.attemptPoints(a)), 'очков')}${tile(fmt.dur(a.durationMs), 'время')}</div>
       <div class="tiles t3">${tile(a.correct, 'верно')}${tile(a.partial, 'частично')}${tile(a.wrong, 'неверно')}</div>
-      <div class="panel"><div class="hint" style="margin:0">${a.mode !== 'flip' ? LABELS.diff[a.difficulty] + ' · ' : ''}${dir} · ${LABELS.order[a.order] || ''}${a.timer ? ' · таймер ' + a.timer + ' с' : ''} · ${fmt.secs(a.durationMs / a.total)} на вопрос${a.passed != null ? (a.passed ? ' · <b>сдан</b>' : ' · <b>не сдан</b>') : ''}${a.aborted ? ' · прервана на ' + a.total + ' из ' + a.planned : ''} · <b>+${Math.round(a.points != null ? a.points : Campaign.attemptPoints(a))} очк. похода</b></div></div>
-      <h2 class="h2">Вопросы</h2>${a.questions.map(questionRow).join('')}
-      <div class="btns"><button class="btn btn-secondary btn-block" data-action="retry-mistakes" data-id="${a.id}" ${a.questions.some(q => !q.ok) ? '' : 'disabled'}>Повторить ошибки</button></div>`;
+      <div class="panel"><div class="hint" style="margin:0">${[a.mode !== 'flip' && LABELS.diff[a.difficulty] ? LABELS.diff[a.difficulty] : '', dir, a.mode === 'phon' ? '' : (LABELS.order[a.order] || ''), a.timer ? 'таймер ' + a.timer + ' с' : '', a.total > 1 || a.mode !== 'phon' ? fmt.secs(a.durationMs / a.total) + ' на вопрос' : '', a.passed != null ? (a.passed ? '<b>сдан</b>' : '<b>не сдан</b>') : '', a.aborted ? 'прервана на ' + a.total + ' из ' + a.planned : '', '<b>+' + Math.round(a.points != null ? a.points : Campaign.attemptPoints(a)) + ' очк. похода</b>'].filter(Boolean).join(' · ')}</div></div>
+      <h2 class="h2">Вопросы</h2><div class="hint" style="margin:-4px 0 8px">Нажмите на вопрос — откроется разбор: что звучало, что было на картинке, какой ответ верный.</div>${a.questions.map((q, i) => questionRow(q, i, a.id)).join('')}
+      <div class="btns">${a.format === 'real' ? `<button class="btn btn-secondary btn-block" data-go="exam-result" data-params="${attr({ id: a.id })}">Итог экзамена по этапам</button><button class="btn btn-secondary btn-block" data-action="hsk-real" data-level="${a.level || 1}">Ещё вариант HSK ${a.level || 1}</button>` : `<button class="btn btn-secondary btn-block" data-action="retry-mistakes" data-id="${a.id}" ${a.questions.some(q => !q.ok) ? '' : 'disabled'}>Повторить ошибки</button>`}</div>`;
     },
+  };
+  /* ── разбор одного вопроса ── */
+  const SEC = { listening: ['听力', 'Аудирование'], reading: ['阅读', 'Чтение'], writing: ['书写', 'Письмо'] };
+  const LET = 'ABCDEF';
+  const picImg = id => `<img class="ex-pic" src="${IMG_URL('pic-' + id)}" alt="" draggable="false">`;
+  const picOf = id => (window.HskReal && HskReal.picById(id)) || null;
+  let glossMap = null;
+  function gloss(h) {
+    if (!h) return '';
+    if (!glossMap) { glossMap = {}; Object.values(cardIndex || {}).forEach(c => { if (c && c.hanzi && !glossMap[c.hanzi]) glossMap[c.hanzi] = c; }); }
+    const c = glossMap[String(h).trim()]; return c ? c.ru : '';
+  }
+  const withGloss = h => { const g = gloss(h); return `<span class="zh">${esc(h)}</span>${g ? ` <span class="muted">— ${esc(g)}</span>` : ''}`; };
+  const mark = (isOk, isGiven) => (isOk ? ' rv-ok' : isGiven ? ' rv-bad' : '');
+  const tag = (isOk, isGiven) => (isOk ? '<span class="rv-tag ok">верно</span>' : isGiven ? '<span class="rv-tag bad">ваш ответ</span>' : '');
+  const sayBtn = lines => `<button class="btn btn-secondary btn-sm" data-action="q-say" data-t="${attr(lines)}" data-nosound>🔊 Прослушать</button>`;
+  function examReview(q) {
+    const x = q.ex || {};
+    const lines = x.say != null ? (Array.isArray(x.say) ? x.say : [x.say]) : (q.sec === 'listening' && !x.type ? String(q.hanzi || '').split(' — ') : []);
+    let h = `<div class="flabel">${SEC[q.sec] ? SEC[q.sec][0] + ' ' + SEC[q.sec][1] : esc(q.sec)} · часть ${q.part}</div>`;
+    if (lines.length) h += `<div class="rv-say">${lines.map(l => `<div class="rv-line zh">${esc(l)}</div>`).join('')}<div class="mt">${sayBtn(lines)}</div></div>`;
+    if (x.text) h += `<div class="rv-text"><span class="zh">${esc(x.text)}</span>${x.textPy ? ` <span class="pinyin sm">${esc(x.textPy)}</span>` : ''}${x.py ? ` <span class="pinyin sm">（${esc(x.py)}）</span>` : ''}${x.sub ? `<div class="rv-sub">${esc(x.sub)}</div>` : ''}</div>`;
+    else if (!lines.length && !x.type) h += `<div class="rv-text zh">${esc(q.hanzi || '')}</div>`;   /* попытка до разбора: снимка нет, только текст */
+    if (x.star) h += `<div class="ex-star">★ ${esc(x.star)}</div>`;
+    if (x.type === 'tf') {
+      const p = x.pic ? picOf(x.pic) : null;
+      if (x.pic) h += `<div class="rv-pic">${picImg(x.pic)}${p ? `<div class="rv-cap">${withGloss(p.h)}${p.py ? ` <span class="pinyin sm">${esc(p.py)}</span>` : ''}</div>` : ''}</div>`;
+      h += `<div class="rv-opts">${['对 · верно', '错 · неверно'].map((t, i) => `<div class="rv-opt${mark(i === x.correct, i === x.givenIdx)}">${t}${tag(i === x.correct, i === x.givenIdx)}</div>`).join('')}</div>`;
+    } else if (x.type === 'pickpic' || x.type === 'poolpic') {
+      const list = x.type === 'pickpic' ? (x.pics || []) : (x.pool || []);
+      const okIdx = x.type === 'pickpic' ? x.correct : list.indexOf(x.answer);
+      const gvIdx = x.type === 'pickpic' ? x.givenIdx : list.indexOf(x.given);
+      h += `<div class="ex-pics rv-pics">${list.map((id, i) => { const p = picOf(id); return `<div class="ex-picbtn${mark(i === okIdx, i === gvIdx)}"><span class="ex-letter">${LET[i]}</span>${picImg(id)}${p ? `<div class="rv-cap sm">${withGloss(p.h)}</div>` : ''}${i === okIdx ? '<span class="rv-tag ok">верно</span>' : i === gvIdx ? '<span class="rv-tag bad">ваш</span>' : ''}</div>`; }).join('')}</div>`;
+    } else if (x.type === 'opts') {
+      h += `<div class="rv-opts">${(x.opts || []).map((o, i) => `<div class="rv-opt${mark(i === x.correct, i === x.givenIdx)}"><b>${LET[i]}</b> ${withGloss(o)}${tag(i === x.correct, i === x.givenIdx)}</div>`).join('')}</div>`;
+    } else if (x.type === 'pool') {
+      h += `<div class="rv-opts">${(x.pool || []).map((o, i) => `<div class="rv-opt${mark(o === x.answer, o === x.given)}"><b>${LET[i]}</b> ${withGloss(o)}${tag(o === x.answer, o === x.given)}</div>`).join('')}</div>`;
+    } else if (x.type === 'arrange') {
+      h += `<div class="chips rv-chips">${(x.chunks || []).map(c => `<span class="chip">${esc(c)}</span>`).join('')}</div>
+        <div class="rv-opts"><div class="rv-opt rv-ok"><span class="zh">${esc((x.answers || [])[0] || q.co || '')}</span>${tag(true)}</div>${q.ok ? '' : `<div class="rv-opt rv-bad"><span class="zh">${esc(x.given || (q.answer && q.answer.given) || '—')}</span>${tag(false, true)}</div>`}</div>`;
+    } else if (x.type === 'input') {
+      h += `<div class="rv-opts"><div class="rv-opt rv-ok">${withGloss(x.answer)}${tag(true)}</div>${q.ok ? '' : `<div class="rv-opt rv-bad"><span class="zh">${esc(x.given || '—')}</span>${tag(false, true)}</div>`}</div>`;
+    } else {
+      h += `<div class="rv-opts"><div class="rv-opt rv-ok">${esc(q.co || '')}${tag(true)}</div>${q.ok ? '' : `<div class="rv-opt rv-bad">${esc((q.answer && q.answer.given) || '—')}${tag(false, true)}</div>`}</div>`;
+    }
+    return h;
+  }
+  function trainReview(q) {
+    const c = q.cardId && cardIndex ? cardIndex[q.cardId] : null;
+    const parts = q.parts || {};
+    const partRow = (k, v) => `<div class="fb-row"><span class="fb-p">${LABELS.part[k] || esc(k)}</span><span class="fb-a ${v === 'exact' ? 'exact' : v === 'tones' ? 'tones' : 'wrong'}" style="text-decoration:none">${v === 'exact' ? 'верно' : v === 'tones' ? 'не те тоны' : v === 'wrong' ? 'ошибка' : esc(String(v))}</span></div>`;
+    return `<div class="sh-card"><div class="hanzi mid">${esc(q.hanzi)}</div><div class="pinyin">${esc(q.pinyin || '')}</div><div class="ru">${esc(q.ru || '')}</div></div>
+      <div class="fb-row"><span class="fb-p">Показано</span><span class="fb-v">${LABELS.part[q.show] || esc(q.show || '—')}</span></div>
+      <div class="fb-row"><span class="fb-p">Спрошено</span><span class="fb-v">${(q.guess || []).map(p => LABELS.part[p] || esc(p)).join(' + ') || '—'}</span></div>
+      <div class="fb-row"><span class="fb-p">Ваш ответ</span><span class="fb-v ${q.ok ? 'ok-t' : 'bad-t'}">${esc(App.answerText(q))}</span></div>
+      ${Object.keys(parts).length ? `<div class="flabel">По частям</div>${Object.entries(parts).map(([k, v]) => partRow(k, v)).join('')}` : ''}
+      <div class="btns mt">${sayBtn([q.hanzi])}${c ? `<button class="btn btn-secondary btn-block" data-action="stat-card" data-id="${esc(c.id)}">Карточка и история</button>` : ''}</div>`;
+  }
+  actions['q-review'] = el => {
+    const a = state.attempts.find(x => x.id === el.dataset.id); if (!a) return;
+    const i = +el.dataset.i, q = (a.questions || [])[i]; if (!q) return;
+    const st = q.ok ? '<span class="rv-tag ok">верно</span>' : q.fraction > 0 ? '<span class="rv-tag half">частично</span>' : '<span class="rv-tag bad">ошибка</span>';
+    const n = a.questions.length;
+    const head = `<div class="rv-nav"><button class="icon-btn" data-action="q-review" data-id="${esc(a.id)}" data-i="${i - 1}" ${i > 0 ? '' : 'disabled'} data-nosound aria-label="Предыдущий">‹</button><span>Вопрос ${i + 1} из ${n}</span><button class="icon-btn" data-action="q-review" data-id="${esc(a.id)}" data-i="${i + 1}" ${i < n - 1 ? '' : 'disabled'} data-nosound aria-label="Следующий">›</button></div>`;
+    sheet(`${head}<div class="rv-head">${st}${q.ms ? `<span class="muted">${fmt.secs(q.ms)}</span>` : ''}</div>${q.sec ? examReview(q) : trainReview(q)}<button class="btn btn-primary btn-block mt" data-close>Закрыть</button>`);
+  };
+  actions['q-say'] = async el => {
+    let lines = []; try { lines = JSON.parse(el.dataset.t || '[]'); } catch (e) { return; }
+    if (!Speech.available()) return toast('Нет китайского голоса — установите его в настройках телефона', 3000);
+    for (const t of lines) await Speech.speak(String(t));
   };
   actions['attempt-delete'] = async el => {
     const a = state.attempts.find(x => x.id === el.dataset.id); if (!a) return;

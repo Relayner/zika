@@ -674,3 +674,26 @@ kbd { font-family: var(--font); font-size: 12px; padding: 2px 6px; border-radius
 .sh-step { display: flex; align-items: center; gap: 12px; text-align: left; background: var(--card, #fffdf6); border: 1.5px solid var(--line, #e4d8c2); border-radius: 12px; padding: 10px 12px; font: inherit; color: inherit; }
 .sh-step .zh { font-size: 24px; color: var(--jade, #2e7d5b); min-width: 30px; text-align: center; }
 .sh-step div { flex: 1; } .sh-step b { display: block; } .sh-step small { color: var(--ink-2, #6b6156); }
+
+/* ── разбор вопроса ── */
+button.qrow { width: 100%; background: transparent; border-top: 0; border-right: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.qrow:active { background: var(--half-bg); }
+.qrow .chev, .err-item .chev { color: var(--ink-3); font-size: 18px; margin-left: 2px; }
+button.err-item { display: block; width: 100%; background: transparent; border: 0; border-top: 1px dashed var(--line); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.err-item .chev { margin-left: auto; }
+.rv-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--serif); font-size: 19px; margin: 0 0 6px; }
+.rv-head { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; font-size: 13px; }
+.rv-tag { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--half-bg); color: var(--ink-2); }
+.rv-tag.ok { background: rgba(46, 125, 91, .16); color: var(--jade); } .rv-tag.bad { background: rgba(179, 57, 47, .15); color: var(--vermilion); } .rv-tag.half { background: rgba(200, 150, 40, .2); color: var(--gold); }
+.rv-say { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; }
+.rv-line { font-size: 17px; line-height: 1.5; }
+.rv-text { font-size: 18px; line-height: 1.5; margin: 0 0 10px; } .rv-sub { font-weight: 600; margin-top: 6px; font-size: 15px; }
+.rv-opts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.rv-opt { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1.5px solid var(--line-2); border-radius: 10px; font-size: 16px; }
+.rv-opt.rv-ok { border-color: var(--jade); } .rv-opt.rv-bad { border-color: var(--vermilion); }
+.rv-opt .rv-tag { margin-left: auto; flex: none; }
+.rv-pic { text-align: center; margin: 6px 0 10px; } .rv-pic .ex-pic { max-width: 220px; border-radius: 12px; }
+.rv-cap { margin-top: 6px; font-size: 15px; } .rv-cap.sm { font-size: 12.5px; text-align: center; padding: 4px 2px 2px; line-height: 1.3; }
+.rv-pics .ex-picbtn { text-align: center; } .rv-pics .ex-picbtn.rv-ok { border-color: var(--jade); } .rv-pics .ex-picbtn.rv-bad { border-color: var(--vermilion); }
+.rv-pics .ex-picbtn .rv-tag { margin: 2px 0 4px; }
+.rv-chips { margin-bottom: 8px; }
