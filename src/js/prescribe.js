@@ -28,7 +28,13 @@ window.Prescribe = (() => {
   const MIN_LEG = 2;          /* короче двух дней этап не бывает: нужен хотя бы один ночной перерыв */
   const SLOW = 1.5;           /* верх диапазона сроков: половина сверху */
   const PACE_LEGS = 2;        /* с двух закрытых этапов меряем реальный шаг */
-  const PACE_MIN = 40, PACE_MAX = 600;
+  const PACE_MIN = 40;
+  /* Верх шага — дневная норма: сколько бы очков в день ни давали прошлые этапы, программа
+     не имеет права назначить день дороже нормы, иначе она выпишет больше, чем стоит день
+     занятий. Нормы берём у Campaign, своих чисел здесь нет. */
+  const dayCap = () => (num((window.Campaign || {}).CAP) || 400);
+  const boostCap = () => (num((window.Campaign || {}).CAP_START) || 120);
+  const BOOST_DAYS = 3;       /* столько первых дней норма меньше: разгон новичка */
   const MAX_BLOCKS = 6;       /* блоков в горизонте */
   const MAX_STAGES = 10;      /* этапов всего, вместе с грамматикой и звучанием */
   const HYST = 0.15;          /* перевыпуск: топ-3 должен измениться больше чем на это */
@@ -238,15 +244,22 @@ window.Prescribe = (() => {
       const rows = (window.Gaps && Gaps.thin) ? Gaps.thin(state, now) : [];
       for (const r of rows.slice(0, 5)) if (r && r.kind === 'block' && r.thin > 0) out[r.key] = 'блок среди тонких мест';
     } catch (e) { /* промера нет */ }
-    /* съёмка (window.Survey) появляется отдельным модулем; берём её пятна, если она уже есть */
-    try {
-      const S = window.Survey;
-      const raw = S ? (typeof S.blanks === 'function' ? S.blanks(state, now) : (typeof S.white === 'function' ? S.white(state, now) : null)) : null;
-      for (const x of (Array.isArray(raw) ? raw : [])) {
-        const id = typeof x === 'string' ? x : (x && (x.blockId || x.id));
-        if (id && blockById(id)) out[id] = 'белое пятно съёмки';
+    /* белые пятна съёмки: берём их из журнала, а не из чужого модуля — попытки съёмки
+       несут blockId и иероглиф задания, и промах по такому заданию и есть пятно.
+       Так предписание не зависит от того, загружен ли Survey и какой у него сейчас API. */
+    const bk = bank();
+    const miss = Object.create(null);
+    for (const a of attemptsOf(state, now)) {
+      if (a.mode !== 'survey' || a.aborted) continue;
+      for (const q of (a.questions || [])) {
+        if (!q || q.scored === false || q.ok !== false) continue;
+        const id = q.blockId || bk.blk[q.hanzi || q.word || ''];
+        if (id && blockById(id)) miss[id] = (miss[id] || 0) + 1;
       }
-    } catch (e) { /* съёмки нет */ }
+    }
+    for (const id of Object.keys(miss).sort()) {
+      out[id] = 'белое пятно съёмки: ' + miss[id] + ' ' + plur(miss[id], 'промах', 'промаха', 'промахов');
+    }
     return out;
   }
 
@@ -563,10 +576,9 @@ window.Prescribe = (() => {
   }
 
   /* ── перевыпуск: считаем каждый раз, публикуем редко ──
-     Топ-3 сравниваем не по местам, а по весу: перестановка двух почти равных этапов
-     программу не меняет, а вот новый огонь или просевший блок — меняет. */
-  /* Доли веса внутри топ-3: мера не зависит от общего масштаба приоритетов, поэтому
-     перестановка двух почти равных этапов даёт почти ноль, а замена этапа в тройке — много. */
+     Топ-3 сравниваем не по местам, а по долям веса внутри самой тройки. Мера не зависит от
+     общего масштаба приоритетов: перестановка двух почти равных этапов даёт почти ноль, а
+     замена этапа в тройке — много. Иначе программа дёргалась бы каждый день. */
   function shares(rel) {
     const top = listOf(rel).slice(0, 3);
     const sum = top.reduce((a, s) => a + Math.max(0, num(s.priority)), 0) || 1;

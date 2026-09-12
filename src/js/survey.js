@@ -266,7 +266,9 @@ window.Survey = (() => {
         if (!card || used[card.id]) { k--; continue; }
         used[card.id] = 1;
         const t = kind === 'set' ? setTask(card, rnd) : cardTask(card, kind, lvl, rnd, 'ladder');
-        t.sub = 'ladder'; t.blockId = block.id; t.rung = block.id; t.slot = slot; t.band = lvl;
+        /* ступень — это уровень, а не блок: добор берётся из соседнего блока того же уровня
+           и обязан считаться в ту же ступень, иначе счёт «4 из 10» распадётся на два */
+        t.sub = 'ladder'; t.blockId = block.id; t.rung = 'L' + lvl; t.slot = slot; t.band = lvl;
         out.push(t);
       }
     }
@@ -453,7 +455,7 @@ window.Survey = (() => {
       for (const r of list) {
         const id = r.task.rung || r.task.blockId;
         if (!id) continue;
-        if (!by[id]) { by[id] = { blockId: id, lvl: r.task.band, right: 0, asked: 0 }; seen.push(by[id]); }
+        if (!by[id]) { by[id] = { rung: id, blockId: r.task.blockId || id, lvl: r.task.band, right: 0, asked: 0 }; seen.push(by[id]); }
         by[id].asked++; if (r.ok) by[id].right++;
       }
       seen.forEach(x => {
@@ -534,16 +536,22 @@ window.Survey = (() => {
   /* ── итог съёмки ── */
   /* Ответы восстанавливаем из сохранённых попыток: другого источника правды нет */
   const asRow = q => ({
-    task: { kind: q.kind, sub: q.sub, band: q.band || 0, part: q.part, id: q.id || q.cardId || '', rung: q.rung || q.blockId, blockId: q.blockId,
+    task: { kind: q.kind, sub: q.sub, band: q.band || 0, part: q.part, id: q.id || q.cardId || '', group: q.group, rung: q.rung || q.blockId, blockId: q.blockId,
       rate: q.rate, pseudo: !!q.pseudo, word: q.word, hanzi: q.hanzi || q.word || '', pinyin: q.pinyin || '', ru: q.ru || '', show: q.show || '', why: q.why || '', key: q.key == null ? null : q.key },
     given: q.given == null ? '' : String(q.given), mine: q.given == null ? '' : String(q.given),
     ok: q.scored === false ? null : (q.ok == null ? null : !!q.ok), fraction: q.fraction == null ? null : q.fraction,
     scored: q.scored !== false && q.key != null, right: q.key == null ? null : String(q.key),
     yes: q.yes != null ? !!q.yes : norm(q.given) === norm(YES),
   });
+  /* Пересдача части заменяет прошлую попытку, а не складывается с ней:
+     берём ровно те попытки, которые называет state() — по одной на часть. */
   function rowsOf(state, part) {
+    const st = stateOf(state);
+    const keep = {};
+    for (const n of Object.keys(st.parts)) keep[st.parts[n].id] = 1;
     const out = [];
     for (const a of attemptsOf(state)) {
+      if (!keep[a.id]) continue;
       if (part && a.part !== part) continue;
       for (const q of (a.questions || [])) if (q && q.kind) out.push(asRow(q));
     }

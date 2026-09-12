@@ -878,29 +878,6 @@ button.err-item { display: block; width: 100%; background: transparent; border: 
 .rt-home.k-express { border-left-color: var(--jade); }
 .rt-home.k-repair { border-left-color: var(--vermilion); }
 
-/* ── Съёмка местности 勘 ── */
-.sv-p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
-.sv-p:last-child { margin-bottom: 0; }
-.sv-part { align-items: flex-start; }
-.sv-part.done .row-t { color: var(--jade, #2e7d5b); }
-.sv-mark { display: inline-block; min-width: 14px; font-family: var(--hanzi); color: var(--gold); }
-.sv-part.done .sv-mark { color: var(--jade, #2e7d5b); }
-.sv-q { padding: 22px 16px 20px; text-align: center; }
-.sv-prompt { font-size: 14px; color: var(--ink-2); margin-bottom: 10px; }
-.sv-q .sv-stem { font-size: 46px; text-align: center; line-height: 1.15; }
-.sv-q .pinyin { margin-top: 6px; }
-.sv-ru { margin-top: 6px; font-size: 15px; color: var(--ink-2); }
-.sv-opt { text-align: center; }
-.sv-opt .opt-ru { display: block; margin-top: 2px; }
-.sv-note { text-align: center; }
-.sv-lvl { margin: 0 0 10px; }
-.sv-lvl:last-of-type { margin-bottom: 4px; }
-.sv-lvl-t { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.sv-blind { align-items: flex-start; }
-.sv-mine { margin-top: 3px; font-size: 13px; color: var(--ink-3); }
-.sv-mine b { color: var(--ink-2); }
-.sv-words { font-family: var(--serif); font-size: 22px; color: var(--bordeaux); }
-.sv-home-t { font-family: var(--serif); font-size: 19px; color: var(--bordeaux); line-height: 1.2; margin-top: 2px; }
 
 /* ── донесение 报: тема, запись, сверка чипами, встречный вопрос, разбор «На полях» ── */
 .rp-topic .rp-task, .rp-marg + .hint + .rp-askback .rp-task { margin-top: 2px; }
@@ -990,3 +967,8 @@ button.err-item { display: block; width: 100%; background: transparent; border: 
 .sv-blank:first-child { border-top: 0; }
 .sv-blank .row-s b.bad { color: var(--vermilion); font-family: var(--hanzi); }
 .sv-blank .hint { margin: 4px 0 0; }
+
+/* ── съёмка местности: панель на главной и приписка под заданием ── */
+.sv-note { text-align: center; margin: 6px 0 0; }
+.sv-home .sv-home-t { font-family: var(--serif); font-size: 19px; line-height: 1.25; color: var(--bordeaux); margin: 2px 0 0; }
+.sv-home .btns { margin-top: 10px; }

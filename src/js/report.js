@@ -42,9 +42,17 @@ window.Report = (() => {
 
   const MOVE_RU = { fading: 'гаснет', out: 'потушен', relit: 'потушен после возврата' };
 
-  /* Подпись режима в журнале и статистике — иначе там стояло бы латинское «report» */
-  const LABELS = (typeof window !== 'undefined' && window.App && App.LABELS) || null;
-  if (LABELS && LABELS.mode && !LABELS.mode[MODE]) LABELS.mode[MODE] = 'Донесение';
+  /* Подпись режима в журнале и статистике — иначе там стояло бы латинское «report».
+     Ищем App в момент вызова, а не один раз при загрузке: иначе подпись зависела бы от того,
+     собран ли этот модуль раньше app.js, и в другом порядке тихо пропадала бы. */
+  function signMode() {
+    const L = (typeof window !== 'undefined' && window.App && App.LABELS) || null;
+    if (!L) return null;
+    if (L.mode && !L.mode[MODE]) L.mode[MODE] = 'Донесение';
+    if (L.diff && !L.diff[MODE]) L.diff[MODE] = 'Донесение';
+    return L;
+  }
+  signMode();
 
   /* ── мелочи ── */
   const r1 = x => Math.round(x * 10) / 10;
@@ -245,17 +253,22 @@ window.Report = (() => {
     const nodes = new Set((ctx.targets || []).map(t => t && t.node).filter(Boolean));
     const fires = new Set((ctx.fires || []).map(f => f && f.id).filter(Boolean));
     const src = Array.isArray(raw && raw.findings) ? raw.findings : [];
+    const srcCases = Array.isArray(raw && raw.cases) ? raw.cases : [];
     const findings = [];
-    let dropped = 0, cleaned = 0;
+    /* dropped — сколько находок вон; over — из них годных, но сверх восьми; dirty — сколько
+       находок пришлось чистить (одна находка считается один раз, даже если в ней врут оба поля);
+       badCases — выброшенные случаи. Подозрительны только выдумки, поэтому over в улики не идёт. */
+    let dropped = 0, cleaned = 0, over = 0, dirty = 0, badCases = 0;
     for (const f of src) {
       if (!f || typeof f !== 'object') { dropped++; continue; }
       const quote = String(f.quote || '').trim();
       if (!quote || !bare(quote) || text.indexOf(bare(quote)) < 0) { dropped++; continue; }   /* цитаты нет в записи */
-      if (findings.length >= MAX_FINDINGS) { dropped++; continue; }                            /* находок сверх восьми */
-      let node = String(f.node || '').trim();
-      if (node && !nodes.has(node)) { node = ''; cleaned++; }                                  /* узел, которого не давали */
+      if (findings.length >= MAX_FINDINGS) { dropped++; over++; continue; }                    /* находка годная, но девятая */
+      let node = String(f.node || '').trim(), spoiled = 0;
+      if (node && !nodes.has(node)) { node = ''; cleaned++; spoiled++; }                       /* узел, которого не давали */
       let trap = String(f.trap || '').trim();
-      if (trap && !(fires.has(trap) || knownTrap(trap))) { trap = ''; cleaned++; }             /* ловушки нет в каталоге */
+      if (trap && !(fires.has(trap) || knownTrap(trap))) { trap = ''; cleaned++; spoiled++; }  /* ловушки нет в каталоге */
+      if (spoiled) dirty++;
       if (!trap && node && (fires.has(node) || knownTrap(node))) trap = node;                  /* узел сам оказался ловушкой */
       findings.push({
         quote, fix: String(f.fix || '').trim(), node: node || null, trap: trap || null,
@@ -263,16 +276,17 @@ window.Report = (() => {
       });
     }
     const cases = [];
-    for (const c of Array.isArray(raw && raw.cases) ? raw.cases : []) {
+    for (const c of srcCases) {
       const node = String((c && c.node) || '').trim();
-      if (!node || !(nodes.has(node) || fires.has(node) || knownTrap(node))) { cleaned++; continue; }
+      if (!node || !(nodes.has(node) || fires.has(node) || knownTrap(node))) { cleaned++; badCases++; continue; }
       const need = Math.max(0, Math.round(Number(c.need) || 0));
       const ok = Math.max(0, Math.min(need, Math.round(Number(c.ok) || 0)));
       if (!need) continue;
       cases.push({ node, need, ok, trap: fires.has(node) || knownTrap(node) ? node : null });
     }
-    const total = src.length;
-    const bad = dropped + cleaned;
+    /* Меряем выдумки против всего, что разбор прислал, — и находок, и случаев. */
+    const total = src.length + srcCases.length;
+    const bad = (dropped - over) + dirty + badCases;
     const loose = total > 0 && bad > total * LOOSE_SHARE;
     const sz = size(ctx.text);
     return {
@@ -287,7 +301,7 @@ window.Report = (() => {
       rubric: raw && raw.rubric && typeof raw.rubric === 'object'
         ? { level: String(raw.rubric.level || '').trim(), note: String(raw.rubric.note || '').trim() } : null,
       left: raw && raw.left != null ? +raw.left : null,
-      total, dropped, cleaned, loose,
+      total, dropped, cleaned, over, loose,
       weight: loose ? LOOSE_WEIGHT : 1,
       targets: (ctx.targets || []).slice(0, MAX_TARGETS),
       source: ctx.source === 'typed' ? 'typed' : 'voice',
@@ -312,22 +326,29 @@ window.Report = (() => {
     const fires = (p.fires || []).slice(0, MAX_FIRES)
       .map(f => ({ id: String((f && f.id) || ''), ru: String((f && f.ru) || '') }))
       .filter(f => f.id);
-    const raw = await post(c, { ver: 'v2', did, tz: p.tz || tzName(), level, text, targets: sent, fires, mode: MODE });
+    /* пояс — минуты от UTC: воркер считает по ним местный день (строка-имя его ломала) */
+    const tzMin = typeof p.tz === 'number' ? p.tz : -new Date().getTimezoneOffset();
+    const raw = await post(c, { ver: 'v2', did, tz: tzMin, tzName: p.tzName || tzName(), level, text, targets: sent, fires, mode: MODE });
     if (raw && raw.error) throw new Error(raw.error === 'quota' ? 'На сегодня разборов больше нет' : 'Разбор не удался');
     return validate(raw, { text, targets, fires, level, source: p.source });
   }
 
   /* ── очки ──
      Платим за монолог и за движение огней, а не за объём найденных ошибок: иначе выгодно
-     говорить плохо. Потолок — 150 при дневной норме 400. */
+     говорить плохо. Потолок — 150 при дневной норме 400.
+
+     Вес неточного разбора режет плату за огни, но не базу. База стоит на знаках, а знаки
+     считает сам телефон по расшифровке; если модель навыдумывала находок, монолог от этого
+     не стал короче, и человек не должен платить за чужую выдумку. Огни — другое дело:
+     они двигаются со слов разбора, и веры им ровно столько же, сколько ему. */
   function points(res) {
     const r = res || {};
     const lvl = clampLvl(r.lvl);
     const min = r.minChars != null ? r.minChars : (LEN[lvl] || LEN[1]).min;
     const chars = r.chars != null ? r.chars : size(r.text).chars;
     const parts = [];
-    let p = 0;
-    if (chars >= min) { p += PTS.base; parts.push({ ru: 'Монолог, знаков — ' + chars, n: PTS.base }); }
+    let base = 0, fire = 0;
+    if (chars >= min) { base = PTS.base; parts.push({ ru: 'Монолог, знаков — ' + chars, n: PTS.base }); }
     else parts.push({ ru: 'Монолог короче нормы: ' + chars + ' знаков из ' + min, n: 0 });
     for (const m of r.moves || []) {
       if (!m || !m.to) continue;
@@ -338,15 +359,16 @@ window.Report = (() => {
         n = back ? PTS.relit : PTS.out;
         ru = (back ? 'Потушен после возврата: ' : 'Потушен: ') + (m.ru || m.id);
       } else continue;
-      p += n;
+      fire += n;
       parts.push({ ru, n });
     }
     const w = r.weight == null ? 1 : Number(r.weight);
-    if (w !== 1 && p > 0) {
-      const cut = r1(p - p * w);
-      p = r1(p * w);
-      parts.push({ ru: 'Разбор неточный — вес вдвое меньше', n: -cut });
+    if (w !== 1 && fire > 0) {
+      const cut = r1(fire - fire * w);
+      fire = r1(fire * w);
+      parts.push({ ru: 'Разбор неточный — плата за огни вдвое меньше', n: -cut });
     }
+    let p = r1(base + fire);
     if (p > PTS.cap) { parts.push({ ru: 'Потолок донесения', n: -r1(p - PTS.cap) }); p = PTS.cap; }
     return { points: r1(p), parts };
   }
@@ -362,9 +384,10 @@ window.Report = (() => {
       const key = f.trap || f.node || '';
       if (key) byNode[key] = (byNode[key] || 0) + 1;
       qs.push({
-        cardId: null, hanzi: f.quote, pinyin: '', ru: f.fix || f.why || '',
-        node: f.node || null, trap: f.trap || null,
-        answer: {}, fraction: 0, ok: false, ms: 0, why: f.why || '', l1: f.l1 || '', sev: f.sev || '',
+        cardId: null, hanzi: f.quote, pinyin: '', ru: f.why || f.fix || '',
+        node: f.node || null, trap: f.trap || null, show: 'sentence', guess: ['answer'],
+        answer: f.fix ? { choiceText: f.fix } : {},
+        fraction: 0, ok: false, ms: 0, why: f.why || '', l1: f.l1 || '', sev: f.sev || '',
       });
     }
     for (const c of r.cases || []) {
@@ -374,7 +397,7 @@ window.Report = (() => {
       for (let i = 0; i < clean && qs.length < MAX_QUESTIONS; i++) {
         qs.push({
           cardId: null, hanzi: label, pinyin: '', ru: 'случай вышел',
-          node: c.node, trap: c.trap || null,
+          node: c.node, trap: c.trap || null, show: 'sentence', guess: ['answer'],
           answer: {}, fraction: 1, ok: true, ms: 0,
         });
       }
@@ -419,6 +442,7 @@ window.Report = (() => {
 
   /* meta: { startedAt, endedAt, now, source, topic } */
   function attempt(state, res, meta = {}) {
+    signMode();                             /* попытка уходит в журнал — подпись должна быть на месте */
     const r = res || {};
     const now = meta.now || meta.endedAt || Date.now();
     const startedAt = meta.startedAt || now;
@@ -467,7 +491,7 @@ window.Report = (() => {
   const API = {
     MODE, PTS, LEN, MAX_FINDINGS, TIMEOUT_MS, LOOSE_SHARE, LOOSE_WEIGHT, MOVE_RU,
     VISIBLE_KINDS, topic, canToday, analyze, validate, points, attempt, questions, moves, speakableFires,
-    size, deviceId, setFetch, whatVoiceMisses, dayKey,
+    size, deviceId, setFetch, whatVoiceMisses, dayKey, signMode,
   };
   return API;
 })();

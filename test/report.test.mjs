@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 global.window = global;
-for (const f of ['hsk', 'freq', 'pinyin', 'phonetics', 'stats', 'srs', 'skill', 'campaign', 'boss', 'program', 'traps', 'fires', 'ledger', 'report'])
+for (const f of ['hsk', 'freq', 'pinyin', 'phonetics', 'stats', 'srs', 'skill', 'campaign', 'boss', 'program', 'traps', 'fires', 'ledger', 'speechin', 'report'])
   require('../src/js/' + f + '.js');
-const { Report, PROGRAM, Boss, Fires, Ledger, TRAPS } = global;
+const { Report, PROGRAM, Boss, Fires, Ledger, TRAPS, SpeechIn } = global;
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error('FAIL', name, '—', e.message); process.exitCode = 1; } };
@@ -183,12 +183,47 @@ t('потолок дня не превышается, а части сходят
   assert.ok(res.parts.some(p => p.n < 0), 'срезание показано отдельной строкой');
 });
 
-t('неточный разбор платит вдвое меньше', () => {
-  const full = pts({ moves: [{ id: 'a', to: 'out', from: 'burning' }] });
-  const half = pts({ moves: [{ id: 'a', to: 'out', from: 'burning' }], weight: Report.LOOSE_WEIGHT });
-  assert.equal(half, full / 2);
-  const parts = Report.points(Object.assign({}, базовый, { moves: [{ id: 'a', to: 'out' }], weight: 0.5 })).parts;
-  assert.ok(Math.abs(parts.reduce((s, p) => s + p.n, 0) - half) < 1e-9);
+t('неточный разбор режет плату за огни, но не за сам монолог', () => {
+  const move = [{ id: 'a', to: 'out', from: 'burning' }];
+  const full = pts({ moves: move });
+  const half = pts({ moves: move, weight: Report.LOOSE_WEIGHT });
+  assert.equal(full, Report.PTS.base + Report.PTS.out);
+  assert.equal(half, Report.PTS.base + Report.PTS.out * Report.LOOSE_WEIGHT, 'база цела, огни вдвое дешевле');
+  assert.ok(half < full && half > Report.PTS.base, 'скидка есть, но монолог оплачен полностью');
+  /* Знаки считает сам телефон: выдумки разбора не делают монолог короче */
+  assert.equal(pts({ moves: [], weight: Report.LOOSE_WEIGHT }), Report.PTS.base, 'без огней неточность не отнимает ничего');
+  assert.equal(pts({ chars: 30, moves: [], weight: Report.LOOSE_WEIGHT }), 0, 'короткий монолог всё равно не оплачен');
+  const parts = Report.points(Object.assign({}, базовый, { moves: move, weight: Report.LOOSE_WEIGHT })).parts;
+  assert.ok(Math.abs(parts.reduce((s, p) => s + p.n, 0) - half) < 1e-9, 'части сходятся с суммой');
+});
+
+t('годные находки сверх восьми — не улика выдумки', () => {
+  const good = i => ({ quote: '衣服', fix: '衣服', node: 'g:b1-09', why: 'n' + i });
+  for (const n of [9, 13, 20]) {
+    const r = Report.validate({ findings: Array.from({ length: n }, (_, i) => good(i)) }, ctx);
+    assert.equal(r.findings.length, Report.MAX_FINDINGS, 'в попытку идут восемь: ' + n);
+    assert.equal(r.over, n - Report.MAX_FINDINGS, 'лишние посчитаны отдельно: ' + n);
+    assert.equal(r.loose, false, 'все цитаты настоящие — разбор в силе: ' + n);
+    assert.equal(r.weight, 1);
+  }
+  /* А выдумки среди тех же двадцати разбор неточным делают */
+  const bad = { quote: '完全没有的句子', fix: '—' };
+  const mixed = Report.validate({ findings: Array.from({ length: 12 }, (_, i) => (i % 2 ? good(i) : bad)) }, ctx);
+  assert.equal(mixed.loose, true, 'половина цитат выдумана — веры вполовину');
+});
+
+t('выдуманные случаи считаются уликой наравне с находками', () => {
+  const good = { quote: '衣服', fix: '衣服', node: 'g:b1-09' };
+  const r = Report.validate({ findings: [good, good], cases: [
+    { node: 'выдумка-1', need: 3, ok: 3 }, { node: 'выдумка-2', need: 3, ok: 3 }, { node: 'g:b1-09', need: 2, ok: 2 },
+  ] }, ctx);
+  assert.equal(r.cases.length, 1);
+  assert.equal(r.total, 5, 'меряем против всего, что прислал разбор');
+  assert.equal(r.loose, false, 'две выдумки из пяти — ещё не большинство');
+  const worse = Report.validate({ findings: [good], cases: [
+    { node: 'выдумка-1', need: 3, ok: 3 }, { node: 'выдумка-2', need: 3, ok: 3 },
+  ] }, ctx);
+  assert.equal(worse.loose, true, 'две выдумки из трёх — разбор неточный');
 });
 
 t('донесение не выбивается из дневной нормы', () => {

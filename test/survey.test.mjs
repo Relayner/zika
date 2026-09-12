@@ -35,7 +35,7 @@ let seq = 0;
 function attemptOf(part, sheetRows, ts) {
   const qs = sheetRows.map(({ task, given }) => {
     const j = Survey.judge(task, given);
-    return { kind: task.kind, sub: task.sub, band: task.band, part, id: task.id, cardId: task.self ? undefined : task.cardId,
+    return { kind: task.kind, sub: task.sub, band: task.band, group: task.group, part, id: task.id, cardId: task.self ? undefined : task.cardId,
       blockId: task.blockId, rung: task.rung, rate: task.rate, pseudo: !!task.pseudo, word: task.word,
       hanzi: task.self ? '' : (task.hanzi || ''), pinyin: task.pinyin || '', ru: task.ru || '', show: task.show || '',
       why: task.why || '', key: task.key, given: j.mine, ok: j.ok, fraction: j.fraction, scored: j.scored, yes: j.yes, ms: 5000 };
@@ -143,22 +143,31 @@ t('лестница ведёт себя по правилу', () => {
 
 t('часть 2: ступени по блокам, шесть заданий на ступень', () => {
   const by = {};
-  P[1].forEach(x => { assert.ok(x.blockId, 'у задания лестницы есть блок'); (by[x.rung] || (by[x.rung] = [])).push(x); });
-  const rungs = Object.keys(by);
-  assert.equal(rungs.length, Survey.LVLS.length * Survey.SLOTS, 'по две ступени на уровень');
-  rungs.forEach(r => assert.equal(by[r].length, Survey.RUNG, 'на ступени ' + r + ' шесть заданий'));
-  assert.ok(rungs.every(r => PROGRAM.byId(r)), 'каждая ступень — блок программы');
+  P[1].forEach(x => { assert.ok(x.blockId, 'у задания лестницы есть блок'); (by[x.blockId] || (by[x.blockId] = [])).push(x); });
+  const blocks = Object.keys(by);
+  assert.equal(blocks.length, Survey.LVLS.length * Survey.SLOTS, 'по два блока на уровень: основной и добор');
+  blocks.forEach(r => assert.equal(by[r].length, Survey.RUNG, 'в блоке ' + r + ' шесть заданий'));
+  assert.ok(blocks.every(r => PROGRAM.byId(r)), 'каждый блок — блок программы');
+  /* ступень — уровень: добор из соседнего блока считается в ту же ступень */
+  assert.ok(P[1].every(x => x.rung === 'L' + x.band), 'ступень подписана уровнем');
+  assert.equal(new Set(P[1].map(x => x.rung)).size, Survey.LVLS.length, 'ступеней столько же, сколько уровней');
   assert.deepEqual([...new Set(P[1].map(x => x.band))].sort(), [1, 2, 3, 4], 'лестница идёт по уровням HSK 1→4');
 });
 
 t('разбор лестницы называет ступень, где посыпалось', () => {
   /* верно всё на уровне 1, дальше мимо */
   const g = Survey.grade(2, sheet(P[1], task => task.band === 1));
-  assert.ok(g.rungs.length >= 2, 'ступени разобраны');
+  assert.equal(g.rungs.length, Survey.LVLS.length, 'ступеней столько же, сколько уровней');
+  assert.ok(g.rungs.every(r => PROGRAM.byId(r.blockId)), 'у ступени назван блок программы');
   assert.equal(g.top, 1, 'взят только первый уровень');
-  assert.ok(g.start && g.start.lvl === 2, 'точка старта — первая ступень второго уровня, а не первого');
-  assert.ok(g.rungs.filter(r => r.lvl === 1).every(r => r.verdict === 'up'), 'на взятых ступенях вердикт «выше»');
-  assert.ok(g.rungs.filter(r => r.lvl > 1).every(r => r.verdict === 'down'), 'на проваленных — «ниже»');
+  assert.ok(g.start && g.start.lvl === 2, 'точка старта — вторая ступень, а не первая');
+  assert.ok(g.rungs.filter(r => r.lvl === 1).every(r => r.right === r.asked), 'первый уровень взят целиком');
+  assert.ok(g.rungs.filter(r => r.lvl > 1).every(r => r.verdict === 'down'), 'на проваленных ступенях вердикт «ниже»');
+  /* добор из второго блока считается в ту же ступень: 4 из 6, потом 0 из 4 — это 4 из 10 */
+  const one = P[1].filter(x => x.band === 4);
+  const half = Survey.grade(2, one.map((task, i) => ({ task, given: answer(task, i < 4) })));
+  assert.equal(half.rungs.length, 1, 'ступень одна, хотя блоков два');
+  assert.equal(half.rungs[0].asked, 12, 'оба блока уровня в одной ступени');
 });
 
 /* ── разбор части 1 ── */
@@ -203,6 +212,17 @@ t('result чист и не зависит от порядка попыток', (
   assert.deepEqual(r2, r1, 'пересчёт с нуля в другом порядке даёт тот же итог');
 });
 
+t('пересдача части заменяет прошлую попытку, а не складывается с ней', () => {
+  const bad = attemptOf(1, sheet(P[0], () => false), NOW - 2 * 3600e3);
+  const good = attemptOf(1, sheet(P[0], () => true), NOW - 3600e3);
+  const r = Survey.result({ attempts: [bad, good], settings: {} }, NOW);
+  const only = Survey.result({ attempts: [good], settings: {} }, NOW);
+  assert.equal(r.state.attempts, 2, 'в журнале обе попытки');
+  assert.equal(r.screen.band, 4, 'итог считается по последней пересдаче');
+  assert.deepEqual(r.bands, only.bands, 'полосы те же, что при одной удачной попытке');
+  assert.deepEqual(r.blanks, only.blanks, 'белые пятна берутся из последней попытки');
+});
+
 t('result не падает на пустой истории и на частично пройденной съёмке', () => {
   const e = Survey.result({ attempts: [], settings: {} }, NOW);
   assert.equal(e.ok, false);
@@ -226,6 +246,9 @@ t('итог называет полосы, точки старта и белые
   const a3 = attemptOf(3, sheet(P[2], () => false), NOW);
   const r = Survey.result({ attempts: [a1, a2, a3], settings: {} }, NOW);
   assert.ok(r.bands.every(b => /^(≈ \d+%|—)$/.test(b.text)), 'полоса пишется как «≈ N%»');
+  /* итог восстанавливает разбор из сохранённых попыток, а не из живых ответов */
+  assert.equal(r.screen.band, Survey.grade(1, sheet(P[0], task => task.band <= 1)).band, 'полоса скринера в итоге та же, что в разборе части');
+  assert.ok(r.screen.band > 0 && r.screen.band < 4, 'скринер пройден до середины: полоса ' + r.screen.band);
   assert.ok(r.vocab.text.includes('из ' + Survey.totalWords()), 'объём словаря — из банка: ' + r.vocab.text);
   assert.ok(r.starts.length >= 1 && r.start.lvl === 2, 'точка старта — первый блок, где посыпалось');
   assert.ok(PROGRAM.byId(r.start.blockId), 'точка старта указывает на блок программы');

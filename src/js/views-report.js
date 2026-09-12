@@ -27,7 +27,8 @@ window.ReportUI = (() => {
 
   /* Подпись режима для чужих экранов: без неё в списке попыток была бы латиница */
   if (LABELS && LABELS.mode && !LABELS.mode.report) LABELS.mode.report = 'Донесение';
-  if (LABELS && LABELS.diff && !LABELS.diff.report) LABELS.diff.report = 'Донесение';
+  /* Подписи «сложности» у донесения нет намеренно: difficulty здесь равен режиму,
+     и строка попытки иначе читалась бы как «Донесение · Донесение». */
 
   const is2 = () => !!(window.Ledger && Ledger.is2(state));
   const R = () => window.Report || null;
@@ -262,8 +263,9 @@ window.ReportUI = (() => {
         ${q.ru ? `<div class="rp-q-ru">${esc(q.ru)}</div>` : ''}
         <button class="btn btn-secondary btn-sm" data-action="rp-say" data-nosound>Ещё раз</button>
         ${q.from ? `<div class="hint">Фраза из блока «${esc(q.from)}».</div>` : ''}</div>
-      <div class="panel"><div class="flabel">Ответ · ${esc(secs(ASK_SEC))}</div>
+      <div class="panel"><div class="flabel">Ответ${typed ? '' : ' · ' + esc(secs(ASK_SEC))}</div>
         <div class="rp-clock sm" id="rp-clock">0:00</div>
+        ${typed ? '<div class="hint" style="margin-top:0">В наборе ответ ничем не обрывается: набирать иероглифы дольше, чем говорить. Голосом на него уходит ' + esc(secs(ASK_SEC)) + '.</div>' : ''}
         ${typed ? `<textarea class="rp-input" id="rp-ans" rows="2" placeholder="中文…" spellcheck="false">${esc(rp.ansRaw)}</textarea>`
           : `<div class="rp-live" id="rp-live">${esc(rp.ansLive) || '<i>…</i>'}</div>`}
         <div class="hint">Подготовки здесь нет: отвечать нужно сразу. Огни гасит только спонтанный ответ и честный набор — правленое в сверке в счёт не идёт.</div>
@@ -614,14 +616,16 @@ window.ReportUI = (() => {
   function marked(rep) {
     const text = str(rep.corrected) || str(rep.mono);
     if (!text) return '<div class="hint">Текста донесения не осталось.</div>';
-    const fixes = (rep.findings || []).map(f => str(f.fix)).filter(Boolean);
-    if (!fixes.length) return `<div class="rp-marg">${esc(text)}</div>`;
     let out = '', rest = text;
-    for (const fx of fixes) {
-      const i = rest.indexOf(fx);
-      if (i < 0) continue;
-      out += esc(rest.slice(0, i)) + '<mark>' + esc(fx) + '</mark>';
-      rest = rest.slice(i + fx.length);
+    for (const f of rep.findings || []) {
+      /* В исправленном тексте подсвечиваем правку, в неисправленном — саму цитату.
+         Чего в тексте нет, то и не подсвечиваем: границы правки выдумывать нечем. */
+      const fx = str(f.fix), qt = str(f.quote);
+      const needle = fx && rest.indexOf(fx) >= 0 ? fx : (qt && rest.indexOf(qt) >= 0 ? qt : '');
+      if (!needle) continue;
+      const i = rest.indexOf(needle);
+      out += esc(rest.slice(0, i)) + '<mark>' + esc(needle) + '</mark>';
+      rest = rest.slice(i + needle.length);
     }
     return `<div class="rp-marg">${out + esc(rest)}</div>`;
   }
@@ -650,7 +654,7 @@ window.ReportUI = (() => {
           <div class="hint" style="margin:6px 0 0">Знаков ${num(a.chars)}${a.source === 'typed' ? ' · набрано с клавиатуры' : ' · сказано голосом'}${a.loose ? ' · разбор неточный' : ''}${rep.half ? ' · правок больше десятой части' : ''}</div>
           ${a.net === 'late' ? '<div class="hint">Разбор пришёл позже записи: находки и случаи здесь есть, а очки остались те, что были начислены сразу.</div>' : ''}</div>`
         : `<div class="panel ornate"><div class="flabel">Разбор не дошёл</div>
-          <div class="hint" style="margin-top:0">${esc(a.err ? 'Причина: ' + a.err + '.' : '')} Очки за усилие остались: +${Math.round(pointsOf(a))}. Свидетельств по случаям нет, платы за огни нет — разбирать было нечем.</div>
+          <div class="hint" style="margin-top:0">${esc(a.err ? 'Причина: ' + a.err + '.' : '')} ${Math.round(pointsOf(a)) > 0 ? 'Очки за усилие остались: +' + Math.round(pointsOf(a)) + '.' : 'Очков нет, но не из-за сети: монолог вышел короче нормы — разбивка ниже.'} Свидетельств по случаям нет, платы за огни нет — разбирать было нечем.</div>
           ${q ? `<div class="hint">Запись сохранена и стоит в очереди. Разбор можно повторить, когда появится сеть: находки и случаи появятся, очки останутся прежними.</div>
             <div class="btns mt0"><button class="btn btn-primary btn-block" data-action="rp-retry" data-id="${esc(a.id)}">Повторить разбор</button></div>` : ''}</div>`}
       <div class="panel"><div class="flabel">Донесение</div>${marked(rep)}

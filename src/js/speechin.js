@@ -84,6 +84,10 @@ window.SpeechIn = (() => {
         let r;
         try { r = new Rec(); } catch (e) { return finish('микрофон занят, попробуйте ещё раз'); }
         current = r; session = r;
+        /* Какие места в e.results уже взяты как окончательные. При continuous = true браузер
+           присылает весь список заново и resultIndex умеет откатываться на уже закрытый кусок —
+           без этой отметки одна и та же фраза легла бы в запись дважды и раздула бы оплату. */
+        const taken = new Set();
         r.lang = 'zh-CN';
         r.continuous = true;                                  /* главное отличие от короткого ответа боссу */
         r.interimResults = true;
@@ -94,7 +98,10 @@ window.SpeechIn = (() => {
             const res = e.results[i];
             const t = res[0] && res[0].transcript ? res[0].transcript : '';
             if (!t) continue;
-            if (res.isFinal) segments.push(t.trim()); else interim += t;
+            if (!res.isFinal) { interim += t; continue; }
+            if (taken.has(i)) continue;                       /* этот кусок уже записан */
+            taken.add(i);
+            segments.push(t.trim());
           }
           say(interim);
         };

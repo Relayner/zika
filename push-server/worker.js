@@ -31,8 +31,9 @@ async function idOf(endpoint) {
   const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint));
   return btoa(String.fromCharCode(...new Uint8Array(h))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
 }
-const localParts = tzMin => {
-  const d = new Date(Date.now() + (tzMin || 0) * 60000);
+const localParts = tz => {
+  const tzMin = Number.isFinite(+tz) ? +tz : 0;   /* пояс может прийти строкой — тогда считаем по UTC */
+  const d = new Date(Date.now() + tzMin * 60000);
   return { day: d.toISOString().slice(0, 10), hour: d.getUTCHours() + d.getUTCMinutes() / 60 };
 };
 
@@ -42,7 +43,16 @@ const modelFor = body => (body && body.ver === 'v2' ? 'claude-fable-5-1' : 'clau
 const MAX_BLOB = 2 * 1024 * 1024;
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
+    /* Любая ошибка обязана вернуться с заголовками доступа: иначе на телефоне
+       она неотличима от пропавшей сети и чинить её вслепую. */
+    try { return await handle(req, env, ctx); }
+    catch (e) { return json({ error: 'crash', detail: String((e && e.message) || e).slice(0, 200) }, 500); }
+  },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(runCron(env)); },
+};
+
+async function handle(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const url = new URL(req.url);
     if (req.method === 'GET') return json({ app: 'zika-push', ok: true });
@@ -209,9 +219,7 @@ export default {
       return json({ ok: true });
     }
     return json({ error: 'not found' }, 404);
-  },
-  async scheduled(ev, env, ctx) { ctx.waitUntil(runCron(env)); },
-};
+}
 
 async function runCron(env) {
   const vapid = { subject: 'mailto:kellianar@gmail.com', publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE };

@@ -199,6 +199,25 @@ t('блок, который уже читается, идёт экспрессо
   assert.ok(e.cost < 200, 'экспресс стоит как полный блок: ' + e.cost);
 });
 
+t('промах съёмки поднимает свой блок и называется в причине', () => {
+  const s = fresh();
+  const w = blk('b1-06').words;
+  s.attempts.push({
+    id: 's1', ts: NOW - 2 * DAY, endedAt: NOW - 2 * DAY + 6e4, durationMs: 6e4,
+    mode: 'survey', part: 2, difficulty: 'survey', level: 1, deckIds: [], deckName: 'Съёмка',
+    total: 3, planned: 3, aborted: false, correct: 0, partial: 0, wrong: 3, percent: 0, points: 40,
+    fixedPts: true, p2fix: 40,
+    questions: w.slice(0, 3).map(h => ({ hanzi: h, blockId: 'b1-06', kind: 'hz2ru', key: 'x', given: 'y', scored: true, ok: false, fraction: 0 })),
+  });
+  const b = Prescribe.build(s, NOW);
+  const st = b.stages.find(x => x.blockId === 'b1-06' && x.kind !== 'grammar');
+  assert.ok(st, 'блок с белым пятном выпал из программы');
+  assert.ok(/белое пятно съёмки: 3 промаха/.test(st.why), 'пятно не названо: ' + st.why);
+  assert.equal(st.f.gapBoost, 1.35, 'вес пятна не применён');
+  const plain = Prescribe.build(fresh(), NOW).stages.find(x => x.blockId === 'b1-06');
+  assert.ok(!plain || st.priority > plain.priority, 'пятно не подняло блок');
+});
+
 t('закрытый и здоровый блок в горизонт не идёт', () => {
   const s = broken();
   for (const k of Object.keys(s.settings.v2.srs)) s.settings.v2.srs[k].due = NOW + 20 * DAY;   /* ничего не просрочено */
