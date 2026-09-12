@@ -35,6 +35,12 @@ window.RouteUI = (() => {
   const dayOf = ts => (num(ts) ? fmt.date(ts).replace(/,.*$/, '') : '');
   const pl = (n, a, b, c) => fmt.plural(n, a, b, c);
   const noun = (n, a, b, c) => fmt.plural(n, a, b, c).replace(/^\d+\s/, '');
+  /* дневная норма и минимальная длина этапа берутся у своих модулей, а не переписываются числом:
+     иначе экран однажды начнёт обещать норму, которой в походе уже нет */
+  const dayCap = () => { try { return num(window.Campaign && Campaign.CAP) || 400; } catch (e) { return 400; } };
+  const minLeg = () => { const m = P(); return num(m && m.MIN_LEG) || 2; };
+  /* выпуск считается состоявшимся только когда в снимке есть этапы: пустой объект — не выпуск */
+  const hasStages = r => !!(r && Array.isArray(r.stages) && r.stages.length);
 
   /* ── закрепление этапа ── */
   function routeBox() {
@@ -78,7 +84,15 @@ window.RouteUI = (() => {
     const src = [];
     if (cost != null) src.push('цена этапа ' + cost + ' ' + noun(cost, 'очко', 'очка', 'очков'));
     if (p && p.perDay != null) src.push('шаг ' + p.perDay + ' в день' + (p.ru ? ' (' + p.ru + ')' : ''));
-    const why = src.length ? 'посчитан: ' + src.join(', ') : s2(st.when);
+    let why = src.length ? 'посчитан: ' + src.join(', ') : s2(st.when);
+    /* цену делим на шаг, но короче минимума этап не ставится — тогда деление не объясняет срок,
+       и об этом надо сказать, иначе числа в подписи не сходятся с числом дней */
+    const per = p && p.perDay != null ? num(p.perDay) : null;
+    const leg = minLeg();
+    if (src.length && cost != null && per > 0 && d === leg && cost / per < leg) {
+      why += '; работы тут меньше чем на ' + pl(leg, 'день', 'дня', 'дней')
+        + ', но короче этап не ставим — между заходами нужен ночной перерыв';
+    }
     /* from/to у prescribe.js — день окончания этапа от начала программы (быстрый и медленный счёт) */
     if (from != null && to != null) return { ru: from === to ? 'к ' + from + '-му дню программы' : 'к ' + from + '–' + to + '-му дню программы', why, work: d };
     if (d != null) return { ru: pl(d, 'день', 'дня', 'дней'), why, work: null };
@@ -121,10 +135,12 @@ window.RouteUI = (() => {
       lessons: Array.isArray(st.lessons) ? st.lessons : [],
     };
   }
+  /* русское имя линии на случай, если модуль назвал её только ключом: латиницы на экране быть не должно */
+  const LINE_RU = { review: 'Повторения', sound: 'Звучание', phon: 'Звучание', speak: 'Речь', speech: 'Речь' };
   function lineOf(l, i) {
     const t = s2(pick(l, ['t', 'id', 'key']) || i);
     const ZH = { review: '复', sound: '音', phon: '音', speak: '说', speech: '说' };
-    return { t, zh: ZH[t] || '日', ru: s2(pick(l, ['ru', 'title']) || t), why: s2(pick(l, ['why', 'reason'])) };
+    return { t, zh: ZH[t] || '日', ru: s2(pick(l, ['ru', 'title'])) || LINE_RU[t] || 'Ежедневная линия', why: s2(pick(l, ['why', 'reason'])) };
   }
 
   /* Построение программы — чистый вызов prescribe.js, без кэша: одно и то же состояние
@@ -134,8 +150,7 @@ window.RouteUI = (() => {
     if (!M || typeof M.build !== 'function') return null;
     try { return M.build(state, now) || null; } catch (e) { return null; }
   }
-  function planOf(now) {
-    const raw = built(now);
+  function planFrom(raw) {
     if (!raw) return null;
     const plan = {
       at: num(raw.at), level: num(raw.level),
@@ -146,6 +161,7 @@ window.RouteUI = (() => {
     plan.stages = (Array.isArray(raw.stages) ? raw.stages : []).map((st, i) => stageOf(st || {}, i, plan));
     return plan.stages.length || plan.lines.length ? plan : null;
   }
+  const planOf = now => planFrom(built(now));
 
   /* Закрепление меняет только порядок показа, не расчёт */
   function ordered(plan) {
@@ -162,7 +178,7 @@ window.RouteUI = (() => {
   /* ── три выхода ── */
   const EXITS = [
     { key: 'hot', ru: 'Самое горящее', why: 'наибольший вес в расчёте: просевшее, огни и тонкие места' },
-    { key: 'edge', ru: 'Ближайший рубеж', why: 'этап, который заканчивается раньше прочих' },
+    { key: 'edge', ru: 'Первый по программе', why: 'сроки идут подряд, поэтому раньше прочих заканчивается тот, кто стоит первым' },
     { key: 'cheap', ru: 'Самая дешёвая проверка', why: 'самый дешёвый этап по очкам' },
   ];
   function candidate(key, plan) {
@@ -200,10 +216,17 @@ window.RouteUI = (() => {
     const M = P();
     if (!M || typeof M.publish !== 'function' || !raw) return;
     const keep = pinned();
+    /* прошлый выпуск кладём рядом целиком (только at и stages, без вложенности): разницу
+       «Что изменилось» пересчитывает из двух снимков каждый раз, а не хранит готовой */
+    let before = null;
+    try { before = typeof M.route === 'function' ? M.route(state) : null; } catch (e) { before = null; }
+    const was = hasStages(before) ? { at: num(before.at), stages: before.stages } : null;
     let res = null;
     try { res = M.publish(state, raw, now); } catch (e) { return; }
     if (!res || !res.publish) return;
-    if (keep) routeBox().pinned = keep;      /* снимок встал на место прежнего — возвращаем выбор владельца */
+    const box = routeBox();                  /* снимок встал на место прежнего — возвращаем выбор владельца */
+    if (keep) box.pinned = keep;
+    if (was) box.prev = was;
     persist();
   }
 

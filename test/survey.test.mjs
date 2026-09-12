@@ -212,6 +212,18 @@ t('result чист и не зависит от порядка попыток', (
   assert.deepEqual(r2, r1, 'пересчёт с нуля в другом порядке даёт тот же итог');
 });
 
+t('итог считает грамматику по сохранённой попытке, где самого задания уже нет', () => {
+  const a = attemptOf(3, sheet(P[2], () => true), NOW);
+  assert.ok(a.questions.filter(q => q.kind === 'gram').every(q => q.ok), 'в попытке грамматика отвечена верно');
+  const r = Survey.result({ attempts: [a], settings: {} }, NOW);
+  assert.equal(r.gram.of, Survey.GRAM, 'в итоге все десять заданий');
+  assert.equal(r.gram.right, Survey.GRAM, 'и все они засчитаны: судья не теряет ответ без объекта задания');
+  const bad = Survey.result({ attempts: [attemptOf(3, sheet(P[2], task => task.kind !== 'gram'), NOW)], settings: {} }, NOW);
+  assert.equal(bad.gram.right, 0, 'а неверная грамматика остаётся неверной');
+  assert.equal(r.ear.length, Survey.RATES.length, 'слух разобран по темпам');
+  assert.ok(r.ear.every(e => e.of === Survey.LISTEN), 'в каждом темпе свои шесть заданий');
+});
+
 t('пересдача части заменяет прошлую попытку, а не складывается с ней', () => {
   const bad = attemptOf(1, sheet(P[0], () => false), NOW - 2 * 3600e3);
   const good = attemptOf(1, sheet(P[0], () => true), NOW - 3600e3);

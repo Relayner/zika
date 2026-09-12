@@ -214,16 +214,18 @@ t('годные находки сверх восьми — не улика вы�
 
 t('выдуманные случаи считаются уликой наравне с находками', () => {
   const good = { quote: '衣服', fix: '衣服', node: 'g:b1-09' };
-  const r = Report.validate({ findings: [good, good], cases: [
-    { node: 'выдумка-1', need: 3, ok: 3 }, { node: 'выдумка-2', need: 3, ok: 3 }, { node: 'g:b1-09', need: 2, ok: 2 },
+  const r = Report.validate({ findings: [good, good, good], cases: [
+    { node: 'выдумка-1', need: 3, ok: 3 }, { node: 'выдумка-2', need: 3, ok: 3 },
+    { node: 'g:b1-09', need: 2, ok: 2 }, { node: 'gram:bu-mei', need: 2, ok: 2 },
   ] }, ctx);
-  assert.equal(r.cases.length, 1);
-  assert.equal(r.total, 5, 'меряем против всего, что прислал разбор');
-  assert.equal(r.loose, false, 'две выдумки из пяти — ещё не большинство');
+  assert.equal(r.cases.length, 2, 'выдуманные случаи не считаются');
+  assert.equal(r.total, 7, 'меряем против всего, что прислал разбор: находки и случаи');
+  assert.equal(r.loose, false, 'две выдумки из семи — разбор в силе');
   const worse = Report.validate({ findings: [good], cases: [
     { node: 'выдумка-1', need: 3, ok: 3 }, { node: 'выдумка-2', need: 3, ok: 3 },
   ] }, ctx);
   assert.equal(worse.loose, true, 'две выдумки из трёх — разбор неточный');
+  assert.equal(worse.weight, Report.LOOSE_WEIGHT);
 });
 
 t('донесение не выбивается из дневной нормы', () => {
@@ -282,6 +284,19 @@ t('попытка — чистая функция: порядок журнала
   assert.deepEqual(a1, a2, 'та же история в другом порядке — та же попытка');
   const again = Report.attempt(st1, resOf(), META);
   assert.deepEqual(a1, again, 'повторный расчёт даёт то же самое');
+});
+
+t('совпадающий ts не сдвигает результат: порядок доопределяется по id', () => {
+  const same = NOW - 4 * DAY;
+  const hist = [past('b1-01', same), past('b1-02', same), past('b1-03', NOW - 3 * DAY)];
+  hist[0].id = 'rp-a'; hist[1].id = 'rp-b'; hist[2].id = 'rp-c';
+  const orders = [[0, 1, 2], [2, 1, 0], [1, 0, 2], [1, 2, 0]];
+  let first = null;
+  for (const o of orders) {
+    const st = blank({ cardStats: studied(2, 30), attempts: o.map(i => hist[i]) });
+    const snap = JSON.stringify({ a: Report.attempt(st, resOf(), META), top: Report.topic(st, NOW) });
+    if (first === null) first = snap; else assert.equal(snap, first, 'порядок журнала ' + o.join('') + ' ничего не меняет');
+  }
 });
 
 t('книга v2 берёт назначенную цену без деградации и доплат', () => {
@@ -364,7 +379,7 @@ await ta('analyze шлёт то, что обещано, и проверяет о
   const sent = [];
   Report.setFetch(async (url, opt) => { sent.push({ url, body: JSON.parse(opt.body) }); return resp(okAnswer()); });
   const st = blank({ cardStats: studied(2, 30), settings: {} });
-  const res = await Report.analyze({ state: st, text: TEXT, targets: TARGETS, fires: FIRES, level: 2, tz: 'Europe/Moscow' }, { url: 'https://x.test' });
+  const res = await Report.analyze({ state: st, text: TEXT, targets: TARGETS, fires: FIRES, level: 2, tzName: 'Europe/Moscow' }, { url: 'https://x.test' });
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, 'https://x.test/check');
   const b = sent[0].body;
@@ -372,7 +387,9 @@ await ta('analyze шлёт то, что обещано, и проверяет о
   assert.equal(b.mode, 'report');
   assert.equal(b.level, 2);
   assert.equal(b.text, TEXT);
-  assert.equal(b.tz, 'Europe/Moscow');
+  assert.equal(typeof b.tz, 'number', 'пояс уходит минутами от UTC — воркер считает по ним местный день');
+  assert.ok(b.tz > -900 && b.tz < 900, 'пояс в разумных пределах: ' + b.tz);
+  assert.equal(b.tzName, 'Europe/Moscow', 'имя пояса — рядом, отдельным полем');
   assert.ok(b.did && b.did.length >= 8, 'идентификатор устройства ушёл');
   assert.equal(b.did, st.settings.did, 'и сохранён в настройках');
   assert.equal(b.targets.length, 2);
@@ -405,6 +422,69 @@ await ta('квота воркера доходит словами', async () => 
     () => Report.analyze({ state: st, text: TEXT, targets: TARGETS, fires: FIRES, level: 2 }, { url: 'https://x.test' }),
     e => /разбор/i.test(e.message) || /сегодня/i.test(e.message));
   Report.setFetch(null);
+});
+
+/* ── длинная запись речи (SpeechIn) ── */
+/* Поддельное распознавание: отдаёт ровно то, что велено, и помнит, сколько раз его поднимали */
+class FakeRec {
+  constructor() { FakeRec.made.push(this); this.started = false; }
+  start() { this.started = true; }
+  abort() { this.aborted = true; }
+  stop() { this.aborted = true; }
+}
+FakeRec.made = [];
+/* e.results браузера: список кусков, у каждого [0].transcript и isFinal */
+const results = arr => arr.map(([t, fin]) => ({ isFinal: fin, length: 1, 0: { transcript: t } }));
+const nap = ms => new Promise(r => setTimeout(r, ms));
+const withFake = fn => { FakeRec.made = []; global.window.SpeechRecognition = FakeRec; return fn().finally(() => { delete global.window.SpeechRecognition; }); };
+const lastRec = () => FakeRec.made[FakeRec.made.length - 1];
+
+await ta('повторно присланный финальный кусок не ложится в запись дважды', () => withFake(async () => {
+  const p = SpeechIn.listenLong(5000);
+  const r = lastRec();
+  assert.ok(r && r.started, 'запись началась');
+  r.onresult({ resultIndex: 0, results: results([['我去商店。', true]]) });
+  /* браузер прислал тот же закрытый кусок ещё раз — так делает continuous-распознавание */
+  r.onresult({ resultIndex: 0, results: results([['我去商店。', true], ['今天很好', false]]) });
+  r.onresult({ resultIndex: 1, results: results([['我去商店。', true], ['今天很好。', true]]) });
+  SpeechIn.stop();
+  const res = await p;
+  assert.equal(res.text, '我去商店。今天很好。', 'каждая фраза записана один раз');
+  assert.equal(res.segments.length, 2);
+  assert.equal(res.error, null);
+}));
+
+await ta('обрыв сессии не теряет сказанное: запись поднимается заново', () => withFake(async () => {
+  const p = SpeechIn.listenLong(5000);
+  const r1 = lastRec();
+  r1.onresult({ resultIndex: 0, results: results([['我昨天去了商店。', true]]) });
+  r1.onend();                                   /* браузер закрыл сессию сам */
+  await nap(SpeechIn.GAP_MS + 120);
+  const r2 = lastRec();
+  assert.notEqual(r2, r1, 'поднялась новая сессия');
+  r2.onresult({ resultIndex: 0, results: results([['买了两件衣服。', true]]) });
+  SpeechIn.stop();
+  const res = await p;
+  assert.equal(res.text, '我昨天去了商店。买了两件衣服。', 'куски обеих сессий на месте');
+  assert.equal(res.restarts, 1, 'подъём посчитан честно');
+}));
+
+await ta('отказ в микрофоне объясняется по-русски и не лечится подъёмом', () => withFake(async () => {
+  const p = SpeechIn.listenLong(5000);
+  const r = lastRec();
+  r.onerror({ error: 'not-allowed' });
+  const res = await p;
+  assert.equal(res.text, '');
+  assert.match(res.error, /микрофон/i, 'причина названа словами: ' + res.error);
+  assert.equal(FakeRec.made.length, 1, 'после отказа сессию не поднимают');
+}));
+
+await ta('без распознавания возвращается пустая запись с причиной, а не исключение', async () => {
+  delete global.window.SpeechRecognition;
+  const res = await SpeechIn.listenLong(1000);
+  assert.equal(res.text, '');
+  assert.ok(res.error && /распознавания речи/.test(res.error), 'причина: ' + res.error);
+  assert.deepEqual(res.segments, []);
 });
 
 /* ── честность ── */

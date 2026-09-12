@@ -1,5 +1,5 @@
 /* Service worker: офлайн-кэш оболочки. Версия подставляется сборкой. */
-const CACHE = 'zika-beta-20260912-1613';
+const CACHE = 'zika-beta-20260912-1615';
 const PREFIX = 'zika-beta-';   /* чужие каналы не трогаем: кэши общие на весь домен */
 /* «zika-» — префикс основного канала, но он же начало «zika-beta-»: чужой кэш не наш */
 const mine = k => k.startsWith(PREFIX) && (PREFIX !== 'zika-' || !k.startsWith('zika-beta-'));

@@ -367,9 +367,11 @@ window.Survey = (() => {
   function judge(task, given) {
     const t = task || {};
     const mine = given == null ? '' : (typeof given === 'object' ? String(given.text == null ? '' : given.text) : String(given));
-    if (t.kind === 'gram') {
+    /* Грамматику судит GRAMMAR.check. В сохранённой попытке самого задания уже нет —
+       тогда сверяем с записанным верным ответом: у формата «выбор» это тот же текст. */
+    if (t.kind === 'gram' && t.item) {
       let r = { ok: false, fraction: 0 };
-      try { if (window.GRAMMAR && t.item) r = GRAMMAR.check(t.item, mine); } catch (e) { r = { ok: false, fraction: 0 }; }
+      try { if (window.GRAMMAR) r = GRAMMAR.check(t.item, mine); } catch (e) { r = { ok: false, fraction: 0 }; }
       return { ok: !!r.ok, fraction: r.fraction || 0, mine, right: t.key, scored: true };
     }
     /* самооценка настоящего слова — это данные, а не верный или неверный ответ */

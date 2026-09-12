@@ -45,6 +45,7 @@ window.Prescribe = (() => {
   const DUE_MIN = 3;
   const READS = 0.30;         /* need не выше — блок уже читается, остаётся проверка */
   const ACC_WIN = 21 * DAY;   /* окно, по которому смотрим точность блока */
+  const SURVEY_SPAN = 7 * DAY; /* части одной съёмки укладываются в неделю: это одна съёмка */
 
   const KINDS = {
     regular: { ru: 'Учить блок', zh: '学' },
@@ -116,10 +117,20 @@ window.Prescribe = (() => {
      Кэш привязан к отпечатку банка, а не к первому вызову: подгрузился словарь позже —
      карта пересобирается, и ответ остаётся функцией текущего входа. */
   let wcache = null, wkey = '';
+  /* Отпечаток банка: откуда он взят (живой индекс App или встроенные банки), сколько в нём
+     карточек и сумма их имён. Одного счёта мало: у живого индекса и у встроенных банков
+     размеры могут совпасть, и тогда карта, собранная до загрузки словаря, осталась бы жить
+     после неё. Сумма не зависит от порядка обхода, поэтому отпечаток — функция самого банка. */
+  function fingerprint(keys) {
+    let h = 0;
+    for (const k of keys) { let x = 0; for (let i = 0; i < k.length; i++) x = (x * 31 + k.charCodeAt(i)) | 0; h = (h + x) | 0; }
+    return h;
+  }
   function bankKey() {
     const live = (window.App && App.cardIndex && typeof App.cardIndex === 'object') ? App.cardIndex : null;
-    const n = live ? Object.keys(live).length : [1, 2, 3].reduce((a, l) => a + (((window.HSK || {})[l]) || []).length, 0) + ((window.FREQ || []).length);
-    return n + '/' + blocks().length;
+    if (live) { const ks = Object.keys(live); return 'app:' + ks.length + ':' + fingerprint(ks) + '/' + blocks().length; }
+    const hsk = [1, 2, 3].map(l => (((window.HSK || {})[l]) || []).length).join('.');
+    return 'node:' + hsk + '/' + ((window.FREQ || []).length) + '/' + blocks().length;
   }
   function bank() {
     const key = bankKey();
@@ -154,7 +165,9 @@ window.Prescribe = (() => {
   }
 
   /* ── что уже закрыто: чистый спринт по блоку или печать в программе ── */
-  const cleanSprint = a => a.mode === 'sprint' && !a.aborted && (a.wrong === 0 || a.percent === 100);
+  /* Пустой спринт (ни одного задания) блок не закрывает: у него wrong === 0 просто потому,
+     что отвечать было нечего */
+  const cleanSprint = a => a.mode === 'sprint' && !a.aborted && num(a.total) > 0 && (a.wrong === 0 || a.percent === 100);
   const blockOfAttempt = a => a.blockId || a.block || null;
   function closedMap(state, now) {
     const prog = settingsOf(state).program || {};
@@ -246,11 +259,15 @@ window.Prescribe = (() => {
     } catch (e) { /* промера нет */ }
     /* белые пятна съёмки: берём их из журнала, а не из чужого модуля — попытки съёмки
        несут blockId и иероглиф задания, и промах по такому заданию и есть пятно.
-       Так предписание не зависит от того, загружен ли Survey и какой у него сейчас API. */
+       Так предписание не зависит от того, загружен ли Survey и какой у него сейчас API.
+       Считаем только ПОСЛЕДНЮЮ съёмку (её части идут несколько дней подряд, отсюда окно):
+       иначе промахи, давно закрытые новой съёмкой, вечно тянули бы блок наверх. */
     const bk = bank();
+    const surveys = attemptsOf(state, now).filter(a => a.mode === 'survey' && !a.aborted);
+    const last = surveys.length ? num(surveys[surveys.length - 1].ts) : 0;
     const miss = Object.create(null);
-    for (const a of attemptsOf(state, now)) {
-      if (a.mode !== 'survey' || a.aborted) continue;
+    for (const a of surveys) {
+      if (last - num(a.ts) > SURVEY_SPAN) continue;
       for (const q of (a.questions || [])) {
         if (!q || q.scored === false || q.ok !== false) continue;
         const id = q.blockId || bk.blk[q.hanzi || q.word || ''];
@@ -258,7 +275,7 @@ window.Prescribe = (() => {
       }
     }
     for (const id of Object.keys(miss).sort()) {
-      out[id] = 'белое пятно съёмки: ' + miss[id] + ' ' + plur(miss[id], 'промах', 'промаха', 'промахов');
+      out[id] = 'белое пятно съёмки: ' + miss[id] + ' ' + plur(miss[id], 'промах', 'промаха', 'промахов') + ' в последней съёмке';
     }
     return out;
   }
@@ -266,12 +283,22 @@ window.Prescribe = (() => {
   /* ── реальный шаг: очки за день на закрытых этапах ──
      Закрытый этап — блок, доведённый до чистого спринта. Считаем очки попыток по этому блоку
      от первого касания до спринта и календарные дни между ними. Всё из журнала, ничего не храним. */
-  function ptsOf(a) {
-    try { if (window.Ledger && Ledger.ptsOf) return num(Ledger.ptsOf(a)); } catch (e) { /* книг нет */ }
+  /* Очки попытки берём из той книги, которая открыта В ПЕРЕДАННОМ состоянии, а не из той,
+     что сейчас привязана к Ledger глобально. Иначе один и тот же журнал давал бы разные сроки
+     до и после Ledger.bind — то есть ответ зависел бы от порядка загрузки, а не от истории. */
+  function verOf(s) {
+    try { if (window.Ledger && Ledger.is2) return Ledger.is2(s) ? 'v2' : 'v1'; } catch (e) { /* книг нет */ }
+    return 'v1';
+  }
+  function ptsOf(a, ver) {
+    try {
+      if (window.Ledger && Ledger.ptsOf && Ledger.withVer) return num(Ledger.withVer(ver, () => Ledger.ptsOf(a)));
+    } catch (e) { /* книг нет */ }
     if (a.points != null) return num(a.points);
     try { return num(Campaign.attemptPoints(a)); } catch (e) { return 0; }
   }
   function pace(state, now) {
+    const ver = verOf(state);
     const by = Object.create(null);
     for (const a of attemptsOf(state, now)) {
       const b = blockOfAttempt(a);
@@ -286,17 +313,34 @@ window.Prescribe = (() => {
       const from = num(list[0].ts), to = num(end.ts);
       const span = Math.max(1, Math.round((to - from) / DAY) + 1);
       let p = 0;
-      for (const a of list) { if (num(a.ts) <= to) p += ptsOf(a); }
+      for (const a of list) { if (num(a.ts) <= to) p += ptsOf(a, ver); }
       if (p <= 0) continue;
       legs++; pts += p; days += span;
     }
     const measured = legs >= PACE_LEGS && days > 0;
     const raw = measured ? pts / days : PLAN_RATE;
+    const cap = dayCap();
+    const perDay = Math.round(clamp(raw, PACE_MIN, cap));
+    const capped = measured && raw > cap;
+    /* пока идёт разгон, дневная норма меньше — об этом говорим прямо, сроки от этого не врут */
+    const boost = !measured && activeDays(state, now) < BOOST_DAYS
+      ? ', первые ' + BOOST_DAYS + ' ' + plur(BOOST_DAYS, 'день', 'дня', 'дней') + ' норма разгона — ' + boostCap() + ' очков' : '';
     return {
-      perDay: Math.round(clamp(raw, PACE_MIN, PACE_MAX)),
-      measured, legs,
-      ru: measured ? 'по вашему шагу' : 'по расчёту, ваш шаг ещё не измерен',
+      perDay, measured, legs, cap,
+      ru: !measured ? 'по расчёту, ваш шаг ещё не измерен' + boost
+        : capped ? 'по вашему шагу, срезанному до дневной нормы ' + cap : 'по вашему шагу',
     };
+  }
+  /* Дней, в которые вообще занимались: по ним видно, идёт ли ещё разгон новичка */
+  function activeDays(state, now) {
+    const seen = Object.create(null);
+    for (const a of attemptsOf(state, now)) {
+      let k = null;
+      try { k = (window.Stats && Stats.dayKey) ? Stats.dayKey(a.ts) : null; } catch (e) { k = null; }
+      if (k == null) k = Math.floor(num(a.ts) / DAY);
+      seen[k] = 1;
+    }
+    return Object.keys(seen).length;
   }
 
   /* ── звучание: уроки PHON идут до первого блока с аудио ── */
@@ -387,7 +431,8 @@ window.Prescribe = (() => {
     else if (levelFit === 0.5) why.push('уровень ' + b.lvl + ' выше рабочего — идёт после своего');
     if (gapRu) why.push(gapRu);
     if (fire) why.push('в блоке горит: ' + (fire.ru || fire.id));
-    if (open.length) why.push('раньше идёт ' + open.map(p => { const x = blockById(p); return x ? '«' + x.ru + '»' : p; }).join(', '));
+    /* прямо говорим, откуда порядок: это суждение о грамматике, а не вывод из ваших ответов */
+    if (open.length) why.push('раньше идёт ' + open.map(p => { const x = blockById(p); return x ? '«' + x.ru + '»' : p; }).join(', ') + ' — так собрана грамматика, это не вывод из ваших ответов');
 
     return {
       id: b.id, blockId: b.id, kind,
@@ -422,7 +467,9 @@ window.Prescribe = (() => {
       if (a.mode !== 'gram') continue;
       const b = blockOfAttempt(a);
       if (!b) continue;
-      out[b] = (out[b] || 0) + (num(a.correct) || num(a.total) || 0);
+      /* пройденным считаем верно решённое, а не сам факт захода: разбор, проваленный целиком
+         (correct === 0), раньше засчитывался как пройденный полностью и убирал этап */
+      out[b] = (out[b] || 0) + (a.correct != null ? num(a.correct) : num(a.total));
     }
     return out;
   }
@@ -527,8 +574,9 @@ window.Prescribe = (() => {
     const horizon = {
       from: lo, to: hi,
       weeks: { from: Math.max(1, Math.ceil(lo / 7)), to: Math.max(1, Math.ceil(hi / 7)) },
+      /* прямо говорим, чего счёт не видит: сколько у вас будет свободных дней */
       ru: cut.length
-        ? 'примерно ' + Math.max(1, Math.ceil(lo / 7)) + '–' + Math.max(1, Math.ceil(hi / 7)) + ' ' + plur(Math.max(1, Math.ceil(hi / 7)), 'неделя', 'недели', 'недель') + ' · ' + p.ru
+        ? 'примерно ' + Math.max(1, Math.ceil(lo / 7)) + '–' + Math.max(1, Math.ceil(hi / 7)) + ' ' + plur(Math.max(1, Math.ceil(hi / 7)), 'неделя', 'недели', 'недель') + ' занятий без перерывов · ' + p.ru
         : 'горизонт пуст: в программе не осталось открытых блоков',
       note: p.ru,
     };
