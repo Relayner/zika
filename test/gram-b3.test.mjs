@@ -1,5 +1,7 @@
 /* Банк грамматики HSK 3 (b3-01…b3-16): покрытие блоков, форматы, лексика уровня,
-   единственность ключа, метки ловушек, разнообразие каркасов и чистота пересчёта. */
+   единственность ключа, метки ловушек, разнообразие каркасов и чистота пересчёта.
+   Отдельно: метка ловушки сверяется с каталогом движка по первому атому, банк
+   проверяется на пустом и мусорном журнале попыток, выборка — на чистоту. */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -257,6 +259,94 @@ t('порядок загрузки не важен: движок первым, �
   const out = execFileSync(process.execPath, ['-e', code], { encoding: 'utf8' }).trim().split(' ');
   assert.equal(+out[0], ITEMS.length, 'при обратном порядке загрузки банк подобран не целиком');
   assert.equal(+out[1], 0, 'при обратном порядке загрузки появились нарушения');
+});
+
+t('метка ловушки не спорит со своим вариантом', () => {
+  /* зубастее предыдущей: даже если каталог метку целиком не разбирает, первый атом
+     метки — это иероглиф, и он обязан стоять в самом варианте. Так ловится «zhe»,
+     означающий у нас 着, а в каталоге движка — 这. */
+  const ATOM = GRAMMAR.ATOM || {};
+  for (const it of ITEMS.filter(i => i.format === 'choice')) {
+    for (const o of (it.options || [])) {
+      if (!o.trap) continue;
+      const head = ATOM[o.trap.split('-')[0]];
+      if (!head || !CJK.test(head)) continue;            /* атом-признак, а не слово */
+      const vars = head.split('/').map(s => s.trim()).filter(s => CJK.test(s));
+      assert.ok(vars.some(w => GRAMMAR.norm(o.text).indexOf(GRAMMAR.norm(w)) >= 0),
+        it.id + ': метка «' + o.trap + '» начинается с «' + head + '», а вариант — «' + o.text + '»');
+    }
+  }
+});
+
+t('каталог объясняет хотя бы половину меток банка', () => {
+  /* метка без разбора оставляет ученика без объяснения ошибки — это не запрет, но и не норма */
+  let all = 0, known = 0; const mute = new Set();
+  for (const it of ITEMS) for (const o of (it.options || [])) if (o.trap) {
+    all++; if (GRAMMAR.trapInfo(o.trap)) known++; else mute.add(o.trap);
+  }
+  assert.ok(all > 0, 'меток ловушек в банке нет вовсе');
+  assert.ok(known * 2 >= all, 'разбирается только ' + known + ' меток из ' + all + '; немые: ' + [...mute].sort().join(' '));
+});
+
+t('в каждом блоке не меньше десяти заданий и двух сборок фразы', () => {
+  for (const b of BLOCKS) {
+    const mine = byBlock(b.id);
+    assert.ok(mine.length >= 10, b.id + ': заданий ' + mine.length + ', глубина требует не меньше 10');
+    assert.ok(mine.filter(i => i.format === 'order').length >= 2, b.id + ': сборок фразы меньше двух');
+  }
+});
+
+t('пустое и странное состояние банк переживает', () => {
+  const it = ITEMS[0];
+  /* 0 сюда не кладём: числом судья выбирает вариант по номеру, это законный ответ */
+  for (const g of [undefined, null, '', '   ', [], {}, { text: '' }, { choice: null }]) {
+    const r = GRAMMAR.check(it, g);
+    assert.equal(r.ok, false, it.id + ': пустой ответ «' + JSON.stringify(g) + '» принят за верный');
+    assert.equal(typeof r.why, 'string', it.id + ': судья не вернул объяснение');
+  }
+  assert.deepEqual(GRAMMAR.pick('b3-99', 5, { seed: 1 }), [], 'выборка из несуществующего блока не пуста');
+  assert.deepEqual(GRAMMAR.forLevel(99), [], 'на несуществующем уровне что-то нашлось');
+  assert.deepEqual(GRAMMAR.audit([]), [], 'пустой список заданий дал нарушения');
+  /* выборка — чистая функция от блока и зерна, а сам банк она не трогает */
+  const a = GRAMMAR.pick('b3-01', 4, { seed: 7 }).map(i => i.id).join(',');
+  GRAMMAR.pick('b3-02', 9, { seed: 3 });
+  const b = GRAMMAR.pick('b3-01', 4, { seed: 7 }).map(i => i.id).join(',');
+  assert.equal(a, b, 'одно и то же зерно дало разную выборку');
+  const src = ITEMS.find(i => Array.isArray(i.options));
+  const copy = GRAMMAR.prepare(src, GRAMMAR.mulberry32(11));
+  copy.options.forEach(o => { o.text = 'испорчено'; });
+  assert.ok(src.options.every(o => o.text !== 'испорчено'), src.id + ': prepare отдал ссылки на сам банк');
+});
+
+t('пересчёт по журналу попыток не зависит от порядка и мусора', () => {
+  /* журнал append-only: считаем по нему счёт заданий чистой функцией, как это сделает методика v2 */
+  const tally = log => {
+    const out = {};
+    for (const at of (log || [])) {
+      for (const q of (Array.isArray(at && at.questions) ? at.questions : [])) {
+        const item = ITEMS.find(i => i.id === (q && q.gramId));
+        if (!item) continue;
+        const r = GRAMMAR.check(item, q && q.answer ? q.answer.choice : undefined);
+        const c = out[item.id] || (out[item.id] = { ok: 0, wrong: 0 });
+        if (r.ok) c.ok++; else c.wrong++;
+      }
+    }
+    return out;
+  };
+  const pick = ITEMS.filter(i => i.format === 'choice').slice(0, 5);
+  const log = [
+    { id: 'a1', ts: 1, mode: 'quiz', deckIds: [], questions: null },                    /* попытка без вопросов */
+    { id: 'a2', ts: 2, mode: 'quiz', deckIds: [], questions: [{ hanzi: '', guess: '' }] }, /* вопрос без задания */
+    { id: 'a3', ts: 3, mode: 'quiz', deckIds: [], questions: pick.map(i => ({ gramId: i.id, answer: { choice: [].concat(i.key)[0] } })) },
+    { id: 'a4', ts: 4, mode: 'quiz', questions: pick.map(i => ({ gramId: i.id, answer: { choice: '' } })) },
+    { id: 'a5', ts: 5, mode: 'quiz', questions: [{ gramId: 'b3-99.g.99', answer: { choice: '又' } }] },
+  ];
+  assert.deepEqual(tally([]), {}, 'пустой журнал дал ненулевой счёт');
+  assert.deepEqual(tally(undefined), {}, 'отсутствующий журнал уронил пересчёт');
+  const straight = tally(log);
+  assert.deepEqual(tally(log.slice().reverse()), straight, 'обратный порядок журнала дал другой счёт');
+  assert.deepEqual(tally(log.concat(log.slice(0, 2))), straight, 'пустые попытки изменили счёт');
+  for (const i of pick) assert.deepEqual(straight[i.id], { ok: 1, wrong: 1 }, i.id + ': счёт по журналу собрался неверно');
 });
 
 t('банк не изменился за весь прогон', () => {

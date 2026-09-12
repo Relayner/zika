@@ -308,6 +308,48 @@ t('результат не зависит от порядка перебора �
   }
 });
 
+/* ── банк — это данные, а не код: ни DOM, ни сети, ни функций, ни импортов ── */
+t('файл банка содержит только данные', () => {
+  const code = fs.readFileSync(new URL('../src/js/gram-b4.js', import.meta.url), 'utf8');
+  const forbidden = [/\bimport\s/, /\bexport\s/, /\brequire\s*\(/, /\bdocument\b/, /window\s*\.\s*location/,
+    /\bfetch\s*\(/, /\blocalStorage\b/, /Math\s*\.\s*random/, /\bnew Date\b/, /Date\s*\.\s*now/,
+    /=>/, /\bfunction\b/];
+  const hit = forbidden.filter(re => re.test(code)).map(re => re.source);
+  assert.deepEqual(hit, [], 'в банке появился код, а не только данные: ' + hit.join(', '));
+  /* задания переживают круг через JSON без потерь — значит, нет ни функций, ни ссылок на общее состояние */
+  assert.deepEqual(JSON.parse(JSON.stringify(items)), items, 'задание не сводится к чистому JSON');
+});
+
+/* ── повторная регистрация банка ничего не удваивает ── */
+t('повторный reload не удваивает банк', () => {
+  assert.equal(new Set(items.map(i => i.id)).size, items.length, 'в банке дубли id');
+  if (!GRAMMAR) return;
+  const before = GRAMMAR.forLevel(4).length;
+  GRAMMAR.reload(); GRAMMAR.reload();
+  assert.equal(GRAMMAR.forLevel(4).length, before, 'после повторного reload заданий стало ' + GRAMMAR.forLevel(4).length);
+});
+
+/* ── слово, которому учит блок, должно в блоке звучать ──
+   Единственное законное исключение: иероглифов этого слова нет в словаре уровня (freq.js),
+   и тогда движок сам отверг бы такое задание. Как только слово появится в словаре — проверка потребует его. */
+t('правило блока преподаётся, а не подменяется синонимом', () => {
+  const lex = GRAMMAR ? GRAMMAR.lexicon(4) : LEX;
+  const problems = [];
+  const skipped = [];
+  for (const b of blocks) {
+    const words = String((b.g && b.g.t) || '').match(/[一-鿿]+/g) || [];
+    const body = (byBlock[b.id] || []).map(it => String(it.tts)).join('');
+    for (const w of words) {
+      if (body.indexOf(w) >= 0) continue;
+      if ([...w].some(ch => !lex.has(ch))) skipped.push(b.id + ': «' + w + '»');
+      else problems.push(b.id + ': правило учит «' + w + '», но это слово не звучит ни в одном задании блока');
+    }
+  }
+  for (const p of problems) console.error('FAIL правило', p);
+  if (skipped.length) console.log('  не преподаётся из-за словаря уровня (пробел freq.js, не банка): ' + skipped.join(', '));
+  assert.equal(problems.length, 0, 'блоков с подменённым правилом: ' + problems.length);
+});
+
 const perBlock = blocks.map(b => (byBlock[b.id] || []).length);
 console.log('блоков: ' + blocks.length + ', заданий: ' + items.length +
   ' (мин/макс на блок: ' + Math.min(...perBlock) + '/' + Math.max(...perBlock) + ')');

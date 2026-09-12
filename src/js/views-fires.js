@@ -4,6 +4,8 @@
    тем же путём, что и любое занятие. Ни одного значения в state мимо попытки не пишем. */
 window.FiresUI = (() => {
   const { state, views, actions, nav, esc, uid, toast, sheet, closeSheet, render, saveAttempt, fmt, LABELS } = App;
+  /* подписи режимов: в журнале и разборе попыток не должно быть латиницы */
+  if (LABELS && LABELS.mode && !LABELS.mode.trap) LABELS.mode.trap = 'Разбор ошибки';
 
   const DAY = 24 * 3600e3, MONTH = 30 * DAY;
   const DRILL_N = 6;      /* заданий в разборе */
@@ -77,33 +79,45 @@ window.FiresUI = (() => {
   }
   const rowsOf = f => (window.Fires ? (caseIndex().get(f.id) || []) : []);
 
-  /* Что именно ответил ученик — берём из самой попытки, ничего не достраивая */
-  function given(q) {
+  /* Что именно ответил ученик — берём из самой попытки, ничего не достраивая.
+     cite = ответ можно поставить в кавычки и сравнить с верным. «Не знал» и «время вышло»
+     сравнивать не с чем: это не сказанное слово, а отсутствие ответа. */
+  function said(q) {
     const an = (q && q.answer) || {};
-    if (an.choiceText != null && String(an.choiceText).trim()) return String(an.choiceText).trim();
+    if (an.choiceText != null && String(an.choiceText).trim()) return { t: String(an.choiceText).trim(), cite: true };
     if (an.input) {
       const v = Object.keys(an.input).map(k => an.input[k]).filter(x => x && String(x).trim());
-      if (v.length) return v.join(' · ');
+      if (v.length) return { t: v.join(' · '), cite: true };
     }
-    if (typeof an.given === 'string' && an.given.trim()) return an.given.trim();
-    if (an.self != null) return an.self ? 'знал' : 'не знал';
-    if (an.timeout) return 'время вышло';
+    if (typeof an.given === 'string' && an.given.trim()) return { t: an.given.trim(), cite: true };
+    if (an.self != null) return { t: an.self ? 'знал' : 'не знал', cite: false };
+    if (an.timeout) return { t: 'время вышло', cite: false };
     return null;
   }
   const wordOf = q => [q.hanzi, q.pinyin, q.ru].filter(Boolean).join(' · ');
+  /* Верный ответ в том же виде, в каком записан ответ ученика: спрашивали иероглиф с пиньинем —
+     значит и «вместо» должно быть иероглифом с пиньинем, иначе сравнение выглядит подменой. */
+  function rightOf(q) {
+    const gs = q.guess || [];
+    return ['hanzi', 'pinyin', 'ru'].filter(p => gs.indexOf(p) >= 0 && q[p]).map(p => String(q[p]).trim()).join(' ');
+  }
+  const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[·,;\s]+/g, ' ').trim();
   /* Цитата — только там, где из журнала видно, что именно ученик выбрал вместо чего.
+     Верный ответ не цитируем: «次 cì вместо cì» — не разбор ошибки, а путаница.
      Если верный ответ в попытке не записан, цитируем лишь названную ловушку: додумывать нечего. */
   function quoteOf(r) {
+    if (r.ok) return null;
     const q = r.q || {};
-    const g = given(q);
-    if (!g) return null;
-    const gs = q.guess || [];
-    const right = String((gs.indexOf('ru') >= 0 ? q.ru : gs.indexOf('pinyin') >= 0 ? q.pinyin : gs.indexOf('hanzi') >= 0 ? q.hanzi : '') || '').trim();
+    const s = said(q);
+    if (!s || !s.cite) return null;
+    const g = s.t;
+    const right = rightOf(q);
     const word = wordOf(q);
     if (right) {
-      if (right === g) return null;
+      if (norm(right) === norm(g)) return null;
       /* верный ответ уже назван — второй раз его в описании слова не повторяем */
-      const rest = [q.hanzi, q.pinyin, q.ru].filter(x => x && String(x).trim() !== right).join(' · ');
+      const seen = norm(right);
+      const rest = [q.hanzi, q.pinyin, q.ru].filter(x => x && seen.indexOf(norm(x)) < 0).join(' · ');
       return '«' + g + '» вместо «' + right + '»' + (rest ? ' · ' + rest : '');
     }
     return q.trap && word ? '«' + g + '» · ' + word : null;
@@ -123,11 +137,14 @@ window.FiresUI = (() => {
     }
     return null;
   }
+  /* Откуда случай. Имя режима берём только из подписей: у разбора ошибок и у любого нового
+     режима его в LABELS нет, а показывать ученику служебное слово латиницей нельзя —
+     у таких попыток говорит их собственное название. */
   function srcLabel(a) {
     if (!a) return 'занятие';
-    if (a.mode === 'phon' || a.mode === 'sprint' || a.mode === 'probe') return a.deckName || (LABELS.mode[a.mode] || a.mode);
-    const name = a.deckName ? ' · ' + a.deckName : '';
-    return (LABELS.mode[a.mode] || a.mode || 'занятие') + name;
+    const mode = LABELS.mode[a.mode] || null;
+    if (!mode || a.mode === 'phon' || a.mode === 'sprint' || a.mode === 'probe') return a.deckName || mode || 'занятие';
+    return mode + (a.deckName ? ' · ' + a.deckName : '');
   }
 
   /* «4 промаха из 6 за месяц» — считаем по случаям самого огня, без запаса «примерно» */
@@ -191,7 +208,32 @@ window.FiresUI = (() => {
     return { dir: 'zh', cands: [card].concat(near), hit: () => true, trap: null };
   }
 
-  /* ── сборка разбора: та же ловушка стоит среди вариантов, спрашиваем в обе стороны ── */
+  /* Вариантов меньше трёх — задание превращается в подбрасывание монеты: ловушка или не она.
+     Добираем слова из словаря — не ловушки, но и не вторая правда: ни иероглиф, ни перевод не совпадают
+     ни с загаданным словом, ни с остальными вариантами. Добранный вариант помечен pad:
+     промах на нём не запишется как падение в ловушку, которой в этом варианте нет. */
+  const MIN_OPTS = 3;
+  const ruKey = v => String(v || '').toLowerCase().replace(/ё/g, 'е').replace(/\([^)]*\)/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  function padOpts(card, opts, need) {
+    const p = pool();
+    if (!p.length) return opts;
+    const hz = new Set([card.hanzi].concat(opts.map(o => o.hanzi)));
+    const ru = new Set([ruKey(card.ru)].concat(opts.map(o => ruKey(o.ru))));
+    for (let guard = 0; guard < 80 && opts.length < need; guard++) {
+      const c = p[Math.floor(Math.random() * p.length)];
+      if (!c || !c.hanzi || !c.pinyin || hz.has(c.hanzi)) continue;
+      const k = ruKey(c.ru);
+      if (!k || ru.has(k)) continue;
+      hz.add(c.hanzi); ru.add(k);
+      opts.push({ hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru, pad: true });
+    }
+    return opts;
+  }
+
+  /* ── сборка разбора: та же ловушка стоит среди вариантов ──
+     Сторона вопроса — та, в которой ошибка вообще видна: звучание и тон спрашиваются со значения
+     к слову, значение — от слова к переводу. Обратная сторона идёт в ход только тогда, когда разных
+     слов не хватило на шесть заданий: лучше спросить то же слово с другой стороны, чем повторить вопрос. */
   function buildDrill(f) {
     const aim = aimOf(f);
     if (!aim || !aim.cands.length) return null;
@@ -212,7 +254,7 @@ window.FiresUI = (() => {
     for (const dir of [aim.dir, aim.dir === 'zh' ? 'ru' : 'zh']) {
       for (const it of picks) {
         if (qs.length >= DRILL_N) break;
-        const opts = shuffle([it.card].concat(it.opts));
+        const opts = shuffle([it.card].concat(padOpts(it.card, it.opts.slice(), MIN_OPTS - 1)));
         qs.push({ card: it.card, dir, opts, correct: opts.indexOf(it.card), trap: it.trap, ok: null, given: -1, ms: 0 });
       }
     }
@@ -259,7 +301,7 @@ window.FiresUI = (() => {
       const all = fires(now);
       if (!all.length) {
         return headHtml('错 · привычки, которые стоит поправить') + `<div class="empty gold">Ошибок пока не набралось — это хорошо.</div>
-          <div class="panel"><div class="hint">Реестр заполняется сам по ходу занятий: как только привычка подведёт, она появится здесь — с примером из ваших ответов, правилом и тем, сколько чистых ответов осталось до «потушен». Второй промах подряд зажигает огонь, чистые ответы в разные дни его гасят.</div></div>` + backBtns;
+          <div class="panel"><div class="hint">Реестр заполняется сам по ходу занятий: как только привычка подведёт, она появится здесь — с примером из ваших ответов, правилом и тем, сколько чистых ответов осталось до «потушен». Огонь зажигают два промаха — в одном занятии или в пределах месяца друг от друга. Гасят его чистые ответы в разные дни.</div></div>` + backBtns;
       }
       const hot = all.filter(f => HOT[f.status]);
       const out = all.filter(f => f.status === 'out');
@@ -346,7 +388,7 @@ window.FiresUI = (() => {
     };
     /* имя привычки: при верном ответе — та, что стояла среди вариантов и была обойдена;
        при промахе — та, в которую ученик попал */
-    const tid = q.ok ? q.trap : ((chosen && chosen.trap) || q.trap);
+    const tid = q.ok ? q.trap : (chosen && chosen.pad ? null : ((chosen && chosen.trap) || q.trap));
     if (tid) { o.trap = tid; o.answer.trap = tid; }
     return o;
   }
@@ -370,7 +412,7 @@ window.FiresUI = (() => {
 
   function feedback(q) {
     const chosen = q.opts[q.given] || null;
-    const tid = q.ok ? q.trap : ((chosen && chosen.trap) || q.trap);
+    const tid = q.ok ? q.trap : (chosen && chosen.pad ? null : ((chosen && chosen.trap) || q.trap));
     let ex = null;
     if (tid && window.TRAPS) { try { ex = TRAPS.explain(tid); } catch (e) { ex = null; } }
     return `<div class="panel fb">
@@ -411,7 +453,7 @@ window.FiresUI = (() => {
       const pts = a ? (window.Ledger && Ledger.ptsOf ? Ledger.ptsOf(a) : a.points) : null;
       return `<div class="vh"><div class="seal">错</div><div class="grow"><h1 class="title">${esc(last.title)}</h1><div class="sub">разбор · ${last.right} из ${last.total}</div></div></div>
         <div class="panel ornate"><div class="res-meta"><div class="big-score">${last.right}<small>из ${last.total}</small></div>
-          ${pts != null ? `<div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${Math.round(pts)}</b></span></div>` : ''}
+          ${pts != null ? `<div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>${Math.round(pts) > 0 ? '+' + Math.round(pts) : '0'}</b></span></div>` : ''}
           <div class="hint mt0">${f
             ? esc(f.statusZh + ' ' + f.statusRu) + ' · ' + esc(f.toExtinguish)
             : 'Эта ошибка вышла из реестра: промахов по ней в журнале больше нет.'}</div></div></div>

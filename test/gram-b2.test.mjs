@@ -274,6 +274,19 @@ t('пустое и битое состояние банка ничего не л
   assert.equal(GRAMMAR.pick('b2-01', 999, { seed: 1 }).length, byBlock('b2-01').length, 'выборка больше блока');
   assert.deepEqual(GRAMMAR.forLevel(9), [], 'нашёлся несуществующий уровень');
 });
+t('пустые словари ничего не роняют: банк переживает голое окружение', () => {
+  const blocks = PROGRAM.BLOCKS, h1 = HSK[1], h2 = HSK[2];
+  try {
+    PROGRAM.BLOCKS = []; HSK[1] = []; HSK[2] = [];
+    for (const i of items.slice(0, 20)) {
+      assert.ok(Array.isArray(GRAMMAR.validate(i)), i.id + ': validate упал на пустых словарях');
+      const given = i.format === 'fix' ? i.key : (Array.isArray(i.key) ? i.key[0] : i.key);
+      assert.equal(GRAMMAR.check(i, given).ok, true, i.id + ': судья потерял ключ без словарей');
+    }
+    assert.ok(GRAMMAR.lexicon(2) instanceof Set, 'лексикон не собрался на пустых словарях');
+  } finally { PROGRAM.BLOCKS = blocks; HSK[1] = h1; HSK[2] = h2; }
+  assert.equal(GRAMMAR.audit(items).length, 0, 'после возврата словарей банк не сошёлся');
+});
 t('повторная регистрация того же банка не удваивает задания', () => {
   const before = JSON.stringify(GRAMMAR.forLevel(LVL).map(i => i.id));
   const bank = GRAM_BANKS.find(b => b && b.lvl === LVL);
