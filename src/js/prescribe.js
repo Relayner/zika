@@ -333,6 +333,8 @@ window.Prescribe = (() => {
       ? ', первые ' + BOOST_DAYS + ' ' + plur(BOOST_DAYS, 'день', 'дня', 'дней') + ' норма разгона — ' + boostCap() + ' очков' : '';
     return {
       perDay, measured, legs, cap,
+      /* короткая подпись — для заголовка горизонта, полная — там, где есть место объяснить */
+      short: measured ? 'по вашему шагу' : 'по расчёту',
       ru: !measured ? 'по расчёту, ваш шаг ещё не измерен' + boost
         : capped ? 'по вашему шагу, срезанному до дневной нормы ' + cap : 'по вашему шагу',
     };
@@ -582,7 +584,7 @@ window.Prescribe = (() => {
       weeks: { from: Math.max(1, Math.ceil(lo / 7)), to: Math.max(1, Math.ceil(hi / 7)) },
       /* прямо говорим, чего счёт не видит: сколько у вас будет свободных дней */
       ru: cut.length
-        ? 'примерно ' + Math.max(1, Math.ceil(lo / 7)) + '–' + Math.max(1, Math.ceil(hi / 7)) + ' ' + plur(Math.max(1, Math.ceil(hi / 7)), 'неделя', 'недели', 'недель') + ' занятий без перерывов · ' + p.ru
+        ? 'примерно ' + Math.max(1, Math.ceil(lo / 7)) + '–' + Math.max(1, Math.ceil(hi / 7)) + ' ' + plur(Math.max(1, Math.ceil(hi / 7)), 'неделя', 'недели', 'недель') + ' занятий без перерывов · ' + p.short
         : 'горизонт пуст: в программе не осталось открытых блоков',
       note: p.ru,
     };

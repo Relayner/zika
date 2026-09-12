@@ -184,7 +184,8 @@ window.ReportUI = (() => {
   /* 1. Тема */
   function stTopic() {
     const t = rp.topic;
-    const hints = (t.hints || []).map(zh => { const c = byHanzi(zh); return { zh, py: c ? c.pinyin : '', ru: c ? c.ru : '' }; });
+    const han = hanIndex();
+    const hints = (t.hints || []).map(zh => { const c = byHanzi(zh, han); return { zh, py: c ? c.pinyin : '', ru: c ? c.ru : '' }; });
     const rec = recAvailable();
     return head('тема дня') + `
       <div class="panel ornate rp-topic">
@@ -250,13 +251,14 @@ window.ReportUI = (() => {
       <div class="panel ornate">
         <div class="flabel">Что услышал телефон</div>
         ${cs.length ? `<div class="rp-chips" id="rp-chips">${cs.map(chipHtml).join('')}</div>`
-          : '<div class="hint">Иероглифов в записи не нашлось — сверять нечего.</div>'}
-        <div class="hint">Тап — поправить слово, долгий тап — убрать его совсем.</div>
+          : `<div class="hint" style="margin-top:0">Иероглифов в записи не нашлось — сверять нечего. Так бывает, когда речь не распозналась: телефон отдал пустую строку или латиницу.</div>
+             <div class="btns mt0"><button class="btn btn-primary btn-block" data-action="rp-retake">Вернуться и набрать с клавиатуры</button></div>`}
+        ${cs.length ? '<div class="hint">Тап — поправить слово, долгий тап — убрать его совсем.</div>' : ''}
       </div>
       <div class="panel"><div class="flabel">Правки</div>
-        <div class="hint" style="margin-top:0">Правок ${cs.filter(s => s.edited || s.removed).length} из ${cs.length} · знаков ${size}${min ? ' из ' + min + ' нужных' : ''}</div>
-        <div class="hint">Поправленное слово помечается «сомнительно»: неизвестно, вы так сказали или так услышал телефон. В счёт огней оно не идёт.</div>
-        ${half ? '<div class="rp-warn">Правок больше десятой части. Разбор пойдёт с половинным весом: очки за него будут вдвое меньше.</div>' : ''}
+        <div class="hint" style="margin-top:0">${cs.length ? 'Правок ' + cs.filter(s => s.edited || s.removed).length + ' из ' + cs.length + ' · ' : ''}знаков ${size}${min ? ' из ' + min + ' нужных' : ''}</div>
+        ${cs.length ? '<div class="hint">Поправленное слово помечается «сомнительно»: неизвестно, вы так сказали или так услышал телефон. В счёт огней оно не идёт.</div>' : ''}
+        ${half ? '<div class="rp-warn">Правок больше десятой части. Донесение пойдёт с половинным весом: вдвое меньше будут все очки — и за монолог, и за огни. Слишком много правок значит, что запись уже не совсем та, что прозвучала.</div>' : ''}
         ${min && size < min ? `<div class="rp-warn">Знаков меньше нормы. Плата за монолог начисляется от ${min} знаков — сейчас её не будет.</div>` : ''}
         <div class="btns mt0">
           <button class="btn btn-primary btn-block" data-action="rp-ask"${kept.length ? '' : ' disabled'}>Дальше · встречный вопрос</button>
@@ -318,8 +320,8 @@ window.ReportUI = (() => {
       stopTick();
       if (!rp) return;
       if (rp.stage === 'prep') return tickPrep();
-      if (rp.stage === 'rec') return tickRec();
-      if (rp.stage === 'ask') return mountAsk();
+      if (rp.stage === 'rec') { draft('rp-text', 'raw'); return tickRec(); }
+      if (rp.stage === 'ask') { draft('rp-ans', 'ansRaw'); return mountAsk(); }
       if (rp.stage === 'check') return mountChips();
     },
   };
@@ -327,7 +329,20 @@ window.ReportUI = (() => {
   /* ── часы ──
      Отдельного «размонтирования» в приложении нет, поэтому тикер сам останавливается,
      когда его строки на экране больше нет. */
-  const alive = id => App.state.view === 'report' && !!document.getElementById(id);
+  const alive = id => onScreen() && !!document.getElementById(id);
+  /* Экрана больше нет: часы снимаем, микрофон закрываем, а начатый вслух заход бросаем.
+     Молчащая запись иначе держала бы микрофон до жёсткого предела уже после ухода, а
+     вернувшийся человек увидел бы тикающие часы «идёт запись», которой на деле давно нет.
+     Набранное с клавиатуры не трогаем: там есть черновик и терять его нельзя. */
+  function offScreen() { stopTick(); if (rp && rp.listening && !onScreen()) reset(); }
+  const onScreen = () => App.state.view === 'report';
+  /* Набранное держим в черновике на каждом нажатии клавиши: иначе уход с экрана и любая
+     перерисовка стирали бы уже написанное, а человек об этом не узнал бы. */
+  function draft(id, key) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => { if (rp) rp[key] = el.value; });
+  }
   function tickPrep() {
     tick = setInterval(() => {
       if (!rp || rp.stage !== 'prep' || !alive('rp-clock')) return stopTick();
@@ -338,7 +353,7 @@ window.ReportUI = (() => {
   }
   function tickRec() {
     tick = setInterval(() => {
-      if (!rp || rp.stage !== 'rec' || !alive('rp-clock')) return stopTick();
+      if (!rp || rp.stage !== 'rec' || !alive('rp-clock')) return offScreen();
       const s = elapsed();
       document.getElementById('rp-clock').textContent = fmt.clock(s * 1000);
       const bar = document.getElementById('rp-bar');
@@ -354,7 +369,7 @@ window.ReportUI = (() => {
     if (!rp.said) { rp.said = true; if (window.Speech && Speech.available()) setTimeout(() => Speech.say(q.zh), 300); }
     if (!rp.typed && recAvailable() && !rp.listening) listen(ASK_SEC * 1000, true);
     tick = setInterval(() => {
-      if (!rp || rp.stage !== 'ask' || !alive('rp-clock')) return stopTick();
+      if (!rp || rp.stage !== 'ask' || !alive('rp-clock')) return offScreen();
       document.getElementById('rp-clock').textContent = fmt.clock(elapsed() * 1000);
     }, 250);
   }
@@ -394,6 +409,7 @@ window.ReportUI = (() => {
     const box = () => document.getElementById('rp-live');
     S.listenLong(ms, (interim, text) => {
       if (!rp) return;
+      if (!onScreen()) return stopRec();       /* ушли с экрана — микрофон закрываем, а не пишем в пустоту */
       const live = str(text) + str(interim);
       if (forAnswer) rp.ansLive = live; else rp.live = live;
       const el = box();
@@ -401,6 +417,7 @@ window.ReportUI = (() => {
     }).then(res => {
       if (!rp || !rp.listening) return;
       rp.listening = false;
+      if (!onScreen()) return reset();         /* экран бросили посреди записи — заход обрывается здесь */
       const txt = str(res && res.text);
       const err = res && res.error ? str(res.error) : '';
       if (forAnswer) {
@@ -424,6 +441,8 @@ window.ReportUI = (() => {
   actions['rp-go'] = () => goRec(false);
   actions['rp-write'] = () => goRec(true);
   actions['rp-quit'] = () => { reset(); nav('home', {}, { replace: true }); };
+  /* Сверять нечего — не тупик: возвращаем к набору, не теряя того, что уже есть */
+  actions['rp-retake'] = () => { if (!rp) return; stopTick(); rp.typed = true; rp.recErr = ''; rp.stage = 'rec'; rp.at = Date.now(); render(); };
 
   function goRec(typed) {
     if (!rp) return;
@@ -477,11 +496,12 @@ window.ReportUI = (() => {
     const f = document.getElementById('rp-fix');
     const v = f ? str(f.value).trim() : '';
     if (!s) return closeSheet();
-    if (v && v !== s.t) {
+    if (!v) return closeSheet();              /* пустое поле — не команда «вернуть слово», просто отмена */
+    if (v !== s.t) {
       s.t = v; s.edited = true;
       const c = byHanzi(v);
       s.card = c; s.cardId = c ? c.id : null; s.py = c ? c.pinyin : ''; s.ru = c ? c.ru : '';
-    } else if (v && v !== s.orig) s.edited = true;
+    } else if (v !== s.orig) s.edited = true;
     s.removed = false;
     closeSheet(); render();
   };
@@ -534,7 +554,7 @@ window.ReportUI = (() => {
     let res = null, err = '';
     try {
       res = await R().analyze(Object.assign({ state }, pl));
-    } catch (e) { err = str(e && e.message) || 'разбор не дошёл'; }
+    } catch (e) { err = whyRu(e && e.message) || 'сеть не ответила'; }   /* «Причина: разбор не дошёл» ничего не объясняет */
     const now = Date.now();
     /* Разбора нет — свидетельств и плат тоже: пустой результат даёт ноль находок,
        ноль случаев и ни одного перехода огня. Плата за монолог при этом остаётся. */
@@ -546,6 +566,9 @@ window.ReportUI = (() => {
     reset();
     try { await saveAttempt(a); } catch (e) { toast('Попытку сохранить не вышло'); return nav('home', {}, { replace: true }); }
     if (window.Sound) Sound.finish(!err);
+    /* Пока шёл разбор, человек мог уйти. Попытка записана — но выдёргивать его с другого
+       экрана нельзя: сказали словами, где разбор лежит. */
+    if (!onScreen()) return toast('Разбор готов: донесение за сегодня — на главной', 3500);
     nav('report-result', { id: a.id }, { replace: true });
   }
 
@@ -563,7 +586,8 @@ window.ReportUI = (() => {
       a.moves = R().moves(state, a, o.now);
       const pt = R().points(Object.assign({}, res, { moves: a.moves, lvl: a.level }));
       a.pointParts = pt.parts; a.points = pt.points; a.p2fix = pt.points;
-      a.bounty = a.moves.filter(m => m.to === 'out').reduce((s, m) => s + (m.from === 'relit' ? R().PTS.relit : R().PTS.out), 0) || 0;
+      const bounty = a.moves.filter(m => m.to === 'out').reduce((s, m) => s + (m.from === 'relit' ? R().PTS.relit : R().PTS.out), 0);
+      if (bounty) a.bounty = bounty; else delete a.bounty;   /* как в Report: нет платы — нет и поля */
     }
     if (o.half && a.points > 0) {
       const cut = Math.round(a.points / 2 * 10) / 10;
@@ -603,7 +627,7 @@ window.ReportUI = (() => {
     if (!a || !q) return toast('Донесения для повторного разбора нет');
     toast('Отправляю разбор…');
     let res = null;
-    try { res = await R().analyze(Object.assign({ state }, q.pl)); } catch (e) { return toast('Разбор снова не дошёл: ' + (str(e && e.message) || 'сеть')); }
+    try { res = await R().analyze(Object.assign({ state }, q.pl)); } catch (e) { return toast('Разбор снова не дошёл: ' + (whyRu(e && e.message) || 'сеть не ответила')); }
     const qs = R().questions(res, a.durationMs);
     const doubt = (a.report && a.report.doubt) || [];
     for (const x of qs) if (x.trap && doubt.some(d => str(x.hanzi).indexOf(d) >= 0)) { x.doubt = true; x.trap = null; }
@@ -612,7 +636,11 @@ window.ReportUI = (() => {
     a.correct = qs.filter(x => x.ok).length;
     a.wrong = qs.length - a.correct;
     a.percent = qs.length ? Math.round(a.correct / qs.length * 100) : 0;
-    a.moves = R().moves(state, a, Date.now());
+    /* Попытка уже лежит в журнале, а Report.moves сравнивает реестр «без неё» и «с ней».
+       Передать журнал как есть значит посчитать её дважды: «до» уже содержало бы её случаи,
+       и ни один переход не нашёлся бы. Поэтому на время счёта вынимаем её из истории. */
+    const without = Object.assign({}, state, { attempts: (state.attempts || []).filter(x => x !== a) });
+    a.moves = R().moves(without, a, Date.now());
     a.report = Object.assign({}, a.report, { corrected: str(res.corrected), findings: res.findings || [],
       cases: res.cases || [], good: res.good || [], rubric: res.rubric || null, targets: res.targets || [] });
     a.net = 'late';
@@ -630,18 +658,29 @@ window.ReportUI = (() => {
   function marked(rep) {
     const text = str(rep.corrected) || str(rep.mono);
     if (!text) return '<div class="hint">Текста донесения не осталось.</div>';
-    let out = '', rest = text;
+    /* В исправленном тексте подсвечиваем правку, в неисправленном — саму цитату.
+       Чего в тексте нет, то и не подсвечиваем: границы правки выдумывать нечем.
+       Места ищем по всему тексту и складываем по возрастанию, а не подряд по списку находок:
+       иначе тот же разбор, пришедший в другом порядке, подсветил бы другие куски. */
+    const want = new Map();
     for (const f of rep.findings || []) {
-      /* В исправленном тексте подсвечиваем правку, в неисправленном — саму цитату.
-         Чего в тексте нет, то и не подсвечиваем: границы правки выдумывать нечем. */
       const fx = str(f.fix), qt = str(f.quote);
-      const needle = fx && rest.indexOf(fx) >= 0 ? fx : (qt && rest.indexOf(qt) >= 0 ? qt : '');
-      if (!needle) continue;
-      const i = rest.indexOf(needle);
-      out += esc(rest.slice(0, i)) + '<mark>' + esc(needle) + '</mark>';
-      rest = rest.slice(i + needle.length);
+      const needle = fx && text.indexOf(fx) >= 0 ? fx : (qt && text.indexOf(qt) >= 0 ? qt : '');
+      if (needle) want.set(needle, (want.get(needle) || 0) + 1);
     }
-    return `<div class="rp-marg">${out + esc(rest)}</div>`;
+    const spans = [];
+    for (const needle of [...want.keys()].sort()) {
+      let i = text.indexOf(needle);
+      for (let k = want.get(needle); k > 0 && i >= 0; k--) { spans.push({ i, end: i + needle.length }); i = text.indexOf(needle, i + needle.length); }
+    }
+    spans.sort((x, y) => x.i - y.i || y.end - x.end);
+    let out = '', at = 0;
+    for (const sp of spans) {
+      if (sp.i < at) continue;                 /* перекрытие: дважды один кусок не красим */
+      out += esc(text.slice(at, sp.i)) + '<mark>' + esc(text.slice(sp.i, sp.end)) + '</mark>';
+      at = sp.end;
+    }
+    return `<div class="rp-marg">${out + esc(text.slice(at))}</div>`;
   }
   const findCard = f => `<div class="panel rp-find">
     <div class="rp-find-q">${esc(f.quote)}</div>
@@ -663,7 +702,8 @@ window.ReportUI = (() => {
       const parts = a.pointParts || [];
       const MOVE = (R() && R().MOVE_RU) || {};
       return `<div class="vh"><div class="seal">报</div><div class="grow"><h1 class="title">На полях</h1><div class="sub">${esc(fmt.date(a.ts))}${a.total ? ' · случаев ' + a.correct + ' из ' + a.total : ''}</div></div></div>
-      ${ok ? `<div class="panel ornate"><div class="big-score">${a.percent}<small>%</small></div>
+      ${ok ? `<div class="panel ornate">${a.total ? `<div class="big-score">${a.percent}<small>%</small></div>`
+            : '<div class="hint" style="margin-top:0">Считать было нечего: ни одна из мишеней в записи не понадобилась, а находок разбор не прислал. Это не ноль из ста — это «случаев не было».</div>'}
           <div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${Math.round(pointsOf(a))}</b></span></div>
           <div class="hint" style="margin:6px 0 0">Знаков ${num(a.chars)}${a.source === 'typed' ? ' · набрано с клавиатуры' : ' · сказано голосом'}${a.loose ? ' · разбор неточный' : ''}${rep.half ? ' · правок больше десятой части' : ''}</div>
           ${a.net === 'late' ? '<div class="hint">Разбор пришёл позже записи: находки и случаи здесь есть, а очки остались те, что были начислены сразу.</div>' : ''}</div>`
@@ -711,7 +751,7 @@ window.ReportUI = (() => {
       const ok = a.net !== 'fail';
       return `<div class="panel ornate rp-home"><div class="flabel">Донесение</div>
         <div class="rp-home-t">Сегодня уже сделано</div>
-        <div class="hint">${ok ? 'Случаев ' + a.correct + ' из ' + a.total + ' · +' + Math.round(pointsOf(a)) + ' очков' : 'Разбор не дошёл · +' + Math.round(pointsOf(a)) + ' очков за усилие'}</div>
+        <div class="hint">${ok ? (a.total ? 'Случаев ' + a.correct + ' из ' + a.total : 'Случаев не было') + ' · +' + Math.round(pointsOf(a)) + ' очков' : 'Разбор не дошёл · +' + Math.round(pointsOf(a)) + ' очков за усилие'}</div>
         <div class="btns mt0"><button class="btn btn-secondary btn-block" data-go="report-result" data-params="${attr({ id: a.id })}">Посмотреть разбор</button></div></div>`;
     }
     const t = topicOf();

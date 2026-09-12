@@ -250,9 +250,11 @@ window.RouteUI = (() => {
     const n = (plan.stages || []).length;
     /* горизонт подписан тем же шагом, что и строка «Темп» ниже: хвост снимаем, чтобы одна и та
        же оговорка не стояла дважды подряд */
-    const tail = plan.pace && plan.pace.ru ? ' · ' + s2(plan.pace.ru) : '';
     let hru = s2(h && h.ru);
-    if (tail && hru.length > tail.length && hru.slice(-tail.length) === tail) hru = hru.slice(0, -tail.length);
+    for (const t of [s2(plan.pace && plan.pace.short), s2(plan.pace && plan.pace.ru)]) {
+      const tail = t ? ' · ' + t : '';
+      if (tail && hru.length > tail.length && hru.slice(-tail.length) === tail) { hru = hru.slice(0, -tail.length); break; }
+    }
     const goal = `<div class="rt-goal">${esc(pl(n, 'этап', 'этапа', 'этапов'))}${hru ? ' — ' + esc(hru) : ' в горизонте'}</div>`;
     const empty = !((state.attempts || []).length);
     const lvl = plan.level != null

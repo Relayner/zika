@@ -5988,7 +5988,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260912-1618';
+  const VERSION = '20260912-1631';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -14629,9 +14629,10 @@ window.Sinks = (() => {
    каноническому порядку (ts, затем id), а сборка заданий опирается на постоянное зерно,
    а не на порядок вызовов. Пересчёт с нуля обязан давать тот же результат.
 
-   Учёт. Часть платит фиксированно — ровно один дневной переход (Campaign.capFor), попытка
-   идёт с fixedPts: true. Поэтому проверка на сто с лишним заданий не обесценивает неделю
-   обычных занятий. Самооценка «знаю» и псевдослова свидетельствами мастерства не считаются:
+   Учёт. payFor задаёт потолок части — один дневной переход (Campaign.capFor); платит экран
+   по времени работы (20 очков за минуту, как за обычное занятие) и не выше этого потолка.
+   Попытка идёт с fixedPts: true. Поэтому проверка на сто с лишним заданий не обесценивает
+   неделю обычных занятий и не платит за неё больше, чем за такую же неделю. Самооценка «знаю» и псевдослова свидетельствами мастерства не считаются:
    у таких заданий нет карточки, и повторения по ним не заводятся. */
 window.Survey = (() => {
   const LVLS = [1, 2, 3, 4];
@@ -14692,6 +14693,9 @@ window.Survey = (() => {
   const DROP = /[\s_·，。？！、；：（）《》「」“”‘’…—,.?!;:()[\]{}<>'"-]/g;
   const norm = v => String(v == null ? '' : v).replace(DROP, '').toLowerCase();
   const r2 = x => Math.round(x * 100) / 100;
+  /* Полный порядок: равные элементы должны давать 0, иначе сортировка зависит от того,
+     в каком порядке пришёл список, — а это ровно то, что закон чистоты запрещает. */
+  const cmpStr = (a, b) => { const x = String(a == null ? '' : a), y = String(b == null ? '' : b); return x < y ? -1 : x > y ? 1 : 0; };
   const pl = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many);
   const pct = x => (x == null ? null : Math.round(x * 100));
   function hash(s) {
@@ -15028,25 +15032,39 @@ window.Survey = (() => {
     return { right, of: s.length, percent: s.length ? Math.round(right / s.length * 100) : 0 };
   };
   /* Оценка полосы: узнавание за вычетом ложных тревог, поправленное набором.
-     Ложная тревога — «знаю» на псевдослово: без этой поправки полоса всегда завышена. */
-  function estimate(know, sets) {
-    const real = know.filter(r => !r.task.pseudo), fake = know.filter(r => r.task.pseudo);
+     Ложная тревога — «знаю» на выдуманное слово; без этой поправки полоса всегда завышена.
+
+     Ложные тревоги считаются по ВСЕЙ пробе, а не по тем псевдословам, что выпали на эту
+     полосу: на полосу их приходится одно-два, и одна случайная отметка решала бы судьбу
+     целого уровня (полоса падала с «≈ 100 %» до «≈ 0 %»). Склонность называть знакомым
+     незнакомое — свойство отвечающего, а не уровня, поэтому и мерить её надо целиком.
+
+     Если знакомыми названы все выдуманные слова, ответы не отличают настоящее от
+     выдуманного: полоса остаётся неизмеренной (est: null, blind: true), а не объявляется
+     нулевой — нуль здесь был бы таким же выдуманным числом. */
+  function estimate(know, sets, fakes) {
+    const real = know.filter(r => !r.task.pseudo);
+    const fake = (fakes && fakes.length) ? fakes : know.filter(r => r.task.pseudo);
     if (!real.length) return null;
     const raw = real.filter(r => r.yes).length / real.length;
     const fa = fake.length ? fake.filter(r => r.yes).length / fake.length : 0;
-    let est = fa >= 1 ? 0 : Math.max(0, (raw - fa) / (1 - fa));
+    const blind = fake.length > 0 && fa >= 1;
+    let est = blind ? null : Math.max(0, (raw - fa) / (1 - fa));
     const s = scoreOf(sets);
-    if (s.of) est *= 0.6 + 0.4 * (s.right / s.of);
-    return { est: r2(Math.max(0, Math.min(1, est))), raw: r2(raw), fa: r2(fa), yes: real.filter(r => r.yes).length, of: real.length,
+    if (est != null && s.of) est *= 0.6 + 0.4 * (s.right / s.of);
+    return { est: est == null ? null : r2(Math.max(0, Math.min(1, est))), blind,
+      raw: r2(raw), fa: r2(fa), yes: real.filter(r => r.yes).length, of: real.length,
       pseudoYes: fake.filter(r => r.yes).length, pseudo: fake.length, set: s };
   }
+  const isProbe = (r, kind) => r.task.sub === 'probe' && r.task.kind === kind;
   function probeOf(list) {
     const out = {};
+    const fakes = list.filter(r => isProbe(r, 'know') && r.task.pseudo);
     for (const lvl of LVLS) {
-      const know = list.filter(r => r.task.sub === 'probe' && r.task.kind === 'know' && r.task.band === lvl);
-      const sets = list.filter(r => r.task.sub === 'probe' && r.task.kind === 'set' && r.task.band === lvl);
+      const know = list.filter(r => isProbe(r, 'know') && r.task.band === lvl);
+      const sets = list.filter(r => isProbe(r, 'set') && r.task.band === lvl);
       if (!know.length && !sets.length) continue;
-      const e = estimate(know, sets);
+      const e = estimate(know, sets, fakes);
       if (e) out[lvl] = e;
     }
     return out;
@@ -15078,12 +15096,14 @@ window.Survey = (() => {
         const b = (window.PROGRAM && PROGRAM.byId) ? PROGRAM.byId(x.blockId) : null;
         x.ru = b ? b.ru : x.blockId; x.zh = b ? b.zh : '';
         x.verdict = rung(x.right, x.asked);
-        x.solid = x.asked >= RUNG && x.right / x.asked >= UP / RUNG;
+        /* «Взята» — это вердикт лестницы, а не отдельная доля: после добора решает счёт
+           из десяти (8 из 10 — вверх), и доля 5/6 объявила бы взятую ступень проваленной. */
+        x.solid = x.verdict === 'up';
       });
       out.rungs = seen;
       const solid = seen.filter(x => x.solid);
       out.top = solid.length ? Math.max(...solid.map(x => x.lvl)) : 0;
-      const fell = seen.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || (a.blockId < b.blockId ? -1 : 1));
+      const fell = seen.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || cmpStr(a.blockId, b.blockId));
       out.start = fell.length ? fell[0] : null;
     } else {
       out.ear = RATES.map(rate => {
@@ -15114,7 +15134,7 @@ window.Survey = (() => {
     const order = ['gram', 'set', 'listen', 'ru2hz', 'hz2ru', 'py2hz', 'tone', 'know'];
     const by = {};
     for (const r of bad) (by[r.task.kind] || (by[r.task.kind] = [])).push(r);
-    for (const k of Object.keys(by)) by[k].sort((a, b) => (b.task.band || 0) - (a.task.band || 0) || (String(a.task.id) < String(b.task.id) ? -1 : 1));
+    for (const k of Object.keys(by)) by[k].sort((a, b) => (b.task.band || 0) - (a.task.band || 0) || cmpStr(a.task.id, b.task.id));
     const out = [];
     let guard = 0;
     while (out.length < n && guard++ < 50) {
@@ -15136,7 +15156,7 @@ window.Survey = (() => {
   /* ── что пройдено: чистая функция от истории ──
      Канон: (ts, затем id). Перемешанный журнал даёт тот же ответ. */
   const sid = a => String((a && a.id) != null ? a.id : '');
-  const CMP = (x, y) => (x.ts - y.ts) || (sid(x) < sid(y) ? -1 : sid(x) > sid(y) ? 1 : 0);
+  const CMP = (x, y) => (x.ts - y.ts) || cmpStr(sid(x), sid(y));
   const attemptsOf = s => ((s || {}).attempts || [])
     .filter(a => a && a.mode === 'survey' && !a.aborted && a.ts && a.part >= 1 && a.part <= PARTS.length)
     .slice().sort(CMP);
@@ -15193,11 +15213,13 @@ window.Survey = (() => {
     }
     out.bands = LVLS.map(l => {
       const p = probe[l] || null;
+      const pe = (p && p.est != null) ? p.est : null;      /* неизмеренная проба — это не нуль */
       const la = lad[l] && lad[l].of ? lad[l].right / lad[l].of : null;
       let est = null, from = 'нет данных';
-      if (p && la != null) { est = r2(0.6 * p.est + 0.4 * la); from = 'проба словаря и лестница'; }
-      else if (p) { est = p.est; from = 'проба словаря'; }
+      if (pe != null && la != null) { est = r2(0.6 * pe + 0.4 * la); from = 'проба словаря и лестница'; }
+      else if (pe != null) { est = pe; from = 'проба словаря'; }
       else if (la != null) { est = r2(la); from = 'лестница'; }
+      if (est == null && p && p.blind) from = 'не измерено: «знаю» стоит и на выдуманных словах';
       const size = sizeOf(l);
       return { lvl: l, deck: DECK[l], ru: LVL_RU[l], est, text: bandText(est), size,
         words: est == null ? null : Math.round(est * size), from,
@@ -15213,7 +15235,7 @@ window.Survey = (() => {
     /* точки старта: первый блок каждого уровня, где посыпалось */
     const p2 = out.parts[2];
     if (p2 && p2.rungs) {
-      const fell = p2.rungs.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || (a.blockId < b.blockId ? -1 : 1));
+      const fell = p2.rungs.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || cmpStr(a.blockId, b.blockId));
       const seenLvl = {};
       for (const x of fell) {
         if (seenLvl[x.lvl]) continue;
@@ -15577,6 +15599,8 @@ window.Prescribe = (() => {
       ? ', первые ' + BOOST_DAYS + ' ' + plur(BOOST_DAYS, 'день', 'дня', 'дней') + ' норма разгона — ' + boostCap() + ' очков' : '';
     return {
       perDay, measured, legs, cap,
+      /* короткая подпись — для заголовка горизонта, полная — там, где есть место объяснить */
+      short: measured ? 'по вашему шагу' : 'по расчёту',
       ru: !measured ? 'по расчёту, ваш шаг ещё не измерен' + boost
         : capped ? 'по вашему шагу, срезанному до дневной нормы ' + cap : 'по вашему шагу',
     };
@@ -15826,7 +15850,7 @@ window.Prescribe = (() => {
       weeks: { from: Math.max(1, Math.ceil(lo / 7)), to: Math.max(1, Math.ceil(hi / 7)) },
       /* прямо говорим, чего счёт не видит: сколько у вас будет свободных дней */
       ru: cut.length
-        ? 'примерно ' + Math.max(1, Math.ceil(lo / 7)) + '–' + Math.max(1, Math.ceil(hi / 7)) + ' ' + plur(Math.max(1, Math.ceil(hi / 7)), 'неделя', 'недели', 'недель') + ' занятий без перерывов · ' + p.ru
+        ? 'примерно ' + Math.max(1, Math.ceil(lo / 7)) + '–' + Math.max(1, Math.ceil(hi / 7)) + ' ' + plur(Math.max(1, Math.ceil(hi / 7)), 'неделя', 'недели', 'недель') + ' занятий без перерывов · ' + p.short
         : 'горизонт пуст: в программе не осталось открытых блоков',
       note: p.ru,
     };
@@ -20772,6 +20796,10 @@ window.CopyUI = (() => {
    стоит минута обычного занятия (дневная норма 400 очков ≈ 20 минут). Так замер не обесценивает
    неделю занятий и не платит за них меньше.
 
+   Время задания считаем в границах 4–60 секунд, но тычок быстрее порога Ledger.FAST_MS идёт
+   по своему настоящему времени: иначе часть, прощёлканная вслепую за полминуты, стоила бы
+   столько же, сколько пройденная честно.
+
    Экран принадлежит тестовой методике: в текущей книге учёта он показывает, где её включить. */
 window.SurveyUI = (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, confirm, persist, render, saveAttempt, fmt, LABELS } = App;
@@ -20786,6 +20814,9 @@ window.SurveyUI = (() => {
   const RESUME_MS = 7 * 24 * 3600e3;        /* сколько ждёт брошенная часть */
   const RATE = 20;                          /* очков за минуту работы: 400 за 20 минут */
   const MIN_Q_MS = 4000, MAX_Q_MS = 60000;  /* время задания считаем в этих границах */
+  /* Тычок быстрее порога книги учёта нижней границы не получает: иначе прощёлкать часть
+     вслепую стоило бы столько же, сколько её пройти. Порог тот же, что в Ledger. */
+  const tapMs = () => ((window.Ledger && Ledger.FAST_MS) || 2500);
   const HOME_MAX = 30;                      /* панель на главной — пока попыток мало */
   const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
   const settings = () => (state.settings || (state.settings = {}));
@@ -20826,6 +20857,16 @@ window.SurveyUI = (() => {
   function clearRun() { if (settings().surveyRun) { delete settings().surveyRun; persist(); } }
 
   /* ── обзор частей ── */
+  /* Часть 2 — лестница: она останавливается, как только уровень найден, поэтому заданий
+     в ней будет от одной ступени до четырёх с доборами, а не весь план. Обещать план целиком
+     нечестно: в жизни вторая часть кончается раньше, чем в описании. */
+  const ladMin = () => Survey.RUNG;
+  const ladMax = () => Survey.LVLS.length * (Survey.RUNG + Survey.MORE);
+  const sizeLine = p => (p.n === 2
+    ? 'от ' + ladMin() + ' до ' + ladMax() + ' заданий · до ' + p.min + ' минут'
+    : fmt.plural(p.count, 'задание', 'задания', 'заданий') + ' · около ' + p.min + ' минут');
+  const minLo = () => Math.min(...Survey.PARTS.map(p => p.min));
+  const minHi = () => Math.max(...Survey.PARTS.map(p => p.min));
   function partRow(p, st, sv) {
     const r = st.parts[p.n];
     const cls = r ? 'done' : (st.next === p.n ? 'next' : 'wait');
@@ -20833,8 +20874,10 @@ window.SurveyUI = (() => {
     const line = r
       ? 'верных ' + r.correct + ' из ' + r.total + ' · ' + fmt.date(r.at)
       : started
-        ? 'начата: ответов ' + sv.ans.length + ' из ' + p.count + ' · продолжится с того же места'
-        : fmt.plural(p.count, 'задание', 'задания', 'заданий') + ' · около ' + p.min + ' минут';
+        /* у лестницы полного числа заданий нет заранее — «из 48» было бы обещанием, а не фактом */
+        ? (p.n === 2 ? 'начата: ответов ' + sv.ans.length + ' · продолжится с того же места'
+          : 'начата: ответов ' + sv.ans.length + ' из ' + p.count + ' · продолжится с того же места')
+        : sizeLine(p);
     return `<div class="row sv-part ${cls}">
       <div><div class="row-t"><span class="zh">${esc(p.zh)}</span> ${esc(p.ru)}</div>
         <div class="row-s">${esc(p.sub)} — ${esc(line)}</div></div>
@@ -20856,13 +20899,13 @@ window.SurveyUI = (() => {
       <div class="panel ornate">
         <div class="flabel">Зачем</div>
         <div class="hint">Уровень здесь набирается работой, поэтому тот, кто уже знает язык, начинает с первого блока HSK 1. Съёмка даёт точку старта заранее: полосу по каждому уровню, первый блок, где посыпалось, и пять белых пятен.</div>
-        <div class="hint">Три части по очереди, по ${Math.min(...Survey.PARTS.map(p => p.min))}–${Math.max(...Survey.PARTS.map(p => p.min))} минут каждая. Уйти можно на любом задании: часть подождёт неделю и продолжится с того же места.</div>
+        <div class="hint">Три части по очереди, каждая до ${minLo()}–${minHi()} минут. Вторая обычно короче: лестница останавливается, как только уровень найден, поэтому заданий в ней от ${ladMin()} до ${ladMax()}. Уйти можно на любом задании: часть подождёт неделю и продолжится с того же места.</div>
         <div class="hint">Разбора после ответов не будет — это замер, а не урок. Незнакомое отмечайте кнопкой «Не знаю»: пропуск честнее догадки и очков не отнимает.</div>
         <div class="flabel mt">Что будет на выходе</div>
         <div class="hint">Полоса по HSK 1–4 с оговоркой, что это оценка по короткому замеру; точки старта по программе; пять белых пятен с вашими ответами; объём словаря.</div>
       </div>
       <div class="panel"><div class="flabel">Части · пройдено ${st.done.length} из ${Survey.PARTS.length}</div>${rows}
-        <div class="hint">Часть платит по времени работы и не больше одного дневного перехода. Съёмка не заменяет занятий и не двигает повторения по самооценке.</div>
+        <div class="hint">Часть платит по времени работы и не больше одного дневного перехода. Быстрые тычки идут по своему настоящему времени, поэтому прощёлкать часть вслепую невыгодно. Съёмка не заменяет занятий и не двигает повторения по самооценке.</div>
         ${skipped && !st.complete ? '<div class="hint">Съёмку отложили — курс идёт с HSK 1. Пройти её можно в любой день.</div>' : ''}</div>
       ${next ? `<div class="panel"><div class="flabel">Дальше</div><div class="hint">${esc(next.about)}</div>
         <div class="btns mt0"><button class="btn btn-primary btn-block" data-go="survey-run" data-params="${attr({ part: next.n })}">${esc(goNext)} · ${esc(next.ru)}</button></div></div>` : ''}
@@ -21017,8 +21060,12 @@ window.SurveyUI = (() => {
         <div class="progress"><i style="width:${Math.round(run.i / Math.max(1, run.qs.length) * 100)}%"></i></div>
         <div class="qcount">${run.i + 1}/${run.qs.length}</div></div>`;
       const tag = `<div class="hint sv-tag">${esc(pi.ru)} · ${esc((Survey.SUBS[q.sub] || {}).ru || q.sub)}${q.blockId && window.PROGRAM && PROGRAM.byId(q.blockId) ? ' · блок «' + esc(PROGRAM.byId(q.blockId).ru) + '»' : ''}</div>`;
+      /* Счётчик части 2 растёт по ходу: в ней столько заданий, сколько понадобится лестнице,
+         и обещать полное число заранее было бы неправдой */
+      const grows = part === 2
+        ? '<div class="hint sv-tag">счётчик — по текущей ступени: лестница останавливается, когда уровень найден</div>' : '';
       /* Ответ принят — сразу следующее задание: разбор здесь был бы уроком, а не замером */
-      return bar + tag + askHtml(q) + bodyHtml(q) + idkBtn(q);
+      return bar + tag + grows + askHtml(q) + bodyHtml(q) + idkBtn(q);
     },
     mount() {
       if (!run) return;
@@ -21079,9 +21126,13 @@ window.SurveyUI = (() => {
 
   /* ── сохранение части ── */
   /* Цена: не выше дневного перехода и не выше ставки за столько же минут обычной работы */
+  function workMs(q) {
+    const ms = Math.min(MAX_Q_MS, Math.max(0, num(q.ms)));
+    return ms < tapMs() ? ms : Math.max(MIN_Q_MS, ms);
+  }
   function payFor(campaign, qs) {
     const capPart = num(Survey.payFor(campaign), 400);
-    const work = qs.reduce((s, q) => s + Math.min(MAX_Q_MS, Math.max(MIN_Q_MS, num(q.ms))), 0);
+    const work = qs.reduce((s, q) => s + workMs(q), 0);
     return Math.max(0, Math.min(capPart, Math.round(work / 60000 * RATE)));
   }
   function finish() {
@@ -21096,7 +21147,11 @@ window.SurveyUI = (() => {
       blockId: q.blockId, rung: q.rung, rate: q.rate, pseudo: !!q.pseudo, word: q.word,
       hanzi: q.self ? '' : (q.hanzi || ''), pinyin: q.self ? '' : (q.pinyin || ''),
       ru: q.self ? 'самооценка: ' + (q.word || q.hanzi || '') : (q.ru || ''),
-      show: q.show || '', why: q.why || '', key: q.key == null ? null : String(q.key),
+      show: q.show || '',
+      /* У псевдослова объяснение надо назвать словами: без него белое пятно собиралось бы из
+         запасного «иероглифы — перевод» и читалось как «都长 — самооценка: 都长» */
+      why: q.why || (q.pseudo ? 'Сочетание собрано из знакомых знаков, но такого слова в словаре нет.' : ''),
+      key: q.key == null ? null : String(q.key),
       given: q.mine == null ? '' : String(q.mine), ok: q.ok == null ? null : !!q.ok,
       fraction: q.fraction, scored: !!q.scored, yes: !!q.yes, ms: q.ms || 0,
       answer: { choice: q.given == null ? -1 : q.given, choiceText: q.mine == null ? '' : String(q.mine) },
@@ -21160,7 +21215,7 @@ window.SurveyUI = (() => {
       <div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${Math.round(pointsOf(a))}</b></span></div>
       <div class="fb-row"><span class="fb-p">Время</span><span class="fb-v">${fmt.dur(a.durationMs)}</span></div>
       ${rows.filter(Boolean).map(x => `<div class="hint">${esc(x)}</div>`).join('')}
-      <div class="hint">Процент — доля верных ответов в части, самооценка «знаю» в него не входит${num(a.idk) ? '; «не знаю» здесь ' + num(a.idk) : ''}.</div></div>`;
+      <div class="hint">Процент — доля верных ответов в части, самооценка «знаю» в него не входит${num(a.idk) ? '. Пропусков «не знаю» — ' + num(a.idk) : ''}.</div></div>`;
   }
 
   views['survey-result'] = {
@@ -21175,12 +21230,16 @@ window.SurveyUI = (() => {
       const bands = r.bands.map(b => `<div class="row sv-band"><div><div class="row-t">${esc(b.ru)}</div><div class="row-s">${esc(b.from)}${b.words != null ? ' · ' + fmt.plural(b.words, 'слово', 'слова', 'слов') + ' из ' + b.size : ''}</div></div>
         <div class="row-r"><span class="badge ${b.est == null ? '' : App.accClass(Math.round(b.est * 100))}">${esc(b.text)}</span></div></div>`).join('');
       const starts = r.starts.length
-        ? r.starts.map(s => `<div class="row sv-start"><div><div class="row-t">${esc(s.ru)} <span class="muted">${esc(s.blockId)}</span></div><div class="row-s">${esc(s.why)}</div></div>
+        ? r.starts.map(s => `<div class="row sv-start"><div><div class="row-t">${s.zh ? `<span class="zh">${esc(s.zh)}</span> ` : ''}${esc(s.ru)}</div><div class="row-s">HSK ${num(s.lvl, 1)} · ${esc(s.why)}</div></div>
             <div class="row-r"><button class="btn btn-secondary btn-sm" data-action="sv-block" data-id="${esc(s.blockId)}">Открыть</button></div></div>`).join('')
-        : '<div class="hint">Лестница пока не проходилась — точки старта появятся после второй части.</div>';
+        /* Часть 2 пройдена, а списка нет — это не «лестница не проходилась», а «ничего не осыпалось».
+           Говорить обратное значило бы отрицать только что показанный разбор ступеней. */
+        : r.state.parts[2]
+          ? `<div class="hint">Ни одна пройденная ступень не осыпалась, поэтому отдельной точки старта нет${r.top ? ': уверенно взят уровень HSK ' + r.top : ''}. Замер короткий — что именно брать первым, точнее покажут первые занятия.</div>`
+          : '<div class="hint">Лестница пока не проходилась — точки старта появятся после второй части.</div>';
       const blanks = r.blanks.length
         ? r.blanks.map(b => `<div class="sv-blank"><div class="row-t">${esc(b.what)}</div>
-            <div class="row-s">ваш ответ: <b class="bad">${esc(b.mine || '— не знаю')}</b>${b.right ? ' · верно: ' + esc(b.right) : ''}</div>
+            <div class="row-s">ваш ответ: <b class="bad">${!b.mine || b.mine === '—' ? 'не знаю' : esc(b.mine)}</b>${b.right ? ' · верно: ' + esc(b.right) : ''}</div>
             ${b.why ? `<div class="hint">${esc(b.why)}</div>` : ''}</div>`).join('')
         : '<div class="hint">Провалов не набралось — белых пятен нет.</div>';
       const st = r.state;
@@ -21221,7 +21280,7 @@ window.SurveyUI = (() => {
     return `<div class="panel ornate sv-home">
       <div class="flabel">Съёмка местности · 测绘</div>
       <div class="sv-home-t">Уже учили китайский?</div>
-      <div class="hint" style="margin:4px 0 0">Короткий замер — ${n} части по 12–15 минут. Он ставит точку старта, чтобы не проходить заново то, что вы уже знаете.${done ? ' Пройдено частей: ' + done + ' из ' + n + '.' : ''}</div>
+      <div class="hint" style="margin:4px 0 0">Короткий замер — ${n} части, каждая до ${minLo()}–${minHi()} минут. Он ставит точку старта, чтобы не проходить заново то, что вы уже знаете.${done ? ' Пройдено частей: ' + done + ' из ' + n + '.' : ''}</div>
       <div class="btns mt0"><button class="btn btn-primary btn-sm" data-go="survey">${esc(label)}</button></div></div>`;
   }
   /* Строка для экрана HSK и «Начните отсюда» — вставляет главный разработчик */
@@ -21232,7 +21291,7 @@ window.SurveyUI = (() => {
     const s = st.complete ? 'пройдена · полосы, точки старта и белые пятна'
       : sv ? 'начата часть ' + num(sv.part) + ' · продолжится с того же места'
       : done ? 'пройдено ' + done + ' из ' + n + ' · дальше часть ' + st.next
-      : n + ' части по 12–15 минут · ставит точку старта';
+      : n + ' части, каждая до ' + minLo() + '–' + minHi() + ' минут · ставит точку старта';
     return `<button class="row tap" data-go="survey"><div><div class="row-t"><span class="zh">${SEAL}</span> Съёмка местности</div>
       <div class="row-s">${esc(s)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`;
   }
@@ -21494,9 +21553,11 @@ window.RouteUI = (() => {
     const n = (plan.stages || []).length;
     /* горизонт подписан тем же шагом, что и строка «Темп» ниже: хвост снимаем, чтобы одна и та
        же оговорка не стояла дважды подряд */
-    const tail = plan.pace && plan.pace.ru ? ' · ' + s2(plan.pace.ru) : '';
     let hru = s2(h && h.ru);
-    if (tail && hru.length > tail.length && hru.slice(-tail.length) === tail) hru = hru.slice(0, -tail.length);
+    for (const t of [s2(plan.pace && plan.pace.short), s2(plan.pace && plan.pace.ru)]) {
+      const tail = t ? ' · ' + t : '';
+      if (tail && hru.length > tail.length && hru.slice(-tail.length) === tail) { hru = hru.slice(0, -tail.length); break; }
+    }
     const goal = `<div class="rt-goal">${esc(pl(n, 'этап', 'этапа', 'этапов'))}${hru ? ' — ' + esc(hru) : ' в горизонте'}</div>`;
     const empty = !((state.attempts || []).length);
     const lvl = plan.level != null
@@ -21914,7 +21975,8 @@ window.ReportUI = (() => {
   /* 1. Тема */
   function stTopic() {
     const t = rp.topic;
-    const hints = (t.hints || []).map(zh => { const c = byHanzi(zh); return { zh, py: c ? c.pinyin : '', ru: c ? c.ru : '' }; });
+    const han = hanIndex();
+    const hints = (t.hints || []).map(zh => { const c = byHanzi(zh, han); return { zh, py: c ? c.pinyin : '', ru: c ? c.ru : '' }; });
     const rec = recAvailable();
     return head('тема дня') + `
       <div class="panel ornate rp-topic">
@@ -21980,13 +22042,14 @@ window.ReportUI = (() => {
       <div class="panel ornate">
         <div class="flabel">Что услышал телефон</div>
         ${cs.length ? `<div class="rp-chips" id="rp-chips">${cs.map(chipHtml).join('')}</div>`
-          : '<div class="hint">Иероглифов в записи не нашлось — сверять нечего.</div>'}
-        <div class="hint">Тап — поправить слово, долгий тап — убрать его совсем.</div>
+          : `<div class="hint" style="margin-top:0">Иероглифов в записи не нашлось — сверять нечего. Так бывает, когда речь не распозналась: телефон отдал пустую строку или латиницу.</div>
+             <div class="btns mt0"><button class="btn btn-primary btn-block" data-action="rp-retake">Вернуться и набрать с клавиатуры</button></div>`}
+        ${cs.length ? '<div class="hint">Тап — поправить слово, долгий тап — убрать его совсем.</div>' : ''}
       </div>
       <div class="panel"><div class="flabel">Правки</div>
-        <div class="hint" style="margin-top:0">Правок ${cs.filter(s => s.edited || s.removed).length} из ${cs.length} · знаков ${size}${min ? ' из ' + min + ' нужных' : ''}</div>
-        <div class="hint">Поправленное слово помечается «сомнительно»: неизвестно, вы так сказали или так услышал телефон. В счёт огней оно не идёт.</div>
-        ${half ? '<div class="rp-warn">Правок больше десятой части. Разбор пойдёт с половинным весом: очки за него будут вдвое меньше.</div>' : ''}
+        <div class="hint" style="margin-top:0">${cs.length ? 'Правок ' + cs.filter(s => s.edited || s.removed).length + ' из ' + cs.length + ' · ' : ''}знаков ${size}${min ? ' из ' + min + ' нужных' : ''}</div>
+        ${cs.length ? '<div class="hint">Поправленное слово помечается «сомнительно»: неизвестно, вы так сказали или так услышал телефон. В счёт огней оно не идёт.</div>' : ''}
+        ${half ? '<div class="rp-warn">Правок больше десятой части. Донесение пойдёт с половинным весом: вдвое меньше будут все очки — и за монолог, и за огни. Слишком много правок значит, что запись уже не совсем та, что прозвучала.</div>' : ''}
         ${min && size < min ? `<div class="rp-warn">Знаков меньше нормы. Плата за монолог начисляется от ${min} знаков — сейчас её не будет.</div>` : ''}
         <div class="btns mt0">
           <button class="btn btn-primary btn-block" data-action="rp-ask"${kept.length ? '' : ' disabled'}>Дальше · встречный вопрос</button>
@@ -22048,8 +22111,8 @@ window.ReportUI = (() => {
       stopTick();
       if (!rp) return;
       if (rp.stage === 'prep') return tickPrep();
-      if (rp.stage === 'rec') return tickRec();
-      if (rp.stage === 'ask') return mountAsk();
+      if (rp.stage === 'rec') { draft('rp-text', 'raw'); return tickRec(); }
+      if (rp.stage === 'ask') { draft('rp-ans', 'ansRaw'); return mountAsk(); }
       if (rp.stage === 'check') return mountChips();
     },
   };
@@ -22057,7 +22120,20 @@ window.ReportUI = (() => {
   /* ── часы ──
      Отдельного «размонтирования» в приложении нет, поэтому тикер сам останавливается,
      когда его строки на экране больше нет. */
-  const alive = id => App.state.view === 'report' && !!document.getElementById(id);
+  const alive = id => onScreen() && !!document.getElementById(id);
+  /* Экрана больше нет: часы снимаем, микрофон закрываем, а начатый вслух заход бросаем.
+     Молчащая запись иначе держала бы микрофон до жёсткого предела уже после ухода, а
+     вернувшийся человек увидел бы тикающие часы «идёт запись», которой на деле давно нет.
+     Набранное с клавиатуры не трогаем: там есть черновик и терять его нельзя. */
+  function offScreen() { stopTick(); if (rp && rp.listening && !onScreen()) reset(); }
+  const onScreen = () => App.state.view === 'report';
+  /* Набранное держим в черновике на каждом нажатии клавиши: иначе уход с экрана и любая
+     перерисовка стирали бы уже написанное, а человек об этом не узнал бы. */
+  function draft(id, key) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => { if (rp) rp[key] = el.value; });
+  }
   function tickPrep() {
     tick = setInterval(() => {
       if (!rp || rp.stage !== 'prep' || !alive('rp-clock')) return stopTick();
@@ -22068,7 +22144,7 @@ window.ReportUI = (() => {
   }
   function tickRec() {
     tick = setInterval(() => {
-      if (!rp || rp.stage !== 'rec' || !alive('rp-clock')) return stopTick();
+      if (!rp || rp.stage !== 'rec' || !alive('rp-clock')) return offScreen();
       const s = elapsed();
       document.getElementById('rp-clock').textContent = fmt.clock(s * 1000);
       const bar = document.getElementById('rp-bar');
@@ -22084,7 +22160,7 @@ window.ReportUI = (() => {
     if (!rp.said) { rp.said = true; if (window.Speech && Speech.available()) setTimeout(() => Speech.say(q.zh), 300); }
     if (!rp.typed && recAvailable() && !rp.listening) listen(ASK_SEC * 1000, true);
     tick = setInterval(() => {
-      if (!rp || rp.stage !== 'ask' || !alive('rp-clock')) return stopTick();
+      if (!rp || rp.stage !== 'ask' || !alive('rp-clock')) return offScreen();
       document.getElementById('rp-clock').textContent = fmt.clock(elapsed() * 1000);
     }, 250);
   }
@@ -22124,6 +22200,7 @@ window.ReportUI = (() => {
     const box = () => document.getElementById('rp-live');
     S.listenLong(ms, (interim, text) => {
       if (!rp) return;
+      if (!onScreen()) return stopRec();       /* ушли с экрана — микрофон закрываем, а не пишем в пустоту */
       const live = str(text) + str(interim);
       if (forAnswer) rp.ansLive = live; else rp.live = live;
       const el = box();
@@ -22131,6 +22208,7 @@ window.ReportUI = (() => {
     }).then(res => {
       if (!rp || !rp.listening) return;
       rp.listening = false;
+      if (!onScreen()) return reset();         /* экран бросили посреди записи — заход обрывается здесь */
       const txt = str(res && res.text);
       const err = res && res.error ? str(res.error) : '';
       if (forAnswer) {
@@ -22154,6 +22232,8 @@ window.ReportUI = (() => {
   actions['rp-go'] = () => goRec(false);
   actions['rp-write'] = () => goRec(true);
   actions['rp-quit'] = () => { reset(); nav('home', {}, { replace: true }); };
+  /* Сверять нечего — не тупик: возвращаем к набору, не теряя того, что уже есть */
+  actions['rp-retake'] = () => { if (!rp) return; stopTick(); rp.typed = true; rp.recErr = ''; rp.stage = 'rec'; rp.at = Date.now(); render(); };
 
   function goRec(typed) {
     if (!rp) return;
@@ -22207,11 +22287,12 @@ window.ReportUI = (() => {
     const f = document.getElementById('rp-fix');
     const v = f ? str(f.value).trim() : '';
     if (!s) return closeSheet();
-    if (v && v !== s.t) {
+    if (!v) return closeSheet();              /* пустое поле — не команда «вернуть слово», просто отмена */
+    if (v !== s.t) {
       s.t = v; s.edited = true;
       const c = byHanzi(v);
       s.card = c; s.cardId = c ? c.id : null; s.py = c ? c.pinyin : ''; s.ru = c ? c.ru : '';
-    } else if (v && v !== s.orig) s.edited = true;
+    } else if (v !== s.orig) s.edited = true;
     s.removed = false;
     closeSheet(); render();
   };
@@ -22264,7 +22345,7 @@ window.ReportUI = (() => {
     let res = null, err = '';
     try {
       res = await R().analyze(Object.assign({ state }, pl));
-    } catch (e) { err = str(e && e.message) || 'разбор не дошёл'; }
+    } catch (e) { err = whyRu(e && e.message) || 'сеть не ответила'; }   /* «Причина: разбор не дошёл» ничего не объясняет */
     const now = Date.now();
     /* Разбора нет — свидетельств и плат тоже: пустой результат даёт ноль находок,
        ноль случаев и ни одного перехода огня. Плата за монолог при этом остаётся. */
@@ -22276,6 +22357,9 @@ window.ReportUI = (() => {
     reset();
     try { await saveAttempt(a); } catch (e) { toast('Попытку сохранить не вышло'); return nav('home', {}, { replace: true }); }
     if (window.Sound) Sound.finish(!err);
+    /* Пока шёл разбор, человек мог уйти. Попытка записана — но выдёргивать его с другого
+       экрана нельзя: сказали словами, где разбор лежит. */
+    if (!onScreen()) return toast('Разбор готов: донесение за сегодня — на главной', 3500);
     nav('report-result', { id: a.id }, { replace: true });
   }
 
@@ -22293,7 +22377,8 @@ window.ReportUI = (() => {
       a.moves = R().moves(state, a, o.now);
       const pt = R().points(Object.assign({}, res, { moves: a.moves, lvl: a.level }));
       a.pointParts = pt.parts; a.points = pt.points; a.p2fix = pt.points;
-      a.bounty = a.moves.filter(m => m.to === 'out').reduce((s, m) => s + (m.from === 'relit' ? R().PTS.relit : R().PTS.out), 0) || 0;
+      const bounty = a.moves.filter(m => m.to === 'out').reduce((s, m) => s + (m.from === 'relit' ? R().PTS.relit : R().PTS.out), 0);
+      if (bounty) a.bounty = bounty; else delete a.bounty;   /* как в Report: нет платы — нет и поля */
     }
     if (o.half && a.points > 0) {
       const cut = Math.round(a.points / 2 * 10) / 10;
@@ -22333,7 +22418,7 @@ window.ReportUI = (() => {
     if (!a || !q) return toast('Донесения для повторного разбора нет');
     toast('Отправляю разбор…');
     let res = null;
-    try { res = await R().analyze(Object.assign({ state }, q.pl)); } catch (e) { return toast('Разбор снова не дошёл: ' + (str(e && e.message) || 'сеть')); }
+    try { res = await R().analyze(Object.assign({ state }, q.pl)); } catch (e) { return toast('Разбор снова не дошёл: ' + (whyRu(e && e.message) || 'сеть не ответила')); }
     const qs = R().questions(res, a.durationMs);
     const doubt = (a.report && a.report.doubt) || [];
     for (const x of qs) if (x.trap && doubt.some(d => str(x.hanzi).indexOf(d) >= 0)) { x.doubt = true; x.trap = null; }
@@ -22342,7 +22427,11 @@ window.ReportUI = (() => {
     a.correct = qs.filter(x => x.ok).length;
     a.wrong = qs.length - a.correct;
     a.percent = qs.length ? Math.round(a.correct / qs.length * 100) : 0;
-    a.moves = R().moves(state, a, Date.now());
+    /* Попытка уже лежит в журнале, а Report.moves сравнивает реестр «без неё» и «с ней».
+       Передать журнал как есть значит посчитать её дважды: «до» уже содержало бы её случаи,
+       и ни один переход не нашёлся бы. Поэтому на время счёта вынимаем её из истории. */
+    const without = Object.assign({}, state, { attempts: (state.attempts || []).filter(x => x !== a) });
+    a.moves = R().moves(without, a, Date.now());
     a.report = Object.assign({}, a.report, { corrected: str(res.corrected), findings: res.findings || [],
       cases: res.cases || [], good: res.good || [], rubric: res.rubric || null, targets: res.targets || [] });
     a.net = 'late';
@@ -22360,18 +22449,29 @@ window.ReportUI = (() => {
   function marked(rep) {
     const text = str(rep.corrected) || str(rep.mono);
     if (!text) return '<div class="hint">Текста донесения не осталось.</div>';
-    let out = '', rest = text;
+    /* В исправленном тексте подсвечиваем правку, в неисправленном — саму цитату.
+       Чего в тексте нет, то и не подсвечиваем: границы правки выдумывать нечем.
+       Места ищем по всему тексту и складываем по возрастанию, а не подряд по списку находок:
+       иначе тот же разбор, пришедший в другом порядке, подсветил бы другие куски. */
+    const want = new Map();
     for (const f of rep.findings || []) {
-      /* В исправленном тексте подсвечиваем правку, в неисправленном — саму цитату.
-         Чего в тексте нет, то и не подсвечиваем: границы правки выдумывать нечем. */
       const fx = str(f.fix), qt = str(f.quote);
-      const needle = fx && rest.indexOf(fx) >= 0 ? fx : (qt && rest.indexOf(qt) >= 0 ? qt : '');
-      if (!needle) continue;
-      const i = rest.indexOf(needle);
-      out += esc(rest.slice(0, i)) + '<mark>' + esc(needle) + '</mark>';
-      rest = rest.slice(i + needle.length);
+      const needle = fx && text.indexOf(fx) >= 0 ? fx : (qt && text.indexOf(qt) >= 0 ? qt : '');
+      if (needle) want.set(needle, (want.get(needle) || 0) + 1);
     }
-    return `<div class="rp-marg">${out + esc(rest)}</div>`;
+    const spans = [];
+    for (const needle of [...want.keys()].sort()) {
+      let i = text.indexOf(needle);
+      for (let k = want.get(needle); k > 0 && i >= 0; k--) { spans.push({ i, end: i + needle.length }); i = text.indexOf(needle, i + needle.length); }
+    }
+    spans.sort((x, y) => x.i - y.i || y.end - x.end);
+    let out = '', at = 0;
+    for (const sp of spans) {
+      if (sp.i < at) continue;                 /* перекрытие: дважды один кусок не красим */
+      out += esc(text.slice(at, sp.i)) + '<mark>' + esc(text.slice(sp.i, sp.end)) + '</mark>';
+      at = sp.end;
+    }
+    return `<div class="rp-marg">${out + esc(text.slice(at))}</div>`;
   }
   const findCard = f => `<div class="panel rp-find">
     <div class="rp-find-q">${esc(f.quote)}</div>
@@ -22393,7 +22493,8 @@ window.ReportUI = (() => {
       const parts = a.pointParts || [];
       const MOVE = (R() && R().MOVE_RU) || {};
       return `<div class="vh"><div class="seal">报</div><div class="grow"><h1 class="title">На полях</h1><div class="sub">${esc(fmt.date(a.ts))}${a.total ? ' · случаев ' + a.correct + ' из ' + a.total : ''}</div></div></div>
-      ${ok ? `<div class="panel ornate"><div class="big-score">${a.percent}<small>%</small></div>
+      ${ok ? `<div class="panel ornate">${a.total ? `<div class="big-score">${a.percent}<small>%</small></div>`
+            : '<div class="hint" style="margin-top:0">Считать было нечего: ни одна из мишеней в записи не понадобилась, а находок разбор не прислал. Это не ноль из ста — это «случаев не было».</div>'}
           <div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${Math.round(pointsOf(a))}</b></span></div>
           <div class="hint" style="margin:6px 0 0">Знаков ${num(a.chars)}${a.source === 'typed' ? ' · набрано с клавиатуры' : ' · сказано голосом'}${a.loose ? ' · разбор неточный' : ''}${rep.half ? ' · правок больше десятой части' : ''}</div>
           ${a.net === 'late' ? '<div class="hint">Разбор пришёл позже записи: находки и случаи здесь есть, а очки остались те, что были начислены сразу.</div>' : ''}</div>`
@@ -22441,7 +22542,7 @@ window.ReportUI = (() => {
       const ok = a.net !== 'fail';
       return `<div class="panel ornate rp-home"><div class="flabel">Донесение</div>
         <div class="rp-home-t">Сегодня уже сделано</div>
-        <div class="hint">${ok ? 'Случаев ' + a.correct + ' из ' + a.total + ' · +' + Math.round(pointsOf(a)) + ' очков' : 'Разбор не дошёл · +' + Math.round(pointsOf(a)) + ' очков за усилие'}</div>
+        <div class="hint">${ok ? (a.total ? 'Случаев ' + a.correct + ' из ' + a.total : 'Случаев не было') + ' · +' + Math.round(pointsOf(a)) + ' очков' : 'Разбор не дошёл · +' + Math.round(pointsOf(a)) + ' очков за усилие'}</div>
         <div class="btns mt0"><button class="btn btn-secondary btn-block" data-go="report-result" data-params="${attr({ id: a.id })}">Посмотреть разбор</button></div></div>`;
     }
     const t = topicOf();

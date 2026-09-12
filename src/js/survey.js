@@ -15,9 +15,10 @@
    каноническому порядку (ts, затем id), а сборка заданий опирается на постоянное зерно,
    а не на порядок вызовов. Пересчёт с нуля обязан давать тот же результат.
 
-   Учёт. Часть платит фиксированно — ровно один дневной переход (Campaign.capFor), попытка
-   идёт с fixedPts: true. Поэтому проверка на сто с лишним заданий не обесценивает неделю
-   обычных занятий. Самооценка «знаю» и псевдослова свидетельствами мастерства не считаются:
+   Учёт. payFor задаёт потолок части — один дневной переход (Campaign.capFor); платит экран
+   по времени работы (20 очков за минуту, как за обычное занятие) и не выше этого потолка.
+   Попытка идёт с fixedPts: true. Поэтому проверка на сто с лишним заданий не обесценивает
+   неделю обычных занятий и не платит за неё больше, чем за такую же неделю. Самооценка «знаю» и псевдослова свидетельствами мастерства не считаются:
    у таких заданий нет карточки, и повторения по ним не заводятся. */
 window.Survey = (() => {
   const LVLS = [1, 2, 3, 4];
@@ -78,6 +79,9 @@ window.Survey = (() => {
   const DROP = /[\s_·，。？！、；：（）《》「」“”‘’…—,.?!;:()[\]{}<>'"-]/g;
   const norm = v => String(v == null ? '' : v).replace(DROP, '').toLowerCase();
   const r2 = x => Math.round(x * 100) / 100;
+  /* Полный порядок: равные элементы должны давать 0, иначе сортировка зависит от того,
+     в каком порядке пришёл список, — а это ровно то, что закон чистоты запрещает. */
+  const cmpStr = (a, b) => { const x = String(a == null ? '' : a), y = String(b == null ? '' : b); return x < y ? -1 : x > y ? 1 : 0; };
   const pl = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many);
   const pct = x => (x == null ? null : Math.round(x * 100));
   function hash(s) {
@@ -414,25 +418,39 @@ window.Survey = (() => {
     return { right, of: s.length, percent: s.length ? Math.round(right / s.length * 100) : 0 };
   };
   /* Оценка полосы: узнавание за вычетом ложных тревог, поправленное набором.
-     Ложная тревога — «знаю» на псевдослово: без этой поправки полоса всегда завышена. */
-  function estimate(know, sets) {
-    const real = know.filter(r => !r.task.pseudo), fake = know.filter(r => r.task.pseudo);
+     Ложная тревога — «знаю» на выдуманное слово; без этой поправки полоса всегда завышена.
+
+     Ложные тревоги считаются по ВСЕЙ пробе, а не по тем псевдословам, что выпали на эту
+     полосу: на полосу их приходится одно-два, и одна случайная отметка решала бы судьбу
+     целого уровня (полоса падала с «≈ 100 %» до «≈ 0 %»). Склонность называть знакомым
+     незнакомое — свойство отвечающего, а не уровня, поэтому и мерить её надо целиком.
+
+     Если знакомыми названы все выдуманные слова, ответы не отличают настоящее от
+     выдуманного: полоса остаётся неизмеренной (est: null, blind: true), а не объявляется
+     нулевой — нуль здесь был бы таким же выдуманным числом. */
+  function estimate(know, sets, fakes) {
+    const real = know.filter(r => !r.task.pseudo);
+    const fake = (fakes && fakes.length) ? fakes : know.filter(r => r.task.pseudo);
     if (!real.length) return null;
     const raw = real.filter(r => r.yes).length / real.length;
     const fa = fake.length ? fake.filter(r => r.yes).length / fake.length : 0;
-    let est = fa >= 1 ? 0 : Math.max(0, (raw - fa) / (1 - fa));
+    const blind = fake.length > 0 && fa >= 1;
+    let est = blind ? null : Math.max(0, (raw - fa) / (1 - fa));
     const s = scoreOf(sets);
-    if (s.of) est *= 0.6 + 0.4 * (s.right / s.of);
-    return { est: r2(Math.max(0, Math.min(1, est))), raw: r2(raw), fa: r2(fa), yes: real.filter(r => r.yes).length, of: real.length,
+    if (est != null && s.of) est *= 0.6 + 0.4 * (s.right / s.of);
+    return { est: est == null ? null : r2(Math.max(0, Math.min(1, est))), blind,
+      raw: r2(raw), fa: r2(fa), yes: real.filter(r => r.yes).length, of: real.length,
       pseudoYes: fake.filter(r => r.yes).length, pseudo: fake.length, set: s };
   }
+  const isProbe = (r, kind) => r.task.sub === 'probe' && r.task.kind === kind;
   function probeOf(list) {
     const out = {};
+    const fakes = list.filter(r => isProbe(r, 'know') && r.task.pseudo);
     for (const lvl of LVLS) {
-      const know = list.filter(r => r.task.sub === 'probe' && r.task.kind === 'know' && r.task.band === lvl);
-      const sets = list.filter(r => r.task.sub === 'probe' && r.task.kind === 'set' && r.task.band === lvl);
+      const know = list.filter(r => isProbe(r, 'know') && r.task.band === lvl);
+      const sets = list.filter(r => isProbe(r, 'set') && r.task.band === lvl);
       if (!know.length && !sets.length) continue;
-      const e = estimate(know, sets);
+      const e = estimate(know, sets, fakes);
       if (e) out[lvl] = e;
     }
     return out;
@@ -464,12 +482,14 @@ window.Survey = (() => {
         const b = (window.PROGRAM && PROGRAM.byId) ? PROGRAM.byId(x.blockId) : null;
         x.ru = b ? b.ru : x.blockId; x.zh = b ? b.zh : '';
         x.verdict = rung(x.right, x.asked);
-        x.solid = x.asked >= RUNG && x.right / x.asked >= UP / RUNG;
+        /* «Взята» — это вердикт лестницы, а не отдельная доля: после добора решает счёт
+           из десяти (8 из 10 — вверх), и доля 5/6 объявила бы взятую ступень проваленной. */
+        x.solid = x.verdict === 'up';
       });
       out.rungs = seen;
       const solid = seen.filter(x => x.solid);
       out.top = solid.length ? Math.max(...solid.map(x => x.lvl)) : 0;
-      const fell = seen.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || (a.blockId < b.blockId ? -1 : 1));
+      const fell = seen.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || cmpStr(a.blockId, b.blockId));
       out.start = fell.length ? fell[0] : null;
     } else {
       out.ear = RATES.map(rate => {
@@ -500,7 +520,7 @@ window.Survey = (() => {
     const order = ['gram', 'set', 'listen', 'ru2hz', 'hz2ru', 'py2hz', 'tone', 'know'];
     const by = {};
     for (const r of bad) (by[r.task.kind] || (by[r.task.kind] = [])).push(r);
-    for (const k of Object.keys(by)) by[k].sort((a, b) => (b.task.band || 0) - (a.task.band || 0) || (String(a.task.id) < String(b.task.id) ? -1 : 1));
+    for (const k of Object.keys(by)) by[k].sort((a, b) => (b.task.band || 0) - (a.task.band || 0) || cmpStr(a.task.id, b.task.id));
     const out = [];
     let guard = 0;
     while (out.length < n && guard++ < 50) {
@@ -522,7 +542,7 @@ window.Survey = (() => {
   /* ── что пройдено: чистая функция от истории ──
      Канон: (ts, затем id). Перемешанный журнал даёт тот же ответ. */
   const sid = a => String((a && a.id) != null ? a.id : '');
-  const CMP = (x, y) => (x.ts - y.ts) || (sid(x) < sid(y) ? -1 : sid(x) > sid(y) ? 1 : 0);
+  const CMP = (x, y) => (x.ts - y.ts) || cmpStr(sid(x), sid(y));
   const attemptsOf = s => ((s || {}).attempts || [])
     .filter(a => a && a.mode === 'survey' && !a.aborted && a.ts && a.part >= 1 && a.part <= PARTS.length)
     .slice().sort(CMP);
@@ -579,11 +599,13 @@ window.Survey = (() => {
     }
     out.bands = LVLS.map(l => {
       const p = probe[l] || null;
+      const pe = (p && p.est != null) ? p.est : null;      /* неизмеренная проба — это не нуль */
       const la = lad[l] && lad[l].of ? lad[l].right / lad[l].of : null;
       let est = null, from = 'нет данных';
-      if (p && la != null) { est = r2(0.6 * p.est + 0.4 * la); from = 'проба словаря и лестница'; }
-      else if (p) { est = p.est; from = 'проба словаря'; }
+      if (pe != null && la != null) { est = r2(0.6 * pe + 0.4 * la); from = 'проба словаря и лестница'; }
+      else if (pe != null) { est = pe; from = 'проба словаря'; }
       else if (la != null) { est = r2(la); from = 'лестница'; }
+      if (est == null && p && p.blind) from = 'не измерено: «знаю» стоит и на выдуманных словах';
       const size = sizeOf(l);
       return { lvl: l, deck: DECK[l], ru: LVL_RU[l], est, text: bandText(est), size,
         words: est == null ? null : Math.round(est * size), from,
@@ -599,7 +621,7 @@ window.Survey = (() => {
     /* точки старта: первый блок каждого уровня, где посыпалось */
     const p2 = out.parts[2];
     if (p2 && p2.rungs) {
-      const fell = p2.rungs.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || (a.blockId < b.blockId ? -1 : 1));
+      const fell = p2.rungs.filter(x => x.asked >= RUNG && !x.solid).sort((a, b) => a.lvl - b.lvl || cmpStr(a.blockId, b.blockId));
       const seenLvl = {};
       for (const x of fell) {
         if (seenLvl[x.lvl]) continue;

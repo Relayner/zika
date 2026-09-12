@@ -22,6 +22,10 @@
    стоит минута обычного занятия (дневная норма 400 очков ≈ 20 минут). Так замер не обесценивает
    неделю занятий и не платит за них меньше.
 
+   Время задания считаем в границах 4–60 секунд, но тычок быстрее порога Ledger.FAST_MS идёт
+   по своему настоящему времени: иначе часть, прощёлканная вслепую за полминуты, стоила бы
+   столько же, сколько пройденная честно.
+
    Экран принадлежит тестовой методике: в текущей книге учёта он показывает, где её включить. */
 window.SurveyUI = (() => {
   const { state, views, actions, nav, esc, attr, uid, $, toast, confirm, persist, render, saveAttempt, fmt, LABELS } = App;
@@ -36,6 +40,9 @@ window.SurveyUI = (() => {
   const RESUME_MS = 7 * 24 * 3600e3;        /* сколько ждёт брошенная часть */
   const RATE = 20;                          /* очков за минуту работы: 400 за 20 минут */
   const MIN_Q_MS = 4000, MAX_Q_MS = 60000;  /* время задания считаем в этих границах */
+  /* Тычок быстрее порога книги учёта нижней границы не получает: иначе прощёлкать часть
+     вслепую стоило бы столько же, сколько её пройти. Порог тот же, что в Ledger. */
+  const tapMs = () => ((window.Ledger && Ledger.FAST_MS) || 2500);
   const HOME_MAX = 30;                      /* панель на главной — пока попыток мало */
   const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
   const settings = () => (state.settings || (state.settings = {}));
@@ -76,6 +83,16 @@ window.SurveyUI = (() => {
   function clearRun() { if (settings().surveyRun) { delete settings().surveyRun; persist(); } }
 
   /* ── обзор частей ── */
+  /* Часть 2 — лестница: она останавливается, как только уровень найден, поэтому заданий
+     в ней будет от одной ступени до четырёх с доборами, а не весь план. Обещать план целиком
+     нечестно: в жизни вторая часть кончается раньше, чем в описании. */
+  const ladMin = () => Survey.RUNG;
+  const ladMax = () => Survey.LVLS.length * (Survey.RUNG + Survey.MORE);
+  const sizeLine = p => (p.n === 2
+    ? 'от ' + ladMin() + ' до ' + ladMax() + ' заданий · до ' + p.min + ' минут'
+    : fmt.plural(p.count, 'задание', 'задания', 'заданий') + ' · около ' + p.min + ' минут');
+  const minLo = () => Math.min(...Survey.PARTS.map(p => p.min));
+  const minHi = () => Math.max(...Survey.PARTS.map(p => p.min));
   function partRow(p, st, sv) {
     const r = st.parts[p.n];
     const cls = r ? 'done' : (st.next === p.n ? 'next' : 'wait');
@@ -83,8 +100,10 @@ window.SurveyUI = (() => {
     const line = r
       ? 'верных ' + r.correct + ' из ' + r.total + ' · ' + fmt.date(r.at)
       : started
-        ? 'начата: ответов ' + sv.ans.length + ' из ' + p.count + ' · продолжится с того же места'
-        : fmt.plural(p.count, 'задание', 'задания', 'заданий') + ' · около ' + p.min + ' минут';
+        /* у лестницы полного числа заданий нет заранее — «из 48» было бы обещанием, а не фактом */
+        ? (p.n === 2 ? 'начата: ответов ' + sv.ans.length + ' · продолжится с того же места'
+          : 'начата: ответов ' + sv.ans.length + ' из ' + p.count + ' · продолжится с того же места')
+        : sizeLine(p);
     return `<div class="row sv-part ${cls}">
       <div><div class="row-t"><span class="zh">${esc(p.zh)}</span> ${esc(p.ru)}</div>
         <div class="row-s">${esc(p.sub)} — ${esc(line)}</div></div>
@@ -106,13 +125,13 @@ window.SurveyUI = (() => {
       <div class="panel ornate">
         <div class="flabel">Зачем</div>
         <div class="hint">Уровень здесь набирается работой, поэтому тот, кто уже знает язык, начинает с первого блока HSK 1. Съёмка даёт точку старта заранее: полосу по каждому уровню, первый блок, где посыпалось, и пять белых пятен.</div>
-        <div class="hint">Три части по очереди, по ${Math.min(...Survey.PARTS.map(p => p.min))}–${Math.max(...Survey.PARTS.map(p => p.min))} минут каждая. Уйти можно на любом задании: часть подождёт неделю и продолжится с того же места.</div>
+        <div class="hint">Три части по очереди, каждая до ${minLo()}–${minHi()} минут. Вторая обычно короче: лестница останавливается, как только уровень найден, поэтому заданий в ней от ${ladMin()} до ${ladMax()}. Уйти можно на любом задании: часть подождёт неделю и продолжится с того же места.</div>
         <div class="hint">Разбора после ответов не будет — это замер, а не урок. Незнакомое отмечайте кнопкой «Не знаю»: пропуск честнее догадки и очков не отнимает.</div>
         <div class="flabel mt">Что будет на выходе</div>
         <div class="hint">Полоса по HSK 1–4 с оговоркой, что это оценка по короткому замеру; точки старта по программе; пять белых пятен с вашими ответами; объём словаря.</div>
       </div>
       <div class="panel"><div class="flabel">Части · пройдено ${st.done.length} из ${Survey.PARTS.length}</div>${rows}
-        <div class="hint">Часть платит по времени работы и не больше одного дневного перехода. Съёмка не заменяет занятий и не двигает повторения по самооценке.</div>
+        <div class="hint">Часть платит по времени работы и не больше одного дневного перехода. Быстрые тычки идут по своему настоящему времени, поэтому прощёлкать часть вслепую невыгодно. Съёмка не заменяет занятий и не двигает повторения по самооценке.</div>
         ${skipped && !st.complete ? '<div class="hint">Съёмку отложили — курс идёт с HSK 1. Пройти её можно в любой день.</div>' : ''}</div>
       ${next ? `<div class="panel"><div class="flabel">Дальше</div><div class="hint">${esc(next.about)}</div>
         <div class="btns mt0"><button class="btn btn-primary btn-block" data-go="survey-run" data-params="${attr({ part: next.n })}">${esc(goNext)} · ${esc(next.ru)}</button></div></div>` : ''}
@@ -267,8 +286,12 @@ window.SurveyUI = (() => {
         <div class="progress"><i style="width:${Math.round(run.i / Math.max(1, run.qs.length) * 100)}%"></i></div>
         <div class="qcount">${run.i + 1}/${run.qs.length}</div></div>`;
       const tag = `<div class="hint sv-tag">${esc(pi.ru)} · ${esc((Survey.SUBS[q.sub] || {}).ru || q.sub)}${q.blockId && window.PROGRAM && PROGRAM.byId(q.blockId) ? ' · блок «' + esc(PROGRAM.byId(q.blockId).ru) + '»' : ''}</div>`;
+      /* Счётчик части 2 растёт по ходу: в ней столько заданий, сколько понадобится лестнице,
+         и обещать полное число заранее было бы неправдой */
+      const grows = part === 2
+        ? '<div class="hint sv-tag">счётчик — по текущей ступени: лестница останавливается, когда уровень найден</div>' : '';
       /* Ответ принят — сразу следующее задание: разбор здесь был бы уроком, а не замером */
-      return bar + tag + askHtml(q) + bodyHtml(q) + idkBtn(q);
+      return bar + tag + grows + askHtml(q) + bodyHtml(q) + idkBtn(q);
     },
     mount() {
       if (!run) return;
@@ -329,9 +352,13 @@ window.SurveyUI = (() => {
 
   /* ── сохранение части ── */
   /* Цена: не выше дневного перехода и не выше ставки за столько же минут обычной работы */
+  function workMs(q) {
+    const ms = Math.min(MAX_Q_MS, Math.max(0, num(q.ms)));
+    return ms < tapMs() ? ms : Math.max(MIN_Q_MS, ms);
+  }
   function payFor(campaign, qs) {
     const capPart = num(Survey.payFor(campaign), 400);
-    const work = qs.reduce((s, q) => s + Math.min(MAX_Q_MS, Math.max(MIN_Q_MS, num(q.ms))), 0);
+    const work = qs.reduce((s, q) => s + workMs(q), 0);
     return Math.max(0, Math.min(capPart, Math.round(work / 60000 * RATE)));
   }
   function finish() {
@@ -346,7 +373,11 @@ window.SurveyUI = (() => {
       blockId: q.blockId, rung: q.rung, rate: q.rate, pseudo: !!q.pseudo, word: q.word,
       hanzi: q.self ? '' : (q.hanzi || ''), pinyin: q.self ? '' : (q.pinyin || ''),
       ru: q.self ? 'самооценка: ' + (q.word || q.hanzi || '') : (q.ru || ''),
-      show: q.show || '', why: q.why || '', key: q.key == null ? null : String(q.key),
+      show: q.show || '',
+      /* У псевдослова объяснение надо назвать словами: без него белое пятно собиралось бы из
+         запасного «иероглифы — перевод» и читалось как «都长 — самооценка: 都长» */
+      why: q.why || (q.pseudo ? 'Сочетание собрано из знакомых знаков, но такого слова в словаре нет.' : ''),
+      key: q.key == null ? null : String(q.key),
       given: q.mine == null ? '' : String(q.mine), ok: q.ok == null ? null : !!q.ok,
       fraction: q.fraction, scored: !!q.scored, yes: !!q.yes, ms: q.ms || 0,
       answer: { choice: q.given == null ? -1 : q.given, choiceText: q.mine == null ? '' : String(q.mine) },
@@ -410,7 +441,7 @@ window.SurveyUI = (() => {
       <div class="fb-row"><span class="fb-p">Очков</span><span class="fb-v"><b>+${Math.round(pointsOf(a))}</b></span></div>
       <div class="fb-row"><span class="fb-p">Время</span><span class="fb-v">${fmt.dur(a.durationMs)}</span></div>
       ${rows.filter(Boolean).map(x => `<div class="hint">${esc(x)}</div>`).join('')}
-      <div class="hint">Процент — доля верных ответов в части, самооценка «знаю» в него не входит${num(a.idk) ? '; «не знаю» здесь ' + num(a.idk) : ''}.</div></div>`;
+      <div class="hint">Процент — доля верных ответов в части, самооценка «знаю» в него не входит${num(a.idk) ? '. Пропусков «не знаю» — ' + num(a.idk) : ''}.</div></div>`;
   }
 
   views['survey-result'] = {
@@ -425,12 +456,16 @@ window.SurveyUI = (() => {
       const bands = r.bands.map(b => `<div class="row sv-band"><div><div class="row-t">${esc(b.ru)}</div><div class="row-s">${esc(b.from)}${b.words != null ? ' · ' + fmt.plural(b.words, 'слово', 'слова', 'слов') + ' из ' + b.size : ''}</div></div>
         <div class="row-r"><span class="badge ${b.est == null ? '' : App.accClass(Math.round(b.est * 100))}">${esc(b.text)}</span></div></div>`).join('');
       const starts = r.starts.length
-        ? r.starts.map(s => `<div class="row sv-start"><div><div class="row-t">${esc(s.ru)} <span class="muted">${esc(s.blockId)}</span></div><div class="row-s">${esc(s.why)}</div></div>
+        ? r.starts.map(s => `<div class="row sv-start"><div><div class="row-t">${s.zh ? `<span class="zh">${esc(s.zh)}</span> ` : ''}${esc(s.ru)}</div><div class="row-s">HSK ${num(s.lvl, 1)} · ${esc(s.why)}</div></div>
             <div class="row-r"><button class="btn btn-secondary btn-sm" data-action="sv-block" data-id="${esc(s.blockId)}">Открыть</button></div></div>`).join('')
-        : '<div class="hint">Лестница пока не проходилась — точки старта появятся после второй части.</div>';
+        /* Часть 2 пройдена, а списка нет — это не «лестница не проходилась», а «ничего не осыпалось».
+           Говорить обратное значило бы отрицать только что показанный разбор ступеней. */
+        : r.state.parts[2]
+          ? `<div class="hint">Ни одна пройденная ступень не осыпалась, поэтому отдельной точки старта нет${r.top ? ': уверенно взят уровень HSK ' + r.top : ''}. Замер короткий — что именно брать первым, точнее покажут первые занятия.</div>`
+          : '<div class="hint">Лестница пока не проходилась — точки старта появятся после второй части.</div>';
       const blanks = r.blanks.length
         ? r.blanks.map(b => `<div class="sv-blank"><div class="row-t">${esc(b.what)}</div>
-            <div class="row-s">ваш ответ: <b class="bad">${esc(b.mine || '— не знаю')}</b>${b.right ? ' · верно: ' + esc(b.right) : ''}</div>
+            <div class="row-s">ваш ответ: <b class="bad">${!b.mine || b.mine === '—' ? 'не знаю' : esc(b.mine)}</b>${b.right ? ' · верно: ' + esc(b.right) : ''}</div>
             ${b.why ? `<div class="hint">${esc(b.why)}</div>` : ''}</div>`).join('')
         : '<div class="hint">Провалов не набралось — белых пятен нет.</div>';
       const st = r.state;
@@ -471,7 +506,7 @@ window.SurveyUI = (() => {
     return `<div class="panel ornate sv-home">
       <div class="flabel">Съёмка местности · 测绘</div>
       <div class="sv-home-t">Уже учили китайский?</div>
-      <div class="hint" style="margin:4px 0 0">Короткий замер — ${n} части по 12–15 минут. Он ставит точку старта, чтобы не проходить заново то, что вы уже знаете.${done ? ' Пройдено частей: ' + done + ' из ' + n + '.' : ''}</div>
+      <div class="hint" style="margin:4px 0 0">Короткий замер — ${n} части, каждая до ${minLo()}–${minHi()} минут. Он ставит точку старта, чтобы не проходить заново то, что вы уже знаете.${done ? ' Пройдено частей: ' + done + ' из ' + n + '.' : ''}</div>
       <div class="btns mt0"><button class="btn btn-primary btn-sm" data-go="survey">${esc(label)}</button></div></div>`;
   }
   /* Строка для экрана HSK и «Начните отсюда» — вставляет главный разработчик */
@@ -482,7 +517,7 @@ window.SurveyUI = (() => {
     const s = st.complete ? 'пройдена · полосы, точки старта и белые пятна'
       : sv ? 'начата часть ' + num(sv.part) + ' · продолжится с того же места'
       : done ? 'пройдено ' + done + ' из ' + n + ' · дальше часть ' + st.next
-      : n + ' части по 12–15 минут · ставит точку старта';
+      : n + ' части, каждая до ' + minLo() + '–' + minHi() + ' минут · ставит точку старта';
     return `<button class="row tap" data-go="survey"><div><div class="row-t"><span class="zh">${SEAL}</span> Съёмка местности</div>
       <div class="row-s">${esc(s)}</div></div><div class="row-r"><span class="chev">›</span></div></button>`;
   }

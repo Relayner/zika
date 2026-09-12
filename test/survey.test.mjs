@@ -170,6 +170,27 @@ t('разбор лестницы называет ступень, где пос�
   assert.equal(half.rungs[0].asked, 12, 'оба блока уровня в одной ступени');
 });
 
+/* Ступень, взятую после добора, лестница объявляет «вверх» — разбор обязан говорить то же.
+   Иначе точкой старта назначается уровень, который человек только что взял. */
+t('взятая после добора ступень не становится точкой старта', () => {
+  const rungOf = (lvl, slot) => P[1].filter(x => x.band === lvl && x.slot === slot);
+  const rows = [];
+  const add = (list, nRight) => list.forEach((task, i) => rows.push({ task, given: answer(task, i < nRight) }));
+  add(rungOf(1, 'a'), 6);                        /* 6 из 6 — вверх */
+  add(rungOf(2, 'a'), 4);                        /* 4 из 6 — добор */
+  add(rungOf(2, 'b').slice(0, Survey.MORE), 4);  /* 4 из 4: всего 8 из 10 — вверх */
+  add(rungOf(3, 'a'), 0);                        /* 0 из 6 — вниз */
+  const g = Survey.grade(2, rows);
+  const l2 = g.rungs.find(x => x.rung === 'L2');
+  assert.equal(l2.asked, Survey.RUNG + Survey.MORE, 'ступень с добором — десять заданий');
+  assert.equal(l2.verdict, Survey.rung(l2.right, l2.asked), 'вердикт ступени — это правило лестницы');
+  assert.equal(l2.verdict, 'up', '8 из 10 — вверх');
+  assert.equal(l2.solid, true, 'взятая ступень помечена взятой');
+  assert.equal(g.top, 2, 'уверенно взят HSK 2, а не HSK 1');
+  assert.equal(g.start.lvl, 3, 'точка старта — там, где посыпалось, а не там, где взято');
+  assert.ok(g.rungs.every(x => x.solid === (x.verdict === 'up')), 'взятая ступень и вердикт лестницы не расходятся');
+});
+
 /* ── разбор части 1 ── */
 t('полоса скринера 0–4 считается по ведущим взятым группам', () => {
   const all = Survey.grade(1, sheet(P[0], () => true));
@@ -185,7 +206,36 @@ t('ложные тревоги на псевдословах опускают о
   const braggart = Survey.grade(1, P[0].map(task => ({ task, given: task.kind === 'know' ? Survey.YES : answer(task, true) })));
   assert.ok(honest.probe[1] && braggart.probe[1], 'полоса HSK 1 оценена в обоих случаях');
   assert.ok(braggart.probe[1].fa > 0, 'у хвастуна есть ложные тревоги');
-  assert.ok(braggart.probe[1].est < honest.probe[1].est, 'с ложными тревогами оценка ниже: ' + braggart.probe[1].est + ' против ' + honest.probe[1].est);
+  assert.ok(honest.probe[1].est > 0 && braggart.probe[1].est !== honest.probe[1].est,
+    'с ложными тревогами оценка не та же: ' + braggart.probe[1].est + ' против ' + honest.probe[1].est);
+});
+
+/* Полоса получает одно-два псевдослова, поэтому ложные тревоги считаются по всей пробе:
+   иначе одна случайная отметка решала бы судьбу целого уровня. */
+t('одна отметка на выдуманном слове не обнуляет полосу', () => {
+  const slip = Survey.grade(1, P[0].map(task => ({ task, given: (task.pseudo && task.band === 2) ? Survey.YES : answer(task, true) })));
+  const p2 = slip.probe[2];
+  assert.ok(p2, 'полоса HSK 2 оценена');
+  assert.equal(p2.pseudo, Survey.PSEUDO, 'ложные тревоги мерены по всем псевдословам пробы, а не по одному на полосу');
+  assert.equal(p2.pseudoYes, 1, 'ложная тревога ровно одна');
+  assert.ok(p2.fa > 0 && p2.fa < 1, 'доля ложных тревог не упирается в единицу: ' + p2.fa);
+  assert.equal(p2.blind, false, 'ответы всё ещё различают настоящее и выдуманное');
+  assert.ok(p2.est > 0.5, 'один промах не превращает «знаю всё» в ноль: ' + p2.est);
+});
+
+t('полосу, где ответы не различают настоящее и выдуманное, не измеряют, а не обнуляют', () => {
+  const yesToAll = P[0].map(task => ({ task, given: task.kind === 'know' ? Survey.YES : answer(task, true) }));
+  const g = Survey.grade(1, yesToAll);
+  assert.equal(g.probe[1].fa, 1, 'знакомыми названы все выдуманные слова');
+  assert.equal(g.probe[1].blind, true, 'проба помечена как неразличающая');
+  assert.equal(g.probe[1].est, null, 'оценка не выдумывается');
+  const a = attemptOf(1, yesToAll, NOW);
+  const r = Survey.result({ attempts: [a], settings: {} }, NOW);
+  const b1 = r.bands.find(b => b.lvl === 1);
+  assert.equal(b1.est, null, 'в итоге полоса пустая');
+  assert.equal(b1.text, '—', 'и подписана прочерком, а не нулём');
+  assert.ok(/не измерено/.test(b1.from), 'и сказано, почему: ' + b1.from);
+  assert.equal(b1.words, null, 'слов по такой полосе не считаем');
 });
 
 /* ── чистота ── */
@@ -269,6 +319,25 @@ t('итог называет полосы, точки старта и белые
   assert.ok(new Set(r.blanks.map(b => b.kind)).size >= 3, 'пятна разные по виду заданий');
 });
 
+t('перемешивание журнала не меняет итог: пересдачи, совпадающие ts, обратный порядок', () => {
+  const A = [
+    attemptOf(1, sheet(P[0], task => task.band <= 1), NOW - 5 * 3600e3),
+    attemptOf(1, sheet(P[0], () => true), NOW - 4 * 3600e3),            /* пересдача части 1 */
+    attemptOf(2, sheet(P[1], task => task.band <= 2), NOW - 3600e3),
+    attemptOf(3, sheet(P[2], task => task.kind !== 'gram'), NOW - 3600e3), /* тот же ts */
+    attemptOf(2, sheet(P[1], task => task.band <= 3), NOW - 3600e3),    /* тот же ts, пересдача */
+  ];
+  const base = JSON.stringify(Survey.result({ attempts: A, settings: {} }, NOW));
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  for (let k = 0; k < 100; k++) {
+    const mix = A.slice();
+    for (let i = mix.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = mix[i]; mix[i] = mix[j]; mix[j] = t; }
+    assert.equal(JSON.stringify(Survey.result({ attempts: mix, settings: {} }, NOW)), base, 'перемешивание ' + k + ' дало другой итог');
+  }
+  assert.deepEqual(Survey.state({ attempts: A.slice().reverse() }), Survey.state({ attempts: A }), 'обратный порядок ничего не меняет');
+});
+
 /* ── экономика ── */
 t('часть платит ровно один дневной переход', () => {
   const fresh = Campaign.create();
@@ -279,6 +348,21 @@ t('часть платит ровно один дневной переход', (
   for (const c of [fresh, vet]) assert.ok(Survey.payFor(c) <= Campaign.CAP, 'цена не выше дневной нормы');
   /* три части вместе — три дневных перехода, не больше */
   assert.ok(Survey.payFor(vet) * Survey.PARTS.length <= Campaign.CAP * 3, 'вся съёмка стоит не больше трёх дней');
+});
+
+/* Экран платит по времени работы (20 очков за минуту, как за обычное занятие) и не выше
+   потолка части. Проверяем, что при заявленном времени потолок не упирается: иначе съёмка
+   платила бы за минуту больше, чем обычное занятие. */
+t('заявленное время части оплачивается по обычной ставке, не упираясь в потолок', () => {
+  const RATE = 20;                                   /* очков за минуту, как в views-survey.js */
+  const vet = Campaign.create();
+  vet.log = [{ d: '2026-09-01', p: 400, r: 'done' }, { d: '2026-09-02', p: 400, r: 'done' }, { d: '2026-09-03', p: 400, r: 'done' }];
+  const cap = Survey.payFor(vet);
+  assert.equal(Campaign.CAP / RATE, 20, 'дневная норма — двадцать минут работы');
+  for (const p of Survey.PARTS) assert.ok(p.min * RATE <= cap, 'часть ' + p.n + ': ' + (p.min * RATE) + ' очков за ' + p.min + ' минут выше потолка ' + cap);
+  const whole = Survey.PARTS.reduce((a, p) => a + p.min, 0);
+  assert.ok(whole * RATE <= Campaign.CAP * Survey.PARTS.length, 'вся съёмка — ' + (whole * RATE) + ' очков за ' + whole + ' минут, это не больше трёх дневных норм');
+  assert.ok(whole >= 35 && whole <= 45, 'съёмка целиком занимает ' + whole + ' минут');
 });
 
 t('попытка съёмки не проходит деградацию и не тратит новизну', () => {
