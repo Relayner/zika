@@ -48,14 +48,14 @@ window.App = (() => {
   let saveTimer = null;
   async function persistNow() {
     clearTimeout(saveTimer); saveTimer = null;
-    try { await Store.set('settings', state.settings); await Store.set('decks', state.decks); await Store.set('cards', state.cards); if (state.campaign) await Store.set('campaign', state.campaign); if (state.meta) await Store.set('meta', state.meta); }
+    try { await Store.set('settings', state.settings); await Store.set('decks', state.decks); await Store.set('cards', state.cards); const c1 = (state.books && state.books.v1) || state.campaignV1 || state.campaign; if (c1) await Store.set('campaign', c1); if (state.meta) await Store.set('meta', state.meta); }
     catch (e) { toast('Не удалось сохранить: ' + e.message); }
   }
   function persist() { clearTimeout(saveTimer); saveTimer = setTimeout(persistNow, 120); }
   /* При сворачивании или закрытии — записать немедленно, не дожидаясь дебаунса */
   window.addEventListener('pagehide', () => { persistNow(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistNow(); });
-  const PENDING_KEY = 'zika:pendingAttempts';
+  const PENDING_KEY = ((window.CHANNEL && window.CHANNEL.ls) || 'zika:') + 'pendingAttempts';
   function stashPending(a) {
     try { const l = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); l.push(a); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); } catch (e) { /* ignore */ }
   }
@@ -72,33 +72,51 @@ window.App = (() => {
       toast('Восстановлено несохранённых попыток: ' + l.length, 3000);
     } catch (e) { /* останутся до следующего запуска */ }
   }
+  /* Сохранение попытки пополняет ОБЕ книги учёта: открытую и вторую.
+     Поэтому переключение методики ничего не теряет — см. ledger.js. */
   async function saveAttempt(a) {
-    if (a.points == null) a.points = Campaign.attemptPoints(a);
-    /* Деградация: низкоуровневый и уже отработанный за неделю материал платит меньше */
-    if (!a.aborted && a.points > 0) {
-      const d = Campaign.decay(state, a);
-      a.decay = d;
-      a.pointsRaw = a.points;
-      a.points = Math.round(a.points * d.mult);
-    }
-    Campaign.noteUnit(state, a);
-    SRS.noteAttempt(state, a);   /* двигаем карточки по лесенке повторений */
     if (!state.campaign) state.campaign = Campaign.create();
-    const c = state.campaign;
-    const before = Campaign.todayState(c, state.attempts), rb = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));
+    const bk = (state.books || (state.books = {}));
+    if (!bk.v1) { bk.v1 = state.campaignV1 || state.campaign; state.campaignV1 = bk.v1; }
+    const c1 = bk.v1;
+    /* состояние книги v1: свои повторения, блоки, память новизны */
+    const s1 = { cards: state.cards, cardStats: state.cardStats, attempts: state.attempts, decks: state.decks,
+      settings: state.settings, campaign: c1, __srs: (state.settings.srs || (state.settings.srs = {})) };
+    const ev1 = Ledger.withVer('v1', () => {
+      if (a.points == null) a.points = Campaign.attemptPoints(a);
+      /* Деградация: низкоуровневый и уже отработанный за неделю материал платит меньше */
+      if (!a.aborted && a.points > 0) {
+        const d = Campaign.decay(s1, a);
+        a.decay = d;
+        a.pointsRaw = a.points;
+        a.points = Math.round(a.points * d.mult);
+      }
+      Campaign.noteUnit(s1, a);
+      SRS.noteAttempt(s1, a);   /* двигаем карточки по лесенке повторений */
+      return { before: Campaign.todayState(c1, state.attempts), rank: Campaign.rankIndex(Campaign.effectiveDays(c1, state.attempts)) };
+    });
+    const snap2 = Ledger.todaySnapshot(state);            /* «до» второй книги — обязательно до записи в журнал */
     state.attempts.push(a);
     state.cardStats = Stats.cardStats(state.attempts);
+    const ev2 = Ledger.noteAttempt(state, a, Date.now(), snap2);   /* проставит a.p2 до записи попытки */
     try { await Store.putAttempt(a); } catch (e) {
       try { await Store.putAttempt(a); } catch (e2) { stashPending(a); toast('Попытка сохранена в резервную очередь — запишется при следующем запуске', 3500); }
     }
-    Campaign.process(c, state.attempts);
-    const after = Campaign.todayState(c, state.attempts), ra = Campaign.rankIndex(Campaign.effectiveDays(c, state.attempts));
-    c.rankPeak = Math.max(c.rankPeak || 0, ra);
-    const chests = Campaign.grantChests(c, state.attempts);
+    const done1 = Ledger.withVer('v1', () => {
+      Campaign.process(c1, state.attempts);
+      const after = Campaign.todayState(c1, state.attempts), ra = Campaign.rankIndex(Campaign.effectiveDays(c1, state.attempts));
+      c1.rankPeak = Math.max(c1.rankPeak || 0, ra);
+      return { after, rank: ra, chests: Campaign.grantChests(c1, state.attempts) };
+    });
     await persistNow();
     updateBadge();
+    /* Показываем события открытой книги */
+    const two = Ledger.is2(state) && ev2;
+    const before = two ? ev2.before : ev1.before, after = two ? ev2.after : done1.after;
+    const rb = two ? ev2.rankBefore : ev1.rank, ra = two ? ev2.rank : done1.rank;
+    const chests = two ? ev2.chests : done1.chests;
     Push.report(after);
-    return { cap: !before.done && after.done, ultra: !before.ultra && after.ultra, rankUp: ra > rb, rank: ra, points: a.points, chest: chests > 0 };
+    return { cap: !before.done && after.done, ultra: !before.ultra && after.ultra, rankUp: ra > rb, rank: ra, points: two ? a.p2 : a.points, chest: chests > 0 };
   }
 
   /* ── форматирование ── */
@@ -295,6 +313,25 @@ window.App = (() => {
       : `<button class="btn ${ds.mood >= 2 ? 'btn-danger' : 'btn-primary'} btn-sm" data-go="${go}">${beginner ? 'Звучание' : 'Тренироваться'} · ещё ${Math.round(ds.t.toCap)}</button>`;
     return `<div class="panel dragon m-${ds.quiet ? 0 : ds.mood}"><img class="dragon-img" src="${IMG_URL(ds.img)}" alt="" draggable="false"><div class="grow"><div class="dragon-t">${esc(ds.title)}</div><div class="dragon-x">${esc(ds.text)}</div>${btn}</div></div>`;
   }
+  /* Метка тестового приложения — чтобы не путать с основным */
+  function betaStrip() {
+    const ch = window.CHANNEL || {};
+    const v2 = window.Ledger && Ledger.is2(state);
+    if (ch.id !== 'beta' && !v2) return '';
+    const label = ch.id === 'beta' ? '字卡 β · тестовое приложение' : '新 тестовая методика';
+    return `<div class="beta-strip"><span>${label}</span><i></i><button class="btn btn-secondary btn-sm" data-go="settings" data-nosound>Методика</button></div>`;
+  }
+  /* Панели тестовой методики: уровень, где тонко, свои ошибки. Появляются по мере готовности модулей. */
+  function v2Panels() {
+    if (!window.Ledger || !Ledger.is2(state)) return '';
+    let html = '';
+    for (const m of ['GapsUI', 'MasteryUI', 'FiresUI']) {
+      const mod = window[m];
+      if (!mod || typeof mod.homePanel !== 'function') continue;
+      try { html += mod.homePanel() || ''; } catch (e) { /* модуль не готов — пропускаем */ }
+    }
+    return html;
+  }
   /* Новичку — одна понятная дверь: пока нет ни одной попытки, показываем маршрут первого дня */
   function startHere() {
     if ((state.attempts || []).length) return '';
@@ -374,7 +411,9 @@ window.App = (() => {
       return `
       <div class="vh"><div class="seal">字</div><div class="grow"><h1 class="title">字卡</h1><div class="sub">Китайский с нуля до HSK 4</div></div>${App.Profile.avatarButton()}<button class="icon-btn" data-go="settings" aria-label="Настройки">⚙</button></div>
       ${App.Profile.homePanel()}
+      ${betaStrip()}
       ${startHere()}
+      ${v2Panels()}
       ${dragonPanel()}
       ${reviewPanel()}
       ${pushInvite()}
@@ -416,6 +455,8 @@ window.App = (() => {
         <div class="flabel mt">Тема</div>
         <div class="seg">${[['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" data-action="set-theme" data-val="${v}">${l}</button>`).join('')}</div>
       </div>
+      ${window.LedgerUI ? LedgerUI.panel() : ''}
+      ${window.CopyUI && CopyUI.panel ? CopyUI.panel() : ''}
       <div class="panel">
         <div class="flabel">Данные</div>
         <div class="btns mt0"><button class="btn btn-secondary btn-block" data-action="export-all">Экспорт резервной копии (JSON)</button><button class="btn btn-secondary btn-block" data-action="import-all">Импорт из резервной копии</button></div>
@@ -540,6 +581,9 @@ window.App = (() => {
       state.meta = ctx.meta;
       if (mlog.length) toast('Данные бережно перенесены в новую версию (схема ' + state.meta.schema + ')', 4000);
       if (!state.campaign) state.campaign = Campaign.create();
+      const fixed = Ledger.boot(state);            /* две книги: v1 на месте, v2 чинится из журнала */
+      if (fixed && fixed.length) { try { await Store.putAttempts(fixed); } catch (e) { /* пересчитается при следующем запуске */ } }
+      Ledger.withVer('v1', () => { const c1 = state.books.v1; Campaign.process(c1, state.attempts); Campaign.grantChests(c1, state.attempts); });
       const added = Campaign.process(state.campaign, state.attempts);
       const newChests = Campaign.grantChests(state.campaign, state.attempts);
       if (newChests) setTimeout(() => toast('За марш-бросок вас ждёт ' + fmt.plural(newChests, 'сундук', 'сундука', 'сундуков') + ' — в профиле', 4000), 1600);

@@ -1,5 +1,5 @@
 /* Коты-воины эпохи Троецарствия: 10 рангов, данные и векторные иллюстрации (тушь на бумаге). */
-window.IMG_URL = key => (window.IMG && window.IMG[key]) || ('img/' + key + '.webp');
+window.IMG_URL = key => (window.IMG && window.IMG[key]) || (((window.CHANNEL && window.CHANNEL.base) || '') + 'img/' + key + '.webp');
 window.Cats = (() => {
   const RANKS = [
     { zh: '伙夫猫', py: 'huǒfū māo', ru: 'Кот-кашевар', motto: '兵马未动，粮草先行', mpy: 'bīngmǎ wèi dòng, liángcǎo xiān xíng', mru: 'Войско ещё не выступило — провиант уже в пути', bio: 'Главный по котлу. Воюет половником, стратегически мыслит о рыбе.' },

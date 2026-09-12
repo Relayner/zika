@@ -36,6 +36,11 @@ const localParts = tzMin => {
   return { day: d.toISOString().slice(0, 10), hour: d.getUTCHours() + d.getUTCMinutes() / 60 };
 };
 
+/* Модель: тестовая методика идёт на fable-5-1, текущая остаётся на прежней — у существующих
+   пользователей поведение не меняется, пока они не включат тестовую книгу. */
+const modelFor = body => (body && body.ver === 'v2' ? 'claude-fable-5-1' : 'claude-fable-5');
+const MAX_BLOB = 2 * 1024 * 1024;
+
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -85,7 +90,7 @@ export default {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-fable-5', max_tokens: 4000, system: sys, messages: [{ role: 'user', content: 'Сгенерируй бой. Отвечай только JSON, без пояснений и без markdown.' }] }),
+        body: JSON.stringify({ model: modelFor(body), max_tokens: 4000, system: sys, messages: [{ role: 'user', content: 'Сгенерируй бой. Отвечай только JSON, без пояснений и без markdown.' }] }),
       });
       if (!r.ok) return json({ error: 'upstream', status: r.status, detail: (await r.text()).slice(0, 300) }, 502);
       const data = await r.json();
@@ -115,6 +120,37 @@ export default {
       const m = text.match(/\{[\s\S]*\}/);
       if (!m) return json({ error: 'bad_json' }, 502);
       try { return json({ ok: true, plan: JSON.parse(m[0]) }); } catch (e) { return json({ error: 'bad_json' }, 502); }
+    }
+    /* Копия по коду: сервер видит только шифротекст, ключ и слова остаются на телефоне */
+    if (url.pathname === '/copy') {
+      const id = String(body.id || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(id)) return json({ error: 'bad id' }, 400);
+      if (body.op === 'get') {
+        const raw = await env.SUBS.get('c:' + id);
+        if (!raw) return json({ ok: false, missing: true });
+        const rec = JSON.parse(raw);
+        return json({ ok: true, blob: rec.blob, at: rec.at, size: rec.size });
+      }
+      if (body.op === 'put') {
+        const blob = String(body.blob || '');
+        if (!blob || blob.length > MAX_BLOB) return json({ error: 'bad blob' }, 400);
+        await env.SUBS.put('c:' + id, JSON.stringify({ blob, at: Date.now(), size: blob.length }));
+        return json({ ok: true, at: Date.now(), size: blob.length });
+      }
+      return json({ error: 'bad op' }, 400);
+    }
+    /* Спорное задание: жалоба копится, разбирает владелец */
+    if (url.pathname === '/dispute') {
+      const item = String(body.item || '').slice(0, 120);
+      if (!item) return json({ error: 'bad item' }, 400);
+      const key = 'd:' + item;
+      const prev = JSON.parse((await env.SUBS.get(key)) || '{"n":0,"notes":[]}');
+      prev.n++;
+      prev.at = Date.now();
+      if (body.note) prev.notes = [...(prev.notes || []), String(body.note).slice(0, 300)].slice(-20);
+      if (body.ctx) prev.ctx = String(body.ctx).slice(0, 400);
+      await env.SUBS.put(key, JSON.stringify(prev));
+      return json({ ok: true, n: prev.n });
     }
     if (url.pathname === '/test') {
       if (!body.endpoint) return json({ error: 'no endpoint' }, 400);

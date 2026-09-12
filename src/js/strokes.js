@@ -7,7 +7,7 @@ window.Strokes = (() => {
   function load() {
     if (data) return Promise.resolve(data);
     if (loading) return loading;
-    loading = fetch('strokes.json').then(r => r.json()).then(d => { data = d; loading = null; return d; })
+    loading = fetch(((window.CHANNEL && window.CHANNEL.base) || '') + 'strokes.json').then(r => r.json()).then(d => { data = d; loading = null; return d; })
       .catch(e => { loading = null; throw new Error('не удалось загрузить траектории черт'); });
     return loading;
   }

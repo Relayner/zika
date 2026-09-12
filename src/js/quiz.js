@@ -46,6 +46,15 @@ window.Quiz = (() => {
     if (!s || !s.asked) return 0.45 + Math.random() * 0.05;
     return s.correct / s.asked + Math.random() * 0.05;
   }
+  /* Тестовая методика: направление вопроса выбирает сэмплер по локальной статистике.
+     Подслучай → что показываем и что спрашиваем. */
+  const SUB_DIR = { read: { show: 'hanzi', guess: ['ru'] }, say: { show: 'hanzi', guess: ['pinyin'] }, ru2zh: { show: 'ru', guess: ['hanzi'] } };
+  function pickSmart(cards, cfg, cardStats) {
+    if (!cfg.smart || !window.Sampler) return pickCards(cards, cfg, cardStats).map(card => ({ card }));
+    const n = (cfg.count === 'all' || !cfg.count) ? cards.length : Math.min(+cfg.count, cards.length);
+    const subs = cfg.mode === 'listen' ? ['listen'] : cfg.mode === 'write' ? ['type'] : ['read', 'say', 'ru2zh'];
+    return Sampler.pick(cards, cfg.smart.stats || {}, { count: n, subs, recent: cfg.smart.recent, now: cfg.smart.now });
+  }
   function pickCards(cards, cfg, cardStats) {
     let list = cards.slice();
     const n = (cfg.count === 'all' || !cfg.count) ? list.length : Math.min(+cfg.count, list.length);
@@ -60,23 +69,25 @@ window.Quiz = (() => {
   /* cfg: {show:'hanzi'|'pinyin'|'ru'|'mixed', guess:[parts], difficulty, count, order}
      pool: карточки для вариантов ответа */
   function buildQuestions(cards, pool, cfg, cardStats) {
-    const picked = pickCards(cards, cfg, cardStats || {});
-    return picked.map(card => {
+    const picked = pickSmart(cards, cfg, cardStats || {});
+    return picked.map(({ card, sub }) => {
       if (cfg.mode === 'write') {
         /* лёгкий — с пиньинем (учимся выбирать среди омофонов), средний — по переводу, сложный — на слух */
         const show = cfg.difficulty === 'medium' ? 'ru' : cfg.difficulty === 'hard' ? (cfg.noVoice ? 'ru' : 'audio') : 'both';
         return { cardId: card.id, show, guess: ['hanzi'], card };
       }
-      const show = cfg.show === 'mixed' ? PARTS[rnd(3)] : cfg.show;
-      let guess = (cfg.show === 'mixed' || !cfg.guess || !cfg.guess.length)
-        ? PARTS.filter(p => p !== show) : cfg.guess.filter(p => p !== show);
+      const dir = sub && SUB_DIR[sub];
+      const show = dir ? dir.show : (cfg.show === 'mixed' ? PARTS[rnd(3)] : cfg.show);
+      let guess = dir ? dir.guess.slice() : ((cfg.show === 'mixed' || !cfg.guess || !cfg.guess.length)
+        ? PARTS.filter(p => p !== show) : cfg.guess.filter(p => p !== show));
       if (!guess.length) guess = PARTS.filter(p => p !== show);
       const q = { cardId: card.id, show, guess, card };
-      if (cfg.difficulty === 'easy' || cfg.difficulty === 'medium') Object.assign(q, makeOptions(card, pool, guess, OPTIONS[cfg.difficulty], cfg.difficulty === 'medium'));
+      if (sub) q.sub = sub;
+      if (cfg.difficulty === 'easy' || cfg.difficulty === 'medium') Object.assign(q, makeOptions(card, pool, guess, OPTIONS[cfg.difficulty], cfg.difficulty === 'medium', cfg.traps));
       return q;
     });
   }
-  function makeOptions(card, pool, guess, n, similar) {
+  function makeOptions(card, pool, guess, n, similar, useTraps) {
     const seen = new Set([keyOf(card, guess)]);
     const uniq = [];
     for (const c of pool) {
@@ -85,12 +96,26 @@ window.Quiz = (() => {
       if (seen.has(k)) continue;
       seen.add(k); uniq.push(c);
     }
-    let chosen;
-    if (similar) {
-      const scored = uniq.map(c => [similarity(card, c, guess), c]).sort((a, b) => b[0] - a[0]);
-      chosen = scored.slice(0, n - 1).map(x => x[1]);
-    } else chosen = shuffle(uniq).slice(0, n - 1);
-    const options = shuffle([card, ...chosen]).map(c => ({ cardId: c.id, hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru }));
+    /* Тестовая методика: до двух вариантов — названные ловушки (тон-близнец, похожий знак,
+       не то счётное слово). Тогда неверный ответ говорит, какая привычка сработала. */
+    let chosen = [];
+    if (useTraps && window.TRAPS) {
+      try { chosen = TRAPS.forCard(card, uniq, guess[0], Math.min(2, Math.max(0, n - 2))) || []; } catch (e) { chosen = []; }
+    }
+    const taken = new Set(chosen.map(c => c.id));
+    const rest = uniq.filter(c => !taken.has(c.id));
+    const need = n - 1 - chosen.length;
+    if (need > 0) {
+      if (similar) {
+        const scored = rest.map(c => [similarity(card, c, guess), c]).sort((a, b) => b[0] - a[0]);
+        chosen = chosen.concat(scored.slice(0, need).map(x => x[1]));
+      } else chosen = chosen.concat(shuffle(rest).slice(0, need));
+    }
+    const options = shuffle([card, ...chosen]).map(c => {
+      const o = { cardId: c.id, hanzi: c.hanzi, pinyin: c.pinyin, ru: c.ru };
+      if (c.trap) o.trap = c.trap;
+      return o;
+    });
     return { options, answerIdx: options.findIndex(o => o.cardId === card.id) };
   }
 

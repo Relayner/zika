@@ -7,7 +7,7 @@
   let feed = null;   /* лента: { blockId, order, i, seen:Set } */
   let sp = null;     /* спринт: { blockId, qs, i, right, wrong, size } */
 
-  const prog = () => (state.settings.program || (state.settings.program = {}));
+  const prog = () => (window.Ledger ? Ledger.progStore(state) : (state.settings.program || (state.settings.program = {})));
   const BL_TTL = 30 * 60 * 1000;   /* задание не повторяется 30 минут */
   const bstate = id => {
     const st = prog()[id] || (prog()[id] = { seen: [], seal: 'new', clean: 0, revised: 0, firstDone: false });
@@ -85,6 +85,7 @@
       const long = c.hanzi.replace(/[…\s]/g, '').length >= 5;
       return `<div class="vh"><button class="icon-btn" data-back>‹</button><div class="grow"><h1 class="title">${esc(b.ru)}</h1><div class="sub"><span class="zh">${esc(b.zh)}</span> · ${esc(b.can)}</div></div></div>
       <div class="panel feed-top"><div class="grow"><b>Изучено ${seen} из ${b.words.length}${st.runs ? ` · пройден ${st.runs} ${st.runs === 1 ? 'раз' : 'раза'}` : ''}</b><div class="hint" style="margin:2px 0 0">${ready ? 'Проверка доступна' : `Ещё ${MIN_SPRINT - seen} до проверки`}</div></div><button class="btn btn-secondary btn-sm" data-action="feed-grammar">${esc(b.g.t)}</button></div>
+      ${window.GramUI && GramUI.blockRow && Ledger.is2(state) ? GramUI.blockRow(b.id) : ''}
       <div class="panel ornate learn-card">
         <div class="learn-count">${feed.i + 1} / ${feed.list.length}${st.seen.indexOf(c.hanzi) >= 0 ? ' · <b class="lm">изучено</b>' : ''}</div>
         <div class="hanzi mid ${long ? 'len5' : ''}">${esc(c.hanzi)}</div>

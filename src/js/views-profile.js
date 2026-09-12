@@ -88,7 +88,8 @@
       ${c.chests.pending ? '<button class="btn btn-primary btn-block" data-action="open-chest">Открыть сундук</button>' : ''}
       ${items.length ? `<div class="inv">${items.map(i => itemCard(i.id, inv[i.id])).join('')}</div>` : '<div class="empty" style="margin-top:10px">Пока пусто. Первый марш-бросок — первый сундук.</div>'}
       <div class="rar-legend">${Treasures.ORDER.map(k => `<span class="r-${k}"><i></i>${Treasures.RARITY[k].ru} · ${Treasures.RARITY[k].w}%</span>`).join('')}</div>
-      <div class="hint">Открыто сундуков: ${c.chests.opened} · предметов: ${n}. На что тратить — появится позже.</div></div>`;
+      <div class="hint">Открыто сундуков: ${c.chests.opened} · предметов: ${n}. ${window.Sinks && window.Ledger && Ledger.is2(state) ? '' : ' На что тратить — появится позже.'}</div></div>`
+      + (window.Sinks && window.Ledger && Ledger.is2(state) ? Sinks.panel() : '');
   }
   actions['open-chest'] = () => {
     const c = state.campaign, entry = Campaign.openChest(c);

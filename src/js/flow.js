@@ -57,7 +57,7 @@ window.Flow = (() => {
         const ctl = new AbortController();
         const to = setTimeout(() => ctl.abort(), 12000);
         const r = await fetch(conf.url + '/coach', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal,
-          body: JSON.stringify({ stats: statsFor(state) }) });
+          body: JSON.stringify({ ver: (window.Ledger ? Ledger.active(state) : 'v1'), stats: statsFor(state) }) });
         clearTimeout(to);
         const d = await r.json();
         if (d && d.ok && d.plan && d.plan.mix) { plan = d.plan; plan.src = 'fable'; }
@@ -90,7 +90,7 @@ window.Flow = (() => {
     for (let i = 0; i < revSteps; i++) q.push({ t: 'review', title: 'Повторение 复习', d: 'слова, подошедшие по сроку' });
     /* уроки: недоосвоенные блоки рекомендованного уровня */
     const blocks = (window.PROGRAM ? PROGRAM.byLevel(lvl) : []).filter(b => {
-      const bs = (state.settings.program || {})[b.id];
+      const bs = (window.Ledger ? Ledger.progStore(state) : (state.settings.program || {}))[b.id];
       return !bs || bs.seal === 'new' || bs.seal === 'work';
     });
     for (let i = 0; i < (plan.mix.sprint || 0); i++) {

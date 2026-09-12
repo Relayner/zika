@@ -1,5 +1,8 @@
 /* Service worker: офлайн-кэш оболочки. Версия подставляется сборкой. */
-const CACHE = 'zika-__VERSION__';
+const CACHE = '__CACHE_PREFIX__-__VERSION__';
+const PREFIX = '__CACHE_PREFIX__-';   /* чужие каналы не трогаем: кэши общие на весь домен */
+/* «zika-» — префикс основного канала, но он же начало «zika-beta-»: чужой кэш не наш */
+const mine = k => k.startsWith(PREFIX) && (PREFIX !== 'zika-' || !k.startsWith('zika-beta-'));
 const ASSETS = __ASSETS__;
 const CORE = ASSETS.filter(a => !a.startsWith('./img/'));
 const IMGS = ASSETS.filter(a => a.startsWith('./img/'));
@@ -12,7 +15,7 @@ self.addEventListener('activate', e => {
     const nc = await caches.open(CACHE);
     const keys = await caches.keys();
     for (const k of keys) {
-      if (k === CACHE) continue;
+      if (k === CACHE || !mine(k)) continue;
       try {
         const oc = await caches.open(k);
         for (const req of await oc.keys()) {

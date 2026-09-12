@@ -2,7 +2,8 @@
 window.SRS = (() => {
   const STEPS = [1, 3, 7, 21, 60];            /* дни между повторениями */
   const DAY = 24 * 3600e3;
-  const store = state => (state.settings.srs || (state.settings.srs = {}));
+  /* Лесенка открытой книги учёта; __srs — явная подстановка для пополнения неактивной книги */
+  const store = state => state.__srs || (window.Ledger && Ledger.srsStore ? Ledger.srsStore(state) : (state.settings.srs || (state.settings.srs = {})));
   const rec = (state, id) => { const s = store(state); return s[id] || (s[id] = { step: -1, due: 0, seen: 0 }); };
 
   /* Ответ на карточку двигает её по лесенке: верно — дальше, ошибка — на ступень назад */

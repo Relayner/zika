@@ -42,7 +42,8 @@ window.Campaign = (() => {
     if (a.mode === 'hsk' && a.format === 'real' && a.passed) p += BONUS.pass;   /* надбавка за сданный настоящий экзамен, не за словарный тест */
     return Math.round(p * 10) / 10;
   }
-  const pts = a => (a.points != null ? a.points : attemptPoints(a));
+  /* Очки попытки в открытой книге учёта: у каждой методики свои (см. ledger.js) */
+  const pts = a => (window.Ledger && Ledger.ptsOf ? Ledger.ptsOf(a) : (a.points != null ? a.points : attemptPoints(a)));
 
   /* ── Деградация очков ──
      Платим за новое, а не за число заходов: если материал каждый раз другой, скидки нет.
@@ -140,9 +141,14 @@ const dayResult = (p, cap = CAP) => (p >= ULTRA ? 'ultra' : p >= cap ? 'done' : 
     let k = addDays(c.processedThrough, 1), guard = 0;
     while (k < today && guard++ < 5000) {
       const p = dayPoints(attempts, k), r = dayResult(p, capFor(c));
-      if (r === 'ultra') c.days += 2; else if (r === 'done') c.days += 1; else c.days = Math.max(0, c.days - 1);
+      let shielded = false;
+      if (r === 'ultra') c.days += 2;
+      else if (r === 'done') c.days += 1;
+      else if (window.Sinks && Sinks.spendShield(c)) shielded = true;   /* щит похода: день не откатывает */
+      else c.days = Math.max(0, c.days - 1);
       c.stats[r] = (c.stats[r] || 0) + 1;
       const e = { d: k, p, r };
+      if (shielded) e.shield = true;
       c.log.push(e); added.push(e);
       c.processedThrough = k;
       k = addDays(k, 1);

@@ -130,6 +130,14 @@
       if (cfg.difficulty === 'hard' && !Speech.available()) { toast('Нет китайского голоса — сложный уровень идёт по переводу', 3000); cfg.noVoice = true; }
     }
     if (mode === 'quiz') { if (!cfg.show) cfg.show = 'mixed'; if (!cfg.guess) cfg.guess = []; }
+    /* Тестовая методика: варианты с названными ловушками и отбор «то же слово другим заданием» */
+    if (window.Ledger && Ledger.is2(state)) {
+      cfg.traps = true;
+      if (window.Sampler) {
+        const now = Date.now();
+        cfg.smart = { stats: Sampler.nodeStats(state.attempts, now), recent: Sampler.recentKeys(state.attempts, Sampler.COOLDOWN, now), now };
+      }
+    } else { cfg.traps = false; cfg.smart = null; }
     let questions;
     if (mode === 'sentence') {
       questions = Quiz.buildSentence(extra.items || Sentences.ITEMS, cfg, state.cardStats);
@@ -184,7 +192,9 @@
           } else answer = sw + answer;
         }
       }
-      return head + prompt + answer + '<div id="feedback"></div>';
+      const idk = (window.Ledger && Ledger.is2(state) && !quiz.answered)
+        ? '<button class="btn btn-secondary btn-sm btn-block idk-btn" data-action="idk" data-nosound>Не знаю</button>' : '';
+      return head + prompt + answer + idk + '<div id="feedback"></div>';
     },
     mount() {
       setupDrawPad();
@@ -223,7 +233,8 @@
     if (!quiz || quiz.answered) return;
     const q = quiz.questions[quiz.i], idx = +el.dataset.idx;
     const txt = q.options[idx] ? (q.options[idx].text != null ? q.options[idx].text : q.guess.map(p => q.options[idx][p]).join(' · ')) : '';
-    finishQuestion(q, Quiz.checkChoice(q, idx), { choice: idx, choiceText: txt });
+    const opt = q.options[idx];
+    finishQuestion(q, Quiz.checkChoice(q, idx), { choice: idx, choiceText: txt, trap: (opt && opt.trap) || undefined });
   };
   actions['write-input'] = el => { state.settings.writeDraw = el.dataset.v === 'draw'; persist(); render(); };
   actions['qw-hint'] = () => { if (quiz && quiz.qw) { quiz.qw.hint = true; quiz.qw.hints++; quiz.qw.paint(); } };
@@ -329,8 +340,17 @@
   }
   function feedbackHtml(q, result, answer) {
     const c = q.card, last = quiz.i === quiz.questions.length - 1;
+    const dispute = (window.Dispute && window.Ledger && Ledger.is2(state)) ? Dispute.link(itemKeyOf(q), { hanzi: c && c.hanzi, mode: quiz.cfg.mode }) : '';
     const verdict = result.ok ? '<div class="verdict ok">Верно · 对</div>' : result.fraction > 0 ? '<div class="verdict half">Частично</div>' : `<div class="verdict bad">${answer.timeout ? 'Время вышло' : 'Неверно · 错'}</div>`;
     const nextBtn = `<button class="btn btn-primary btn-block" data-action="quiz-next">${last ? 'Результат' : 'Дальше'}</button>`;
+    const trapBox = (() => {
+      if (result.ok || !window.TRAPS) return '';
+      let id = answer.trap || null;
+      if (!id) { try { id = TRAPS.detect(q.card, answer.input || answer.choiceText, (q.guess || [])[0], result.parts); } catch (e) { id = null; } }
+      const t = id ? TRAPS.explain(id) : null;
+      if (!t) return '';
+      return `<div class="trap-box"><div class="trap-t">${esc(t.ru)}</div><div class="trap-r">${esc(t.rule)}</div>${t.contrast ? `<div class="trap-c">${esc(t.contrast)}</div>` : ''}</div>`;
+    })();
     const givenRows = result.ok ? '' : (q.guess || []).map(p => {
       const r = result.parts[p];
       if (!r) return '';
@@ -343,8 +363,19 @@
       const it = q.sent;
       return `<div class="panel fb">${verdict}<div class="fb-card"><div class="hint" style="margin:0 0 6px">${esc(it.q)}</div><div class="hanzi mid">${esc(it.a[0])}</div><div class="pinyin" style="font-size:15px">${esc(it.py)}</div><div class="ru">${esc(it.ru)}</div>${it.a.length > 1 ? `<div class="note">Также верно: ${it.a.slice(1).map(esc).join('、')}</div>` : ''}</div>${givenRows}${nextBtn}</div>`;
     }
-    return `<div class="panel fb">${verdict}<div class="fb-card"><div class="hanzi mid ${c.hanzi.replace(/[…\s]/g, '').length >= 5 ? 'len5' : ''}">${esc(c.hanzi)}</div><div class="pinyin">${esc(c.pinyin)}</div><div class="ru">${esc(c.ru)}</div>${c.note ? `<div class="note">${esc(c.note)}</div>` : ''}</div>${givenRows}${nextBtn}</div>`;
+    return `<div class="panel fb">${verdict}${trapBox}${dispute}<div class="fb-card"><div class="hanzi mid ${c.hanzi.replace(/[…\s]/g, '').length >= 5 ? 'len5' : ''}">${esc(c.hanzi)}</div><div class="pinyin">${esc(c.pinyin)}</div><div class="ru">${esc(c.ru)}</div>${c.note ? `<div class="note">${esc(c.note)}</div>` : ''}</div>${givenRows}${nextBtn}</div>`;
   }
+  const itemKeyOf = q => (q.kind === 'sentence' && q.sent ? 'sent:' + q.sent.id : (q.cardId || (q.card && q.card.id) || '?')) + '|' + (quiz.cfg.mode || 'quiz');
+  /* «Не знаю»: честный ответ дешевле случайного тычка — ловушка не пишется, штрафа нет */
+  actions['idk'] = () => {
+    if (!quiz || quiz.answered) return;
+    const q = quiz.questions[quiz.i];
+    if (q.options) return finishQuestion(q, Quiz.checkChoice(q, -1), { choice: -1, idk: true });
+    const empty = {};
+    (q.kind === 'listen' || q.kind === 'sentence' ? ['answer'] : q.guess).forEach(nm => { empty[nm] = ''; });
+    const res = q.kind === 'listen' ? Quiz.checkListen(q, '') : q.kind === 'sentence' ? Quiz.checkSentence(q, '') : Quiz.checkInput(q, empty);
+    finishQuestion(q, res, { input: empty, idk: true });
+  };
   function next() {
     if (!quiz || !quiz.answered) return;
     if (quiz.i >= quiz.questions.length - 1) return finishQuiz(false);

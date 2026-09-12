@@ -22,7 +22,7 @@ window.HskReal = (() => {
   /* ── Глубокий рандомайзер ──
      Каждый банк помнит, какие задания уже выпадали, и следующий вариант собирается
      сначала из тех, что давно не встречались. Повтор возможен только когда банк исчерпан. */
-  const SEEN_KEY = 'zika:examSeen';
+  const SEEN_KEY = ((window.CHANNEL && window.CHANNEL.ls) || 'zika:') + 'examSeen';
   const loadSeen = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY)) || {}; } catch (e) { return {}; } };
   const saveSeen = s => { try { localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } catch (e) { /* не критично */ } };
   const itemKey = it => [

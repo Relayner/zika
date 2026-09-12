@@ -72,7 +72,7 @@ window.BossGen = (() => {
         const to = setTimeout(() => ctl.abort(), 20000);
         const r = await fetch(conf.url + '/boss', {
           method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal,
-          body: JSON.stringify({ boss: { zh: boss.zh, ru: boss.ru, style: boss.style, topic: boss.topic }, level, rounds: n, avoid }),
+          body: JSON.stringify({ ver: (window.Ledger ? Ledger.active(App.state) : 'v1'), boss: { zh: boss.zh, ru: boss.ru, style: boss.style, topic: boss.topic }, level, rounds: n, avoid }),
         });
         clearTimeout(to);
         const d = await r.json();

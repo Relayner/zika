@@ -1,6 +1,7 @@
 /* Хранилище: IndexedDB → localStorage → память (превью). Всё локально на устройстве. */
 window.Store = (() => {
-  const DB_NAME = 'zika', VER = 1, LS = 'zika:';
+  const CH = window.CHANNEL || {};
+  const DB_NAME = CH.db || 'zika', VER = 1, LS = CH.ls || 'zika:';   /* у тестового канала своё хранилище — статистика не смешивается */
   let mode = 'mem', db = null;
   const mem = { kv: {}, attempts: {} };
 

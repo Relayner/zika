@@ -69,7 +69,7 @@ window.Boss = (() => {
       const l = decks[pref];
       if (l) studied[l]++;
     }
-    const prog = (state.settings && state.settings.program) || {};
+    const prog = (window.Ledger ? Ledger.progStore(state) : (state.settings && state.settings.program)) || {};
     for (const [bid, v] of Object.entries(prog)) {
       const lv = +String(bid).slice(1, 2);
       if (studied[lv] != null && v && v.seen) studied[lv] += (v.seal === 'done' || v.seal === 'gold') ? v.seen.length : Math.floor(v.seen.length / 2);   /* незакрытый блок — полвеса */
