@@ -84,14 +84,15 @@ window.App = (() => {
       settings: state.settings, campaign: c1, __srs: (state.settings.srs || (state.settings.srs = {})) };
     const ev1 = Ledger.withVer('v1', () => {
       if (a.points == null) a.points = Campaign.attemptPoints(a);
-      /* Деградация: низкоуровневый и уже отработанный за неделю материал платит меньше */
-      if (!a.aborted && a.points > 0) {
+      /* Деградация: низкоуровневый и уже отработанный за неделю материал платит меньше.
+         Попытки с назначенной ценой (съёмка, донесение) её не проходят и новизну не тратят. */
+      if (!a.aborted && a.points > 0 && !a.fixedPts) {
         const d = Campaign.decay(s1, a);
         a.decay = d;
         a.pointsRaw = a.points;
         a.points = Math.round(a.points * d.mult);
       }
-      Campaign.noteUnit(s1, a);
+      if (!a.fixedPts) Campaign.noteUnit(s1, a);
       SRS.noteAttempt(s1, a);   /* двигаем карточки по лесенке повторений */
       return { before: Campaign.todayState(c1, state.attempts), rank: Campaign.rankIndex(Campaign.effectiveDays(c1, state.attempts)) };
     });
@@ -325,7 +326,7 @@ window.App = (() => {
   function v2Panels() {
     if (!window.Ledger || !Ledger.is2(state)) return '';
     let html = '';
-    for (const m of ['GapsUI', 'MasteryUI', 'FiresUI']) {
+    for (const m of ['SurveyUI', 'RouteUI', 'GapsUI', 'ReportUI', 'MasteryUI', 'FiresUI']) {
       const mod = window[m];
       if (!mod || typeof mod.homePanel !== 'function') continue;
       try { html += mod.homePanel() || ''; } catch (e) { /* модуль не готов — пропускаем */ }

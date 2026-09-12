@@ -152,6 +152,49 @@ export default {
       await env.SUBS.put(key, JSON.stringify(prev));
       return json({ ok: true, n: prev.n });
     }
+    /* Разбор речи и письма: считаем СЛУЧАИ — сколько раз конструкция была нужна
+       и сколько раз получилась, а не «ошибок на сто слов». */
+    if (url.pathname === '/check') {
+      if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 503);
+      const text = String(body.text || '').slice(0, 1200);
+      if (text.length < 8) return json({ error: 'short' }, 400);
+      const did = String(body.did || '').slice(0, 40).replace(/[^A-Za-z0-9_-]/g, '');
+      if (!did) return json({ error: 'no_device' }, 400);
+      const day = localParts(body.tz).day;
+      const ck = 'k:' + did;
+      const quota = JSON.parse((await env.SUBS.get(ck)) || '{}');
+      if (quota.day !== day) { quota.day = day; quota.n = 0; }
+      if (quota.n >= 4) return json({ error: 'quota', n: quota.n }, 429);
+      const lvl = Math.min(4, Math.max(1, +body.level || 1));
+      const targets = (body.targets || []).slice(0, 6).map(t => '- ' + String(t.node || '').slice(0, 40) + ': ' + String(t.rule || '').slice(0, 160));
+      const fires = (body.fires || []).slice(0, 3).map(f => '- ' + String(f.ru || '').slice(0, 80));
+      const sys = [
+        'Ты — Э. Крэйн, архивариус: разбираешь запись ученика, который учит китайский как иностранный (родной русский), уровень HSK ' + lvl + '.',
+        'Текст пришёл от распознавания речи или набран с клавиатуры. Разбирай только китайский текст; латиницу и русские слова считай обрывками распознавания и не считай ошибками.',
+        'ГЛАВНОЕ: считай СЛУЧАИ — сколько раз конструкция была НУЖНА по смыслу (obligatory context) и сколько раз получилась. Не считай «ошибок на сто слов».',
+        targets.length ? 'Конструкции-мишени этого задания:\n' + targets.join('\n') : '',
+        fires.length ? 'Привычки, которые у ученика ломаются раз за разом:\n' + fires.join('\n') : '',
+        'Чего НЕ ищешь: произношение, тоны, интонацию, пунктуацию, разнобой упрощённых и традиционных знаков. Распознавание речи их не передаёт — молчи о них.',
+        'Верни СТРОГО JSON без markdown и пояснений:',
+        '{"corrected":"исправленный китайский текст целиком","cases":[{"node":"ключ конструкции","need":N,"ok":M}],"findings":[{"quote":"цитата до 12 знаков","fix":"как верно","node":"ключ или пусто","trap":"краткий ключ привычки латиницей, напр. le-missing, mw-ge, bu-vs-mei, word-order","sev":"ломает смысл|заметна|оговорка","why":"объяснение по-русски одной фразой","l1":"как это у нас и почему здесь иначе"}],"good":["что вышло верно, по-русски, до 3 пунктов"],"rubric":{"level":"A1|A2|B1|B2","note":"одна фраза по-русски"}}',
+        'Не больше 8 находок. Если текст короткий или бессвязный — верни пустые findings и честную rubric. Объяснения только по-русски.',
+      ].filter(Boolean).join('\n');
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: modelFor(body), max_tokens: 3000, system: sys, messages: [{ role: 'user', content: 'Запись ученика:\n' + text }] }),
+      });
+      if (!r.ok) return json({ error: 'upstream', status: r.status, detail: (await r.text()).slice(0, 300) }, 502);
+      const data = await r.json();
+      const out = (data.content || []).map(c => c.text || '').join('').trim();
+      const m = out.match(/\{[\s\S]*\}/);
+      if (!m) return json({ error: 'bad_json', stop: data.stop_reason }, 502);
+      let parsed;
+      try { parsed = JSON.parse(m[0]); } catch (e) { return json({ error: 'bad_json', stop: data.stop_reason }, 502); }
+      quota.n++; quota.at = Date.now();
+      await env.SUBS.put(ck, JSON.stringify(quota), { expirationTtl: 172800 });
+      return json({ ok: true, left: Math.max(0, 4 - quota.n), ...parsed });
+    }
     if (url.pathname === '/test') {
       if (!body.endpoint) return json({ error: 'no endpoint' }, 400);
       const raw = await env.SUBS.get('s:' + (await idOf(body.endpoint)));

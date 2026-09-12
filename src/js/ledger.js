@@ -88,6 +88,8 @@ window.Ledger = (() => {
   }
   /* Очки попытки в книге v2 с деградацией на момент попытки */
   function computePoints(state, a, now) {
+    /* Цена назначена самим режимом (съёмка, донесение): ни деградации, ни доплат */
+    if (a.fixedPts) return Math.round((a.p2fix != null ? a.p2fix : (a.points || 0)) * 10) / 10;
     let p = rawPoints(a);
     if (looksGuessed(a)) p = Math.round(p * 0.5 * 10) / 10;
     if (!a.aborted && p > 0) {
@@ -117,7 +119,7 @@ window.Ledger = (() => {
       const at = a.ts || now;
       const p = computePoints(state, a, at);
       if (a.p2 !== p) { a.p2 = p; changed.push(a); }
-      Campaign.noteUnit(sh, a, at);
+      if (!a.fixedPts) Campaign.noteUnit(sh, a, at);
       SRS.noteAttempt({ settings: { srs: b.srs }, cards: state.cards, __srs: b.srs }, a, a.endedAt || at);
     }
     withVer('v2', () => {
@@ -150,7 +152,7 @@ window.Ledger = (() => {
     const sh = shim(state);
     sh.campaign = b.campaign;
     a.p2 = computePoints(state, a, now);
-    Campaign.noteUnit(sh, a, now);
+    if (!a.fixedPts) Campaign.noteUnit(sh, a, now);
     SRS.noteAttempt({ settings: { srs: b.srs }, cards: state.cards, __srs: b.srs }, a, now);
     b.builtFrom = (state.attempts || []).length;
     return withVer('v2', () => {

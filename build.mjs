@@ -8,9 +8,10 @@ const now = new Date();
 const VERSION = now.toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/(\d{8})(\d{4})/, '$1-$2');
 const JS_ORDER = ['hsk.js', 'freq.js', 'sentences.js', 'pinyin.js', 'store.js', 'audio.js', 'speech.js', 'quiz.js', 'stats.js', 'srs.js', 'strokes.js', 'handwriting.js', 'skill.js', 'flow.js', 'phonetics.js', 'changelog.js', 'cats.js', 'treasures.js', 'campaign.js', 'ledger.js', 'dragon.js', 'hsk1exam.js', 'hsk2exam.js', 'hsk3exam.js', 'hsk4exam.js', 'hskreal.js', 'vault.js', 'push.js', 'app.js', 'views-decks.js', 'views-quiz.js', 'views-learn.js', 'program.js',
   /* тестовая методика: модули появляются по мере готовности, отсутствующие пропускаются */
-  'gram-b1.js', 'gram-b2.js', 'gram-b3.js', 'gram-b4.js', 'grammar.js', 'traps.js', 'sampler.js', 'fires.js', 'mastery.js', 'gaps.js', 'cloudcopy.js', 'dispute.js', 'sinks.js',
+  'gram-b1.js', 'gram-b2.js', 'gram-b3.js', 'gram-b4.js', 'grammar.js', 'traps.js', 'sampler.js', 'fires.js', 'mastery.js', 'gaps.js', 'cloudcopy.js', 'dispute.js', 'sinks.js', 'survey.js', 'prescribe.js', 'speechin.js', 'report.js',
   'boss.js', 'bossgen.js', 'bossmusic.js', 'views-program.js', 'views-boss.js', 'views-hand.js', 'views-flow.js', 'views-phon.js', 'views-hskexam.js', 'views-profile.js', 'views-stats.js',
-  'views-ledger.js', 'views-mastery.js', 'views-gaps.js', 'views-fires.js', 'views-gram.js', 'views-copy.js'].filter(f => fs.existsSync(src('js/' + f)));
+  'views-ledger.js', 'views-mastery.js', 'views-gaps.js', 'views-fires.js', 'views-gram.js', 'views-copy.js',
+  'views-survey.js', 'views-prescribe.js', 'views-report.js'].filter(f => fs.existsSync(src('js/' + f)));
 const imgsList = () => (fs.existsSync(src('img')) ? fs.readdirSync(src('img')).filter(f => f.endsWith('.webp')) : []);
 const out0 = p => dist(p);
 const css = read(src('css/style.css'));

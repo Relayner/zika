@@ -508,7 +508,9 @@
       ${builtinDecks.filter(d => d.level).map(levelCard).join('')}
       <div class="panel ornate level"><div class="level-h"><div class="level-n">HSKK</div><div class="level-d">говорение · устный экзамен</div></div>
         <div class="hint" style="margin:0 0 12px">Повторяете за диктором, описываете картинку и отвечаете голосом — приложение распознаёт вашу речь и оценивает.</div>
-        <button class="btn btn-secondary btn-block" disabled>В разработке · 即将推出</button></div>
+        ${window.ReportUI && window.Ledger && Ledger.is2(state)
+          ? '<div class="hint" style="margin:0 0 10px">Устный экзамен в настоящем формате ещё не готов. Пока есть «Донесение»: рассказать 30–90 секунд на тему по вашему уровню и получить разбор по конструкциям.</div><button class="btn btn-primary btn-block" data-go="report">Донесение 口述</button>'
+          : '<button class="btn btn-secondary btn-block" disabled>В разработке · 即将推出</button>'}</div>
       <div class="panel"><div class="hint" style="margin:0">Формат экзаменов фиксированный и не зависит от настроек тренировки. Порог сдачи — 60 %, как на реальном экзамене. «Освоено» — три верных ответа подряд.</div></div>`;
     },
   };
