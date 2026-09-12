@@ -1,6 +1,9 @@
 /* Каталог ловушек: проверка содержания и чистоты. node test/traps.test.mjs */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 global.window = global;
 for (const f of ['hsk', 'freq', 'pinyin', 'phonetics', 'traps']) require('../src/js/' + f + '.js');
@@ -264,6 +267,180 @@ t('каталог не зависит от состояния и не мутир
   assert.ok(threw || stolen.__probe === undefined, 'каталог не защищён от порчи снаружи');
   assert.equal(TRAPS.ALL.length, before);
   assert.equal(TRAPS.byId('tone:mai').id, 'tone:mai');
+});
+
+/* ── закон чистоты: порядок загрузки и порядок разбора ── */
+t('каталог не зависит от порядка загрузки модулей', () => {
+  /* Главная проверка закона: справочник обязан быть функцией словаря, а не того, кто позвал
+     первым. Гоняем отдельные процессы с разным порядком require и сверяем отпечаток. */
+  const dir = fileURLToPath(new URL('../src/js/', import.meta.url));
+  const digest = order => {
+    const code = 'global.window=global;'
+      + 'const L=n=>require(' + JSON.stringify(dir) + '+n+".js");'
+      + order
+      + 'const T=global.TRAPS;'
+      + 'const d=T.ALL.map(x=>x.id+"|"+x.rule).join("\\n")+"\\n##\\n"+T.DOUBLES.map(x=>x.id).join(",");'
+      + 'process.stdout.write(T.ALL.length+" "+T.DOUBLES.length+" "+require("crypto").createHash("sha1").update(d).digest("hex"));';
+    return execFileSync(process.execPath, ['-e', code], { encoding: 'utf8' });
+  };
+  const normal = digest('["hsk","freq","pinyin","phonetics","traps"].forEach(L);');
+  /* тот же словарь, но traps загружен первым */
+  const first = digest('["traps","hsk","freq","pinyin","phonetics"].forEach(L);');
+  /* traps загружен первым И опрошен до словаря — самый злой случай для кэша */
+  const poisoned = digest('L("traps");global.TRAPS.ALL.length;global.TRAPS.forCard({id:"x",hanzi:"买",pinyin:"mǎi"},[],"ru");'
+    + '["hsk","freq","pinyin","phonetics"].forEach(L);');
+  assert.equal(first, normal, 'порядок загрузки изменил каталог');
+  assert.equal(poisoned, normal, 'ранний вызов заморозил неполный каталог');
+  assert.ok(/^\d+ \d+ [0-9a-f]{40}$/.test(normal.trim()), 'отпечаток не собрался: ' + normal);
+});
+t('разбор журнала попыток не зависит от порядка', () => {
+  /* Разбираем один и тот же append-only журнал в разном порядке: набор названных
+     ловушек обязан совпасть. Производных значений модуль не хранит — проверяем это снаружи. */
+  const q = (h, input) => ({ cardId: 'hsk1:' + h, hanzi: h, pinyin: bank.get(h).pinyin, ru: bank.get(h).ru, answer: { input }, ok: false });
+  const attempts = [
+    { id: 'a1', ts: 1, mode: 'quiz', questions: [q('买', 'mai4'), q('是', 'xi4'), q('三', 'sang1')] },
+    { id: 'a2', ts: 2, mode: 'write', questions: [q('在', 'zai4'), q('买', 'mai1')] },
+    { id: 'a3', ts: 3, mode: 'flip', questions: [q('三', 'san1'), q('是', 'shi4')] },
+  ];
+  const tally = list => {
+    const m = new Map();
+    for (const a of list) for (const qq of (a.questions || [])) {
+      const id = TRAPS.detect({ id: qq.cardId, hanzi: qq.hanzi, pinyin: qq.pinyin, ru: qq.ru }, qq.answer.input, 'pinyin');
+      if (id) m.set(id, (m.get(id) || 0) + 1);
+    }
+    return JSON.stringify(Array.from(m.entries()).sort());
+  };
+  const forward = tally(attempts);
+  assert.equal(tally(attempts.slice().reverse()), forward, 'обратный порядок дал другой итог');
+  assert.equal(tally([attempts[1], attempts[2], attempts[0]]), forward, 'перестановка дала другой итог');
+  assert.equal(tally(attempts.concat(attempts)), JSON.stringify(JSON.parse(forward).map(([k, v]) => [k, v * 2])), 'пересчёт вдвое не удвоился');
+  assert.ok(JSON.parse(forward).length >= 3, 'журнал не дал ловушек: ' + forward);
+});
+t('не падает на пустом и на кривом состоянии', () => {
+  const bad = [
+    { id: 'e1', ts: 1, mode: 'quiz' },                                  /* попытка без questions */
+    { id: 'e2', ts: 2, mode: 'quiz', questions: [] },                   /* пустой список */
+    { id: 'e3', ts: 3, mode: 'quiz', questions: [{ hanzi: '买' }] },     /* вопрос без cardId и без ответа */
+    { id: 'e4', ts: 4, mode: 'quiz', questions: [{ cardId: null, hanzi: '', pinyin: '', ru: '', answer: {} }] },
+  ];
+  for (const a of bad) for (const qq of (a.questions || [])) {
+    const c = { id: qq.cardId, hanzi: qq.hanzi, pinyin: qq.pinyin, ru: qq.ru };
+    assert.doesNotThrow(() => TRAPS.detect(c, (qq.answer || {}).input, 'pinyin'));
+    assert.doesNotThrow(() => TRAPS.detect(c, (qq.answer || {}).choice, 'ru'));
+    assert.doesNotThrow(() => TRAPS.forCard(c, cards, 'ru', 6));
+    assert.doesNotThrow(() => TRAPS.forCard(c, [], 'ru', 6));
+  }
+  /* пустые и мусорные аргументы открытого API */
+  assert.deepEqual(TRAPS.forCard(undefined, undefined, undefined), []);
+  assert.deepEqual(TRAPS.forCard({ id: 'x', hanzi: '买', pinyin: 'mǎi' }, [null, {}, { hanzi: '' }], 'ru'), []);
+  assert.equal(TRAPS.detect({ hanzi: '买', pinyin: 'mǎi' }, undefined, 'pinyin'), null);
+  assert.equal(TRAPS.detect({ hanzi: '买', pinyin: 'mǎi' }, {}, 'ru'), null);
+  assert.equal(TRAPS.byId(undefined), null);
+  assert.equal(TRAPS.explain(null), null);
+  assert.deepEqual(TRAPS.byKind('нет такого вида'), []);
+});
+t('модуль живёт без словаря и без DOM', () => {
+  const dir = fileURLToPath(new URL('../src/js/', import.meta.url));
+  const code = 'global.window=global;'
+    + 'require(' + JSON.stringify(dir) + '+"traps.js");'
+    + 'const T=global.TRAPS;'
+    + 'if(typeof document!=="undefined")throw new Error("модуль ждёт DOM");'
+    + 'T.ALL.length;T.DOUBLES.length;T.byKind("gram").length;'
+    + 'T.detect({hanzi:"买",pinyin:"mǎi"},"mai4","pinyin");'
+    + 'T.forCard({id:"x",hanzi:"买",pinyin:"mǎi"},[],"ru");'
+    + 'T.mwOf("书");T.mwAll("书");T.explain("gram:bu-mei");'
+    + 'process.stdout.write("ok "+T.byKind("gram").length+" "+T.byKind("mw").length);';
+  const out = execFileSync(process.execPath, ['-e', code], { encoding: 'utf8' });
+  assert.ok(out.startsWith('ok '), 'без словаря модуль упал: ' + out);
+  /* рукописные разделы от словаря не зависят и обязаны быть на месте и без него */
+  const [, g, m] = out.split(' ');
+  assert.ok(+g >= 25 && +m >= 20, 'рукописные разделы пропали без словаря: gram ' + g + ', mw ' + m);
+});
+t('исходники модуля без DOM, import/export и сети', () => {
+  const src = readFileSync(new URL('../src/js/traps.js', import.meta.url), 'utf8');
+  for (const bad of ['document.', 'window.location', 'localStorage', 'fetch(', 'XMLHttpRequest', 'import ', 'export ', 'require('])
+    assert.ok(!src.includes(bad), 'в модуле есть ' + bad);
+  assert.ok(/^window\.TRAPS = \(\(\) => \{/m.test(src), 'не тот стиль модуля');
+});
+
+/* ── содержание: счётные слова ── */
+t('счётные: ключ один, а где их два — оба названы', () => {
+  for (const h of Object.keys(TRAPS.MW_ALSO)) {
+    assert.ok(TRAPS.mwOf(h), 'второе счётное у слова вне таблицы: ' + h);
+    assert.ok(bank.has(h), 'слова нет в банке: ' + h);
+    for (const mw of TRAPS.MW_ALSO[h]) {
+      assert.notEqual(mw, TRAPS.mwOf(h), 'второе счётное совпало с первым: ' + h);
+      assert.equal(mw.length, 1, 'счётное не в один знак: ' + mw);
+    }
+    assert.equal(new Set(TRAPS.MW_ALSO[h]).size, TRAPS.MW_ALSO[h].length, 'дубль второго счётного: ' + h);
+  }
+  assert.deepEqual(TRAPS.mwAll('手机'), ['部', '个'], 'у 手机 два верных счётных');
+  assert.deepEqual(TRAPS.mwAll('书'), ['本'], 'у 书 счётное одно');
+  assert.deepEqual(TRAPS.mwAll('нет такого'), []);
+  assert.deepEqual(TRAPS.mwAll('toString'), [], 'не отвечать полями прототипа');
+});
+t('句子 считается через 个, а 句 — сказанное вслух', () => {
+  /* 一个句子 — предложение как единица письма; 句 меряет реплику: 说一句 */
+  assert.equal(TRAPS.mwOf('句子'), '个', 'счётное 句子 не 个');
+  const ju = TRAPS.byId('mw:句');
+  assert.ok(ju, 'нет ловушки mw:句');
+  assert.ok(!ju.nouns.includes('句子'), '句子 приписано счётному 句');
+  assert.ok(!/句句子/.test(ju.rule + ju.contrast), 'в правиле осталось 两句句子');
+});
+t('у каждого счётного своё правило и свой пиньинь', () => {
+  const list = TRAPS.byKind('mw');
+  assert.ok(list.length >= 30, 'счётных мало: ' + list.length);
+  const mws = list.map(x => x.mw), rules = list.map(x => x.rule);
+  assert.equal(new Set(mws).size, mws.length, 'счётное повторилось');
+  assert.equal(new Set(rules).size, rules.length, 'правило повторилось у разных счётных');
+  for (const x of list) {
+    const [mw, py] = x.zh.split(' ');
+    assert.equal(mw, x.mw, 'zh не совпал со счётным: ' + x.id);
+    assert.ok(py && Pinyin.analyze(py).letters, 'у счётного нет пиньиня: ' + x.id);
+    assert.ok(x.rule.includes(x.mw) || x.nouns.length, 'правило не показывает счётное: ' + x.id);
+    for (const h of x.also) assert.ok(TRAPS.MW_ALSO[h].includes(x.mw), 'also собран неверно: ' + x.id + '/' + h);
+  }
+  /* каждое счётное из таблицы существительных должно быть объяснено */
+  for (const mw of new Set(Object.values(TRAPS.MW_OF)))
+    assert.ok(TRAPS.byId('mw:' + mw), 'счётное без объяснения: ' + mw);
+});
+
+/* ── содержание: объём и китайский ── */
+t('рукописные разделы набраны по максимуму', () => {
+  assert.ok(TRAPS.byKind('gram').length >= 40, 'грамматики мало: ' + TRAPS.byKind('gram').length);
+  assert.ok(TRAPS.byKind('ru').length >= 24, 'ложных друзей мало: ' + TRAPS.byKind('ru').length);
+  assert.ok(TRAPS.byKind('glyph').length + TRAPS.DOUBLES.length >= 60, 'пар знаков мало');
+  assert.ok(Object.keys(TRAPS.MW_OF).length >= 140, 'существительных мало: ' + Object.keys(TRAPS.MW_OF).length);
+});
+t('в текстах ловушек нет латиницы вместо иероглифов и нет пустых примеров', () => {
+  const hanzi = /[一-鿿]/;
+  for (const x of TRAPS.ALL.concat(TRAPS.DOUBLES)) {
+    /* разделы про знаки, слова и грамматику обязаны показывать сам китайский */
+    if (['glyph', 'mw', 'gram', 'ru', 'tone', 'homo'].includes(x.kind))
+      assert.ok(hanzi.test(x.rule) || hanzi.test(x.contrast), 'нет иероглифов в примере: ' + x.id);
+    assert.ok(!/\s,|\s\./.test(x.rule), 'висячая пунктуация в ' + x.id);
+  }
+});
+t('ложные друзья: слова записаны иероглифами и не повторяются между гнёздами', () => {
+  const list = TRAPS.byKind('ru');
+  for (const x of list) {
+    assert.ok(x.words.length >= 1, 'пустое гнездо ' + x.id);
+    for (const w of x.words) assert.ok(/^[一-鿿]+$/.test(w), 'не иероглифы в ' + x.id + ': ' + w);
+  }
+  /* одно слово — одно гнездо, иначе указатель ruOf уводит не туда */
+  const seen = new Map();
+  for (const x of list) for (const w of x.words) {
+    assert.ok(!seen.has(w), 'слово ' + w + ' в двух гнёздах: ' + seen.get(w) + ' и ' + x.id);
+    seen.set(w, x.id);
+  }
+});
+t('грамматика: ключи уникальны, тексты не повторяются', () => {
+  const g = TRAPS.byKind('gram');
+  const rules = g.map(x => x.rule), names = g.map(x => x.ru);
+  assert.equal(new Set(rules).size, rules.length, 'правило повторилось');
+  assert.equal(new Set(names).size, names.length, 'название повторилось');
+  for (const key of ['gram:hen-obligatory', 'gram:number-mw', 'gram:bu-tone', 'gram:yi-tone', 'gram:a-not-a', 'gram:existential-you'])
+    assert.ok(TRAPS.byId(key), 'нет ловушки ' + key);
 });
 
 console.log(process.exitCode ? 'SOME TESTS FAILED' : 'traps: ' + n + ' групп проверок пройдено, ловушек ' + TRAPS.ALL.length + ' (+' + TRAPS.DOUBLES.length + ' вне словаря)');

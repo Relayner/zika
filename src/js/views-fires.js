@@ -100,7 +100,12 @@ window.FiresUI = (() => {
     const gs = q.guess || [];
     const right = String((gs.indexOf('ru') >= 0 ? q.ru : gs.indexOf('pinyin') >= 0 ? q.pinyin : gs.indexOf('hanzi') >= 0 ? q.hanzi : '') || '').trim();
     const word = wordOf(q);
-    if (right) return right === g ? null : '«' + g + '» вместо «' + right + '»' + (word ? ' · ' + word : '');
+    if (right) {
+      if (right === g) return null;
+      /* верный ответ уже назван — второй раз его в описании слова не повторяем */
+      const rest = [q.hanzi, q.pinyin, q.ru].filter(x => x && String(x).trim() !== right).join(' · ');
+      return '«' + g + '» вместо «' + right + '»' + (rest ? ' · ' + rest : '');
+    }
     return q.trap && word ? '«' + g + '» · ' + word : null;
   }
   /* Пример из собственных ответов: последний промах с цитатой, иначе — слово, на котором он вышел */

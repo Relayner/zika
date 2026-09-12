@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 global.window = global;
@@ -79,7 +80,15 @@ const TRAP_FREE = new Set(['meiguanxi-for-bukeqi', 'duibuqi-for-bukeqi', 'zaijia
 t('банк зарегистрирован', () => {
   assert.ok(Array.isArray(GRAM_BANKS), 'GRAM_BANKS не массив');
   assert.equal(bank.length, 1, 'ожидается ровно один банк уровня 1');
-  assert.ok(items.length >= 80, 'мало заданий: ' + items.length);
+  assert.ok(items.length >= 100, 'мало заданий: ' + items.length);
+});
+
+/* Лестница сложности: без трудных заданий блок заканчивается на середине пути */
+t('в каждом блоке есть трудное задание', () => {
+  for (const b of blocks) {
+    const hard = byBlock(b.id).filter(i => i.diff === 'hard').length;
+    assert.ok(hard >= 1, b.id + ': ни одного hard');
+  }
 });
 
 t('все блоки уровня 1 покрыты', () => {
@@ -120,6 +129,18 @@ t('id не конфликтуют с демонстрационным набор
   for (const i of items) assert.ok(inEngine.has(i.id), 'задание не попало в GRAMMAR.ITEMS: ' + i.id);
 });
 
+/* Демонстрация grammar.js всегда подмешивается к банку (collect() начинает с DEMO), поэтому
+   совпадение фразы или стема означает один и тот же вопрос дважды в одном блоке. */
+t('фразы не повторяют демонстрационный набор grammar.js', () => {
+  if (!GRAMMAR || !Array.isArray(GRAMMAR.DEMO)) return;
+  const tts = new Map(GRAMMAR.DEMO.map(i => [i.tts, i.id]));
+  const stems = new Map(GRAMMAR.DEMO.map(i => [i.stem, i.id]));
+  for (const i of items) {
+    assert.ok(!tts.has(i.tts), i.id + ': фраза уже есть в демонстрации (' + tts.get(i.tts) + '): ' + i.tts);
+    assert.ok(!stems.has(i.stem), i.id + ': стем уже есть в демонстрации (' + stems.get(i.stem) + '): ' + i.stem);
+  }
+});
+
 t('обязательные поля на месте', () => {
   for (const i of items) {
     assert.ok(FORMATS.includes(i.format), 'формат ' + i.id);
@@ -154,6 +175,19 @@ t('fix: стем разобран на куски, ключ указывает �
       if (k === i.key) return;
       assert.ok(i.tts.includes(tok), i.id + ': tts потерял верный кусок «' + tok + '»');
     });
+  }
+});
+
+/* Ключ должен объяснять исправление: если убрать неверный кусок, всё остальное уже стоит
+   в порядке верной фразы. Иначе учение «ткни в неверное слово» требует двух правок сразу.
+   Соседняя перестановка (наречие и сказуемое поменялись местами) этой проверке не мешает:
+   там по правилу движется служебное слово, и ключом всегда стоит оно. */
+t('fix: без неверного куска остаток стоит в верном порядке', () => {
+  const sub = (need, hay) => { let k = 0; for (const c of hay) if (c === need[k]) k++; return k === need.length; };
+  for (const i of items.filter(x => x.format === 'fix')) {
+    const rest = i.tokens.filter((_, k) => k !== i.key).join('');
+    assert.ok(sub(rest, dropPunct(i.tts)),
+      i.id + ': после удаления «' + i.tokens[i.key] + '» остаток «' + rest + '» не ложится на «' + i.tts + '»');
   }
 });
 
@@ -242,6 +276,65 @@ t('судья grammar.js принимает верный ответ и лови�
       if (!TRAP_FREE.has(wrong.trap)) assert.ok(r.trapWhy, i.id + ': судья не объяснил ловушку ' + wrong.trap);
     }
   }
+});
+
+/* ── чистота: банк — данные, а не вычисление ─────────────────────────────── */
+t('в модуле нет ни времени, ни случайности, ни DOM, ни сети', () => {
+  const src = fs.readFileSync(path.join(SRC, 'gram-b1.js'), 'utf8');
+  const forbidden = [/\bDate\b/, /Math\.random/, /localStorage/, /sessionStorage/, /\bdocument\b/,
+    /\bfetch\b/, /setTimeout/, /setInterval/, /XMLHttpRequest/, /window\.location/,
+    /^\s*import\s/m, /^\s*export\s/m, /require\s*\(/];
+  for (const re of forbidden) assert.ok(!re.test(src), 'в модуле есть ' + re);
+  /* единственная запись наружу — регистрация банка */
+  const writes = src.match(/window\.[A-Za-z_$][\w$]*\s*=/g) || [];
+  assert.deepEqual([...new Set(writes)], ['window.GRAM_BANKS ='], 'модуль пишет в window что-то ещё: ' + writes.join(', '));
+});
+
+t('задания переживают JSON без потерь: ни функций, ни undefined', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(items)), items, 'в заданиях есть незаписываемые значения');
+});
+
+/* Соседей может не быть вовсе: банк обязан грузиться сам по себе */
+t('модуль грузится под node в одиночку, без словарей и движка', () => {
+  const file = path.join(SRC, 'gram-b1.js').replace(/\\/g, '\\\\');
+  const code = 'global.window = global; require("' + file + '");'
+    + 'const b = (global.GRAM_BANKS || []).filter(x => x.lvl === 1);'
+    + 'const n = b.flatMap(x => x.items || []).length;'
+    + 'if (b.length !== 1 || n < 100) { throw new Error("банк не собрался: " + b.length + "/" + n); }'
+    + 'process.stdout.write(String(n));';
+  const out = execFileSync(process.execPath, ['-e', code], { encoding: 'utf8' });
+  assert.equal(+out, items.length, 'в одиночку собралось другое число заданий: ' + out);
+});
+
+t('банк добавляется к чужим, ничего не затирая', () => {
+  const file = path.join(SRC, 'gram-b1.js');
+  delete require.cache[require.resolve(file)];
+  const saved = global.GRAM_BANKS;
+  const foreign = { lvl: 9, items: [{ id: 'x.g.01' }] };
+  global.GRAM_BANKS = [foreign];
+  require(file);
+  assert.equal(global.GRAM_BANKS[0], foreign, 'чужой банк потерян или сдвинут');
+  assert.equal(global.GRAM_BANKS.length, 2, 'банков стало ' + global.GRAM_BANKS.length);
+  global.GRAM_BANKS = saved;
+});
+
+/* Ответы приходят из интерфейса и бывают какими угодно: пустыми, чужого типа, вне диапазона */
+t('судья не падает на пустом и странном ответе', () => {
+  if (!GRAMMAR || typeof GRAMMAR.check !== 'function') return;
+  const junk = [undefined, null, '', ' ', [], {}, -1, 999, 'абвгд', '???'];
+  for (const i of items) for (const g of junk) {
+    let r;
+    assert.doesNotThrow(() => { r = GRAMMAR.check(i, g); }, i.id + ': судья упал на ' + JSON.stringify(g));
+    assert.equal(r.ok, false, i.id + ': мусорный ответ ' + JSON.stringify(g) + ' зачтён верным');
+  }
+});
+
+t('подготовка задания не портит банк', () => {
+  if (!GRAMMAR || typeof GRAMMAR.prepare !== 'function') return;
+  const before = JSON.stringify(items);
+  const rnd = GRAMMAR.mulberry32(7);
+  for (const i of items) GRAMMAR.prepare(i, rnd);
+  assert.equal(JSON.stringify(items), before, 'движок изменил задания банка при подготовке');
 });
 
 /* Банк — чистые данные: результат не зависит от порядка и числа загрузок */

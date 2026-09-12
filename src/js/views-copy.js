@@ -34,7 +34,10 @@ window.CopyUI = (() => {
   }
   const spaced = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const attemptsWord = n => fmt.plural(n, 'попытка', 'попытки', 'попыток');
-  const firstSense = ru => String(ru == null ? '' : ru).split(/[;,(]/)[0].trim();
+  /* Значение одним словом. Берём у CloudCopy: там скобки не рвутся, поэтому
+     «(школьная) доска» остаётся целой, а «час (промежуток времени)» не сжимается
+     до «час», неотличимого от 点. */
+  const sense = w => CloudCopy.gloss(w && w.ru);
 
   /* ── состояние копии ─────────────────────────────────────────────────── */
   function stateLine() {
@@ -44,10 +47,15 @@ window.CopyUI = (() => {
         <div class="row-s">Код ещё не создан — в облаке ничего не лежит.</div>`;
     }
     const grown = state.attempts.length - (c.attempts || 0);
+    /* Журнал бывает и короче копии — например, после очистки статистики.
+       Тогда «совпадает» было бы неправдой, а обновление затёрло бы в облаке большее. */
+    const note = grown > 0
+      ? `С тех пор добавилось ${esc(attemptsWord(grown))} — копию стоит обновить.`
+      : grown < 0
+        ? `Сейчас на телефоне меньше: ${esc(attemptsWord(state.attempts.length))}. Обновление заменит копию нынешним состоянием.`
+        : 'Совпадает с тем, что сейчас на телефоне.';
     return `<div class="row-t">Копия в облаке: ${esc(fmt.date(c.at))} · ${esc(attemptsWord(c.attempts || 0))}</div>
-      <div class="row-s">${grown > 0
-        ? `С тех пор добавилось ${esc(attemptsWord(grown))} — копию стоит обновить.`
-        : 'Совпадает с тем, что сейчас на телефоне.'}${c.bytes ? ` · ${Math.max(1, Math.round(c.bytes / 1024))} КБ шифротекста` : ''}</div>`;
+      <div class="row-s">${note}${c.bytes ? ` · ${Math.max(1, Math.round(c.bytes / 1024))} КБ шифротекста` : ''}</div>`;
   }
 
   function btnsHtml() {
@@ -101,7 +109,8 @@ window.CopyUI = (() => {
       <div class="panel">
         <div class="flabel">Зачем это</div>
         <div class="hint" style="margin-top:0">Всё, что вы сделали, лежит только на этом телефоне: попытки, колоды, свои карточки, обе книги учёта. Телефон утонул или потерялся — вместе с ним ушёл и поход. Копия по коду чинит это без аккаунта, почты и пароля: ${CloudCopy.SIZE} китайских слов и есть весь вход.</div>
-        <div class="hint">Слова берутся из HSK 1–3 и только те, чей пиньинь без тонов опознаётся однозначно, — сейчас таких ${CloudCopy.WORDS.length}. На новом телефоне китайской клавиатуры нет, поэтому код вводится латиницей.</div>
+        <div class="hint">Слова берутся из HSK 1–3 и только такие, чей пиньинь без тонов опознаётся однозначно; частицы (了, 呢) и слова в одну букву не предлагаются — записанный от руки код из них не прочесть. Сейчас в наборе ${CloudCopy.WORDS.length} слов. На новом телефоне китайской клавиатуры нет, поэтому код вводится латиницей.</div>
+        <div class="hint">Узнаёт приложение и те слова, которые предлагать перестало, — код, выданный прошлой версией каталога, открывается по-прежнему.</div>
       </div>
       <div class="panel">
         <div class="flabel">Что уходит на сервер</div>
@@ -127,7 +136,7 @@ window.CopyUI = (() => {
   /* ── показ кода ──────────────────────────────────────────────────────── */
   function showCode(words, fresh) {
     const latin = words.map(w => w.key).join(' ');
-    const list = words.map((w, i) => `<div class="cp-w"><i class="cp-n">${i + 1}</i><b class="hanzi">${esc(w.hanzi)}</b><span class="cp-p">${esc(w.pinyin)}</span><span class="cp-ru">${esc(firstSense(w.ru))}</span></div>`).join('');
+    const list = words.map((w, i) => `<div class="cp-w"><i class="cp-n">${i + 1}</i><b class="hanzi">${esc(w.hanzi)}</b><span class="cp-p">${esc(w.pinyin)}</span><span class="cp-ru">${esc(sense(w))}</span></div>`).join('');
     sheet(`<h3 class="sh-t">${fresh ? 'Ваш код копии' : 'Код этой копии'}</h3>
       ${fresh
         ? '<div class="cp-warn">Код показывается один раз — при создании. Запишите его сейчас: без кода копию не открыть, и взять его больше неоткуда. На этом телефоне код можно посмотреть снова, но телефон и есть то, что копия страхует.</div>'
@@ -199,7 +208,7 @@ window.CopyUI = (() => {
     if (!ready()) return toast('Адрес хранилища копий не задан');
     sheet(`<h3 class="sh-t">Восстановить по коду</h3>
       <div class="hint" style="margin-top:0">Шесть слов латиницей без тонов, через пробел — например <kbd>mao shui tian ren nuer luyou</kbd>. Регистр, запятые и цифры тонов не мешают, порядок слов важен.</div>
-      <div class="field mt"><label>Код копии</label><input class="inp" id="cp-in" type="text" inputmode="latin" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" placeholder="слово слово слово слово слово слово"></div>
+      <div class="field mt"><label>Код копии</label><input class="inp" id="cp-in" type="text" inputmode="text" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" placeholder="слово слово слово слово слово слово"></div>
       <div class="cp-err" id="cp-err"></div>
       <div class="btns mt0"><button class="btn btn-primary btn-block" id="cp-go">Найти копию</button><button class="btn btn-secondary btn-block" data-close>Отмена</button></div>`, s => {
       const inp = $('#cp-in', s), err = $('#cp-err', s), go = $('#cp-go', s);

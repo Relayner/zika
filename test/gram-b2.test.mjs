@@ -1,6 +1,9 @@
 /* Проверка банка грамматики уровня 2 (src/js/gram-b2.js).
    Запуск: node test/gram-b2.test.mjs — ноль строк FAIL обязателен. */
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 global.window = global;
@@ -24,7 +27,7 @@ t('банк зарегистрирован в GRAM_BANKS', () => {
   assert.ok(Array.isArray(GRAM_BANKS), 'GRAM_BANKS не массив');
   const bank = GRAM_BANKS.find(b => b && b.lvl === LVL && Array.isArray(b.items));
   assert.ok(bank, 'нет банка с lvl:2');
-  assert.ok(bank.items.length >= 80, 'заданий в банке: ' + bank.items.length);
+  assert.ok(bank.items.length >= 120, 'заданий в банке: ' + bank.items.length);
   for (const it of bank.items) assert.ok(GRAMMAR.ITEMS.indexOf(it) >= 0 || GRAMMAR.ITEMS.some(x => x.id === it.id), 'движок не видит ' + it.id);
 });
 t('блоки уровня 2 найдены в PROGRAM', () => {
@@ -32,11 +35,11 @@ t('блоки уровня 2 найдены в PROGRAM', () => {
 });
 
 /* ── 2. покрытие блоков и форматов ── */
-t('каждый блок покрыт ≥8 заданиями', () => {
-  for (const id of BLOCKS) assert.ok(byBlock(id).length >= 8, id + ': заданий ' + byBlock(id).length);
+t('каждый блок покрыт ≥12 заданиями', () => {
+  for (const id of BLOCKS) assert.ok(byBlock(id).length >= 12, id + ': заданий ' + byBlock(id).length);
 });
 t('в каждом блоке есть все четыре формата с квотами', () => {
-  const MIN = { choice: 3, fix: 2, fill: 2, order: 1 };
+  const MIN = { choice: 5, fix: 3, fill: 3, order: 2 };
   for (const id of BLOCKS) {
     const got = byBlock(id);
     for (const f of GRAMMAR.FORMATS) {
@@ -203,7 +206,91 @@ t('перестановка кусков в order не проходит как �
   }
 });
 
-/* ── 7. чистота: результат не зависит от порядка вызовов и ничего не мутирует ── */
+/* ── 6b. связь fix со своей исправленной фразой ── */
+t('в fix все уцелевшие куски стоят в tts в том же порядке', () => {
+  for (const i of items.filter(x => x.format === 'fix' && Array.isArray(x.tokens))) {
+    const rest = i.tokens.filter((_, k) => k !== i.key);
+    const tts = GRAMMAR.norm(i.tts);
+    let at = 0;
+    for (const tok of rest) {
+      const k = tts.indexOf(GRAMMAR.norm(tok), at);
+      assert.ok(k >= 0, i.id + ': в исправленной фразе нет куска «' + tok + '»');
+      at = k + GRAMMAR.norm(tok).length;
+    }
+    assert.notEqual(GRAMMAR.norm(i.stem), tts, i.id + ': исправлять нечего');
+  }
+});
+
+/* ── 7. чистота: банк — данные, движок — чистая функция ── */
+t('банк — чистые данные: ни функций, ни скрытого состояния', () => {
+  const walk = (v, path) => {
+    assert.notEqual(typeof v, 'function', 'функция в банке: ' + path);
+    if (Array.isArray(v)) v.forEach((x, k) => walk(x, path + '[' + k + ']'));
+    else if (v && typeof v === 'object') {
+      assert.equal(Object.getPrototypeOf(v), Object.prototype, 'не простой объект: ' + path);
+      for (const k of Object.keys(v)) walk(v[k], path + '.' + k);
+    }
+  };
+  const bank = GRAM_BANKS.find(b => b && b.lvl === LVL);
+  walk(bank, 'bank');
+  assert.deepEqual(JSON.parse(JSON.stringify(bank)), bank, 'банк не переживает JSON-оборот');
+});
+t('файл грузится под node в одиночку: ни DOM, ни соседних модулей', () => {
+  const file = fileURLToPath(new URL('../src/js/gram-b2.js', import.meta.url));
+  const out = execFileSync(process.execPath, ['-e',
+    'global.window = {};' +
+    'require(' + JSON.stringify(file) + ');' +
+    'const b = window.GRAM_BANKS;' +
+    'if (!Array.isArray(b) || b.length !== 1) throw new Error("банк не зарегистрирован");' +
+    'if (b[0].lvl !== 2 || !Array.isArray(b[0].items)) throw new Error("не тот банк");' +
+    'process.stdout.write(String(b[0].items.length));'], { encoding: 'utf8' });
+  assert.equal(+out, items.length, 'в одиночку загрузилось ' + out + ' заданий');
+});
+t('в исходнике нет DOM, модульных форм и обращений к окружению', () => {
+  const src = readFileSync(fileURLToPath(new URL('../src/js/gram-b2.js', import.meta.url)), 'utf8');
+  for (const re of [/\bdocument\b/, /\blocalStorage\b/, /\bfetch\s*\(/, /window\.location/, /^\s*import\s/m, /^\s*export\s/m, /\brequire\s*\(/, /\bDate\.now\b/, /\bMath\.random\b/]) {
+    assert.equal(re.test(src), false, 'в банке встретилось ' + re);
+  }
+});
+t('пустой и странный ответ судья переживает без падения', () => {
+  /* числа — законный ответ (номер варианта, номер куска), поэтому берём заведомо несуществующие */
+  const junk = [undefined, null, '', ' ', -1, 999, NaN, [], {}, { text: '' }, 'мимо', '，。'];
+  for (const i of items) for (const g of junk) {
+    const r = GRAMMAR.check(i, g);
+    assert.ok(r && typeof r === 'object', i.id + ': судья ничего не вернул');
+    assert.equal(typeof r.fraction, 'number', i.id + ': доля не число');
+    assert.ok(r.fraction >= 0 && r.fraction <= 1, i.id + ': доля вне отрезка — ' + r.fraction);
+    if (r.ok) assert.ok(false, i.id + ': мусор «' + String(g) + '» принят как верный ответ');
+  }
+});
+t('пустое и битое состояние банка ничего не ломает', () => {
+  for (const junk of [null, undefined, {}, { format: 'choice' }, { format: 'нет', key: 1 }, []]) {
+    assert.ok(Array.isArray(GRAMMAR.validate(junk)), 'validate упал на ' + JSON.stringify(junk));
+    assert.equal(GRAMMAR.check(junk, 'что-нибудь').ok, false, 'check принял мусорное задание');
+  }
+  assert.deepEqual(GRAMMAR.forBlock('b2-99'), [], 'нашёлся несуществующий блок');
+  assert.deepEqual(GRAMMAR.pick('b2-99', 5, { seed: 1 }), [], 'выборка из пустого блока не пуста');
+  assert.deepEqual(GRAMMAR.pick('b2-01', 0, { seed: 1 }), [], 'нулевая выборка не пуста');
+  assert.equal(GRAMMAR.pick('b2-01', 999, { seed: 1 }).length, byBlock('b2-01').length, 'выборка больше блока');
+  assert.deepEqual(GRAMMAR.forLevel(9), [], 'нашёлся несуществующий уровень');
+});
+t('повторная регистрация того же банка не удваивает задания', () => {
+  const before = JSON.stringify(GRAMMAR.forLevel(LVL).map(i => i.id));
+  const bank = GRAM_BANKS.find(b => b && b.lvl === LVL);
+  GRAM_BANKS.push(bank);
+  try {
+    GRAMMAR.reload();
+    assert.equal(JSON.stringify(GRAMMAR.forLevel(LVL).map(i => i.id)), before, 'банк подхватился дважды');
+  } finally { GRAM_BANKS.pop(); GRAMMAR.reload(); }
+  assert.equal(JSON.stringify(GRAMMAR.forLevel(LVL).map(i => i.id)), before, 'банк не вернулся к исходному виду');
+});
+t('пересчёт с нуля даёт тот же банк', () => {
+  const once = JSON.stringify(GRAMMAR.forLevel(LVL));
+  GRAMMAR.reload(); GRAMMAR.reload();
+  assert.equal(JSON.stringify(GRAMMAR.forLevel(LVL)), once, 'пересчёт дал другой банк');
+});
+
+/* ── 8. чистота: результат не зависит от порядка вызовов и ничего не мутирует ── */
 t('проверка — чистая функция: порядок и повторы ничего не меняют', () => {
   const answers = items.map(i => (i.format === 'fix' ? i.key : (Array.isArray(i.key) ? i.key[0] : i.key)));
   const once = items.map((i, k) => JSON.stringify(GRAMMAR.check(i, answers[k])));

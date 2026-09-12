@@ -198,7 +198,7 @@ window.MasteryUI = (() => {
   }
 
   /* Экран открывается с главной и своей вкладки не имеет — назад уводит кнопка, как на прочих таких экранах */
-  const head = () => `<div class="vh"><button class="icon-btn" data-back aria-label="Назад">‹</button><div class="seal ms-seal">级</div><div class="grow"><h1 class="title">Уровень</h1><div class="sub">水平 · оценка по тестовой методике</div></div></div>`;
+  const head = () => `<div class="vh"><button class="icon-btn" data-back aria-label="Назад">‹</button><div class="seal">级</div><div class="grow"><h1 class="title">Уровень</h1><div class="sub">水平 · оценка по тестовой методике</div></div></div>`;
 
   const offPanel = () => `${head()}<div class="panel"><div class="flabel">Это часть тестовой методики</div>
     <div class="hint" style="margin-top:0">Сейчас открыта текущая книга учёта: в ней уровень — это набранные слова, без потолков по виду проверки и без разделения «по проверкам / за счёт занятий». Включить тестовую можно в настройках, прогресс при этом не теряется.</div>
