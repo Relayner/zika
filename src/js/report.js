@@ -375,7 +375,8 @@ window.Report = (() => {
 
   /* ── попытка ── */
   /* Случаи в вопросах. Цитата есть только у промаха: удачный случай — это «конструкция
-     потребовалась и вышла», цитировать там нечего, поэтому в hanzi идёт имя узла. */
+     потребовалась и вышла», цитировать там нечего, поэтому в hanzi идёт имя узла.
+     show/guess нужны общему разбору попытки в статистике: без них он рисует пустую стрелку. */
   function questions(res, durationMs) {
     const r = res || {};
     const byNode = {};
@@ -384,9 +385,9 @@ window.Report = (() => {
       const key = f.trap || f.node || '';
       if (key) byNode[key] = (byNode[key] || 0) + 1;
       qs.push({
-        cardId: null, hanzi: f.quote, pinyin: '', ru: f.why || f.fix || '',
+        cardId: null, hanzi: f.quote, pinyin: '', ru: f.fix || f.why || '',
         node: f.node || null, trap: f.trap || null, show: 'sentence', guess: ['answer'],
-        answer: f.fix ? { choiceText: f.fix } : {},
+        answer: {},                         /* чужой ответ сюда не подставляем: правка разбора — не то, что человек сказал */
         fraction: 0, ok: false, ms: 0, why: f.why || '', l1: f.l1 || '', sev: f.sev || '',
       });
     }

@@ -83,7 +83,7 @@ window.RouteUI = (() => {
     const from = num(st.from), to = num(st.to), d = num(st.days), cost = num(st.cost);
     const src = [];
     if (cost != null) src.push('цена этапа ' + cost + ' ' + noun(cost, 'очко', 'очка', 'очков'));
-    if (p && p.perDay != null) src.push('шаг ' + p.perDay + ' в день' + (p.ru ? ' (' + p.ru + ')' : ''));
+    if (p && p.perDay != null) src.push('шаг ' + p.perDay + ' в день' + (p.measured ? '' : ', расчётный — ваш ещё не измерен'));
     let why = src.length ? 'посчитан: ' + src.join(', ') : s2(st.when);
     /* цену делим на шаг, но короче минимума этап не ставится — тогда деление не объясняет срок,
        и об этом надо сказать, иначе числа в подписи не сходятся с числом дней */
@@ -248,12 +248,23 @@ window.RouteUI = (() => {
   function topPanel(plan) {
     const h = plan.horizon;
     const n = (plan.stages || []).length;
-    const goal = `<div class="rt-goal">${esc(pl(n, 'этап', 'этапа', 'этапов'))}${h && h.ru ? ' — ' + esc(s2(h.ru)) : ' в горизонте'}</div>`;
+    /* горизонт подписан тем же шагом, что и строка «Темп» ниже: хвост снимаем, чтобы одна и та
+       же оговорка не стояла дважды подряд */
+    const tail = plan.pace && plan.pace.ru ? ' · ' + s2(plan.pace.ru) : '';
+    let hru = s2(h && h.ru);
+    if (tail && hru.length > tail.length && hru.slice(-tail.length) === tail) hru = hru.slice(0, -tail.length);
+    const goal = `<div class="rt-goal">${esc(pl(n, 'этап', 'этапа', 'этапов'))}${hru ? ' — ' + esc(hru) : ' в горизонте'}</div>`;
+    const empty = !((state.attempts || []).length);
     const lvl = plan.level != null
-      ? `<div class="hint">Рабочий уровень — HSK ${plan.level}. Дальше горизонта программа не загадывает: он пересобирается после каждого закрытого этапа.</div>` : '';
+      ? `<div class="hint">Рабочий уровень — HSK ${plan.level}: блоки ниже него догоняем, выше — откладываем.${empty ? ' Занятий в журнале пока нет, поэтому уровень взят начальным, а не измерен.' : ''} Дальше горизонта программа не загадывает: он пересобирается после каждого закрытого этапа.</div>` : '';
+    const cap = dayCap();
+    const over = plan.pace && plan.pace.measured && num(plan.pace.perDay) > cap
+      ? `<div class="rt-src">Это выше дневной нормы ${cap} — столько выходило в те дни, когда вы закрывали блоки. Сроки посчитаны по этому шагу, и держать его каждый день не обязательно.</div>` : '';
     const pace = plan.pace && plan.pace.perDay != null
-      ? `<div class="rt-pace">Темп: <b>${plan.pace.perDay} ${esc(noun(plan.pace.perDay, 'очко', 'очка', 'очков'))} в день</b> <span class="rt-src">— ${esc(s2(plan.pace.ru) || (plan.pace.measured ? 'по вашему шагу' : 'по расчёту'))}</span></div>` : '';
-    return `<div class="panel ornate rt-top"><div class="flabel">Цель и темп</div>${goal}${lvl}${pace}
+      ? `<div class="rt-pace">Темп: <b>${plan.pace.perDay} ${esc(noun(plan.pace.perDay, 'очко', 'очка', 'очков'))} в день</b> <span class="rt-src">— ${esc(s2(plan.pace.ru) || (plan.pace.measured ? 'по вашему шагу' : 'по расчёту'))}</span>${over}</div>` : '';
+    /* чего разбор не видит — говорим сразу, а не оставляем гадать */
+    const blind = `<div class="hint rt-src rt-blind">Программа считает только по журналу занятий. Она не видит, что вы читали, слушали или говорили вне приложения, и не знает вашего расписания — поэтому срок каждого этапа стоит диапазоном, а не датой.</div>`;
+    return `<div class="panel ornate rt-top"><div class="flabel">Цель и темп</div>${goal}${lvl}${pace}${blind}
       <div class="btns mt0"><button class="btn btn-secondary btn-block" data-go="route-diff">Что изменилось</button></div></div>`;
   }
 
@@ -268,7 +279,7 @@ window.RouteUI = (() => {
     const cur = p && p.stageId ? (plan.stages || []).find(s => s.id === p.stageId) : null;
     const gone = !!(p && p.stageId && !cur);
     return `<div class="panel rt-exits"><div class="flabel">Три выхода</div>
-      <div class="hint" style="margin-top:0">Выбор ставит этап первым в списке и ведёт в него завтра. На очки, цену и порядок расчёта это не влияет.</div>
+      <div class="hint" style="margin-top:0">Выбор ставит этап первым в списке и ведёт в него завтра. На очки, цену и порядок расчёта это не влияет. Выходы считаются по разным меркам и нередко сходятся на одном этапе — тогда выбор просто подтверждает его.</div>
       <div class="rt-exit-row">${btns}</div>
       ${cur || gone ? `<div class="hint rt-pinned">${cur
         ? 'Закреплён этап ' + cur.n + ' · ' + esc(cur.title) + (p.at ? ' · с ' + esc(dayOf(p.at)) : '')
@@ -305,15 +316,24 @@ window.RouteUI = (() => {
         <div class="hint" style="margin-top:0">Ежедневных линий программа не назвала.</div></div>`;
     }
     return `<div class="panel rt-daily"><div class="flabel">Ежедневные линии</div>
-      <div class="hint" style="margin-top:0">Идут каждый день рядом с этапом и съедают часть дневной нормы — поэтому срок этапа считается не по всем 400 очкам.</div>
+      <div class="hint" style="margin-top:0">Идут каждый день рядом с этапом и съедают часть дневной нормы (${dayCap()} очков) — поэтому срок этапа считается не по всей норме, а по остатку.</div>
       ${plan.lines.map(l => `<div class="row rt-day"><div><div class="row-t"><span class="zh">${esc(l.zh)}</span> ${esc(l.ru)}</div>
         ${l.why ? `<div class="row-s">${esc(l.why)}</div>` : ''}</div></div>`).join('')}</div>`;
   }
 
+  /* одноразовая передача из render в mount: выпускаем ровно тот расчёт, который человек увидел,
+     а не второй такой же на миллисекунду позже. Значение съедается в mount и показ не переживает,
+     поэтому это передача, а не кэш: от порядка вызовов результат не зависит */
+  let handoff = null;
+
   views['route'] = {
     render() {
+      handoff = null;
       if (!is2()) return offPanel();
-      const plan = planOf(Date.now());
+      const now = Date.now();
+      const raw = built(now);
+      handoff = { now, raw };
+      const plan = planFrom(raw);
       if (!plan) {
         return waitPanel(P()
           ? 'Открытых блоков в программе не осталось или истории пока слишком мало. Позанимайтесь несколько дней — этапы появятся сами.'
@@ -329,48 +349,84 @@ window.RouteUI = (() => {
     /* Выпуск программы — после показа: publish() сам решит, менять ли снимок */
     mount() {
       if (!is2()) return;
-      const now = Date.now();
-      publishIfDue(built(now), now);
+      const h = handoff; handoff = null;
+      const now = h ? h.now : Date.now();
+      publishIfDue(h ? h.raw : built(now), now);
     },
   };
 
   /* ── что изменилось ── */
   const SIGN = { '↑': 'up', '↓': 'down', '+': 'add', '−': 'out', '-': 'out', '=': 'same' };
   const SIGN_RU = { up: 'поднялось', down: 'опустилось', add: 'добавлено', out: 'убрано', same: 'без изменений' };
-  function diffOf(now) {
-    const M = P();
-    if (!M || typeof M.diff !== 'function' || typeof M.route !== 'function') return null;
-    let prev = null, next = null, rows = null;
-    try { prev = M.route(state); next = built(now); rows = M.diff(prev, next); } catch (e) { return null; }
-    if (!next) return null;
-    const list = (Array.isArray(rows) ? rows : []).map(r => {
+  /* Две разные правды, и обе нужны:
+       • что сменил последний выпуск — разница прошлого снимка и нынешнего;
+       • что накопилось после него — разница нынешнего снимка и того, что считается прямо сейчас.
+     Раньше показывали только вторую, а её сразу после выпуска нет по определению: экран отвечал
+     «ни одна строка не поменялась» в тот самый день, когда программа сменилась целиком.
+     Обе считаются заново из двух снимков — ничего производного не хранится. */
+  function rowsOf(M, a, b) {
+    let rows = null;
+    try { rows = M.diff(a, b); } catch (e) { return []; }
+    return (Array.isArray(rows) ? rows : []).map(r => {
       const sign = s2(pick(r, ['sign', 'dir'])).trim();
       return { sg: SIGN[sign] || 'same', sign: sign || '=', ru: s2(pick(r, ['ru', 'title'])), why: s2(pick(r, ['why', 'reason'])) };
     }).filter(r => r.ru);
-    return { prevAt: prev ? num(prev.at) : null, first: !prev, rows: list };
   }
+  function diffOf(now) {
+    const M = P();
+    if (!M || typeof M.diff !== 'function' || typeof M.route !== 'function') return null;
+    let cur = null, next = null;
+    try { cur = M.route(state); next = built(now); } catch (e) { return null; }
+    if (!next) return null;
+    const live = hasStages(cur);
+    const prev = (live && cur.prev && hasStages(cur.prev)) ? cur.prev : null;
+    return {
+      first: !live,
+      at: live ? num(cur.at) : null,
+      prevAt: prev ? num(prev.at) : null,
+      released: live && prev ? rowsOf(M, prev, cur) : null,
+      since: live ? rowsOf(M, cur, next) : [],
+      hyst: num(M.HYST) != null ? Math.round(num(M.HYST) * 100) : null,
+    };
+  }
+
+  const diffRows = rows => rows.map(r => `<div class="rt-diff d-${r.sg}">
+    <span class="rt-dir" title="${esc(SIGN_RU[r.sg])}">${esc(r.sign)}</span>
+    <div><div class="rt-diff-t">${esc(r.ru)}</div>${r.why ? `<div class="rt-diff-w">${esc(r.why)}</div>` : ''}</div></div>`).join('');
 
   views['route-diff'] = {
     render() {
       if (!is2()) return offPanel();
       const d = diffOf(Date.now());
+      const back = '<div class="btns"><button class="btn btn-primary btn-block" data-go="route">К программе</button></div>';
       if (!d) {
         return `${head('Что изменилось', '处方 · сравнение выпусков')}
         <div class="panel"><div class="flabel">Сравнивать пока не с чем</div>
-          <div class="hint" style="margin-top:0">Программа ещё не собрана — сравнивать нечего.</div>
-          <div class="btns mt0"><button class="btn btn-secondary btn-block" data-go="route">К программе</button></div></div>`;
+          <div class="hint" style="margin-top:0">Программа ещё не собрана — сравнивать нечего.</div></div>${back}`;
       }
-      const when = d.first
-        ? 'Прошлого выпуска не было: программа выпускается впервые.'
-        : (d.prevAt ? 'Прошлый выпуск — ' + dayOf(d.prevAt) + '.' : 'Дату прошлого выпуска программа не назвала.');
+      if (d.first) {
+        return `${head('Что изменилось', '处方 · сравнение выпусков')}
+        <div class="panel"><div class="flabel">Выпусков ещё не было</div>
+          <div class="hint" style="margin-top:0">Программа выпускается сама, когда вы открываете её экран. С первого выпуска здесь будет видно, что и почему поменялось.</div></div>${back}`;
+      }
+      const legend = 'Знак слева говорит, что случилось со строкой: ↑ выше, ↓ ниже, + появилось, − ушло, = осталось на месте.';
+      const relDate = d.at ? dayOf(d.at) : '';
+      const relHead = relDate ? 'Последний выпуск — ' + relDate + '.' : 'Дату последнего выпуска программа не назвала.';
+      const rel = d.released == null
+        ? `<div class="hint" style="margin-top:0">${esc(relHead)} Он был первым — сравнивать было не с чем.</div>`
+        : `<div class="hint" style="margin-top:0">${esc(relHead + (d.prevAt ? ' Предыдущий — ' + dayOf(d.prevAt) + '.' : '') + ' ' + legend)}</div>
+           ${d.released.length ? diffRows(d.released) : '<div class="hint">Порядок и сроки этапов выпуск не сдвинул.</div>'}`;
+      const hyst = d.hyst != null
+        ? ' Программа меняется не каждый день: пока накопленный сдвиг меньше ' + d.hyst + '%, выпуск остаётся прежним.'
+        : ' Программа меняется не каждый день: мелкие сдвиги выпуск не трогают.';
+      const since = d.since.length
+        ? diffRows(d.since)
+        : `<div class="hint">С выпуска расчёт не сдвинулся.</div>`;
       return `${head('Что изменилось', '处方 · сравнение выпусков')}
-      <div class="panel"><div class="flabel">Против прошлого выпуска</div>
-        <div class="hint" style="margin-top:0">${esc(when)} Знак слева говорит, что случилось со строкой: ↑ выше, ↓ ниже, + появилось, − ушло, = осталось на месте.</div>
-        ${d.rows.length ? d.rows.map(r => `<div class="rt-diff d-${r.sg}">
-          <span class="rt-dir" title="${esc(SIGN_RU[r.sg])}">${esc(r.sign)}</span>
-          <div><div class="rt-diff-t">${esc(r.ru)}</div>${r.why ? `<div class="rt-diff-w">${esc(r.why)}</div>` : ''}</div></div>`).join('')
-        : '<div class="hint">Ни одна строка не поменялась с прошлого выпуска.</div>'}</div>
-      <div class="btns"><button class="btn btn-primary btn-block" data-go="route">К программе</button></div>`;
+      <div class="panel"><div class="flabel">Что сменил последний выпуск</div>${rel}</div>
+      <div class="panel"><div class="flabel">Что накопилось после него</div>
+        <div class="hint" style="margin-top:0">Это ещё не выпущено: так программа выглядела бы, собери её прямо сейчас.${esc(hyst)}</div>
+        ${since}</div>${back}`;
     },
   };
 
@@ -394,8 +450,9 @@ window.RouteUI = (() => {
     toast('Закреплён этап ' + st.n + ' · ' + st.title);
   };
   actions['route-unpin'] = () => {
-    const b = routeBox();
-    if (!b.pinned) return;
+    /* читаем, а не создаём: routeBox() завёл бы пустой снимок, и «Что изменилось» приняло бы его за выпуск */
+    const b = (((state.settings || {}).v2 || {}).route) || null;
+    if (!b || !b.pinned) return;
     delete b.pinned;
     persist();
     render();

@@ -372,6 +372,139 @@ t('diff видит смену вида этапа и называет её', () 
   assert.ok(/Починка → Учить блок/.test(d[0].ru), 'смена вида названа невнятно: ' + d[0].ru);
 });
 
+/* ── проверка проверяющего: чистота от глобальных привязок и кэшей ── */
+const { Ledger } = global;
+
+t('книга учёта берётся из переданного состояния, а не из глобальной привязки Ledger', () => {
+  const s = fresh();
+  for (const [id, dayFrom] of [['b1-01', 20], ['b1-02', 12]]) {
+    const w = blk(id).words;
+    const a1 = att({ mode: 'quiz', ts: NOW - dayFrom * DAY, words: w, right: w.length - 2, blockId: id });
+    const a2 = att({ mode: 'sprint', ts: NOW - (dayFrom - 3) * DAY, words: w, right: w.length, blockId: id, sprint: true });
+    /* очки книг расходятся в разы: если шаг считается не по той книге, сроки уедут */
+    for (const a of [a1, a2]) { a.points = 900; a.p2 = 30; }
+    s.attempts.push(a1, a2);
+  }
+  const plain = J(Prescribe.build(clone(s), NOW));
+  Ledger.bind(fresh());                                      /* привязали чужое состояние */
+  assert.equal(J(Prescribe.build(clone(s), NOW)), plain, 'привязка Ledger изменила программу');
+  const forced = Ledger.withVer('v1', () => J(Prescribe.build(clone(s), NOW)));
+  assert.equal(forced, plain, 'принудительная книга v1 изменила программу состояния v2');
+  /* и наоборот: состояние в книге v1 считает по своим очкам */
+  const v1 = clone(s); v1.settings.ver = 'v1';
+  assert.notEqual(J(Prescribe.build(v1, NOW).pace), J(Prescribe.build(clone(s), NOW).pace), 'книги дают один и тот же шаг при разных очках');
+  Ledger.bind(null);
+});
+
+t('кэш словаря помнит, откуда взят банк: подмена индекса тем же числом карточек не остаётся незамеченной', () => {
+  const s = broken();
+  const before = Prescribe.build(clone(s), NOW);
+  assert.ok(before.stages.some(x => x.blockId === 'b1-01' && x.kind === 'repair'), 'починки нет — проверять нечего');
+  /* живой индекс того же размера, что и встроенные банки, но с другими id карточек:
+     повторения по старым id к нему не относятся, значит «просело» больше не читается */
+  const n = [1, 2, 3].reduce((x, l) => x + (HSK[l] || []).length, 0) + (global.FREQ || []).length;
+  const idx = {};
+  for (const l of [1, 2, 3]) for (const e of (HSK[l] || [])) idx['my' + l + ':' + e[0]] = { id: 'my' + l + ':' + e[0], deckId: 'my', hanzi: e[0] };
+  let i = 0;
+  while (Object.keys(idx).length < n) { const k = 'my9:x' + (i++); idx[k] = { id: k, deckId: 'my', hanzi: 'x' + i }; }
+  global.App = { cardIndex: idx };
+  try {
+    const after = Prescribe.build(clone(s), NOW);
+    assert.ok(!after.stages.some(x => x.blockId === 'b1-01' && x.kind === 'repair'),
+      'словарь остался прежним: кэш пережил подмену банка того же размера');
+  } finally { delete global.App; }
+  assert.equal(J(Prescribe.build(clone(s), NOW)), J(before), 'после возврата банка ответ не вернулся к прежнему');
+});
+
+/* ── экономика ── */
+t('шаг не превышает дневную норму, как бы быстро ни шли прошлые этапы', () => {
+  const s = fresh();
+  for (const [id, dayFrom] of [['b1-01', 20], ['b1-02', 12]]) {
+    const w = blk(id).words;
+    const a1 = att({ mode: 'quiz', ts: NOW - dayFrom * DAY, words: w, right: w.length - 2, blockId: id });
+    const a2 = att({ mode: 'sprint', ts: NOW - dayFrom * DAY + 3600e3, words: w, right: w.length, blockId: id, sprint: true });
+    for (const a of [a1, a2]) a.p2 = 5000;                   /* день в десять норм */
+    s.attempts.push(a1, a2);
+  }
+  const b = Prescribe.build(s, NOW);
+  assert.equal(b.pace.measured, true, 'шаг не измерен — проверять нечего');
+  assert.equal(b.pace.perDay, Campaign.CAP, 'шаг выше дневной нормы: ' + b.pace.perDay);
+  assert.ok(/дневной нормы/.test(b.pace.ru), 'о срезе до нормы не сказано: ' + b.pace.ru);
+  for (const st of b.stages) assert.ok(st.cost / st.days <= Campaign.CAP, 'этап просит больше нормы: ' + Math.round(st.cost / st.days));
+});
+
+t('на разгоне сказано, что норма первых дней меньше', () => {
+  const b = Prescribe.build(fresh(), NOW);
+  assert.ok(new RegExp('норма разгона — ' + Campaign.CAP_START).test(b.pace.ru), 'о разгоне не сказано: ' + b.pace.ru);
+  const s = busy();
+  assert.ok(!/разгона/.test(Prescribe.build(s, NOW).pace.ru), 'разгон обещан тому, кто занимается неделю');
+});
+
+/* ── прочитанное из журнала ── */
+t('разбор грамматики, проваленный целиком, не считается пройденным', () => {
+  const s = busy();
+  const items = global.GRAMMAR.forBlock('b1-01') || [];
+  if (!items.length) return;
+  const base = Prescribe.build(clone(s), NOW).stages.find(x => x.kind === 'grammar' && x.blockId === 'b1-01');
+  assert.ok(base, 'грамматики по b1-01 нет — проверять нечего');
+  s.attempts.push({
+    id: 'g0', ts: NOW - DAY, endedAt: NOW - DAY + 6e4, durationMs: 6e4, mode: 'gram', difficulty: 'gram',
+    blockId: 'b1-01', block: 'b1-01', level: 1, deckIds: [], deckName: 'разбор', show: 'sentence', guess: ['answer'],
+    order: 'ladder', timer: 0, total: 12, planned: 12, aborted: false, correct: 0, partial: 0, wrong: 12,
+    percent: 0, points: 0, questions: [],
+  });
+  const after = Prescribe.build(s, NOW).stages.find(x => x.kind === 'grammar' && x.blockId === 'b1-01');
+  assert.ok(after, 'проваленный разбор убрал этап грамматики из программы');
+});
+
+t('пустой спринт блок не закрывает', () => {
+  const s = fresh();
+  const w = blk('b1-01').words;
+  s.attempts.push({
+    id: 'e1', ts: NOW - 2 * DAY, endedAt: NOW - 2 * DAY + 1e4, durationMs: 1e4, mode: 'sprint', difficulty: 'hard',
+    blockId: 'b1-01', block: 'b1-01', level: 1, deckIds: ['hsk1'], deckName: 'пусто', show: 'hanzi', guess: ['ru'],
+    order: 'fixed', timer: 0, total: 0, planned: 0, aborted: false, correct: 0, partial: 0, wrong: 0,
+    percent: 0, points: 0, questions: [], words: w.slice(0, 0),
+  });
+  const b = Prescribe.build(s, NOW);
+  assert.ok(b.stages.some(x => x.blockId === 'b1-01' && x.kind !== 'grammar'), 'пустой спринт закрыл блок');
+});
+
+t('промахи старой съёмки не держат блок вечно', () => {
+  const s = fresh();
+  const w = blk('b1-06').words;
+  const survey = (ts, ok) => ({
+    id: 'sv' + ts, ts, endedAt: ts + 6e4, durationMs: 6e4, mode: 'survey', part: 2, difficulty: 'survey', level: 1,
+    deckIds: [], deckName: 'Съёмка', total: 3, planned: 3, aborted: false, correct: ok ? 3 : 0, partial: 0,
+    wrong: ok ? 0 : 3, percent: ok ? 100 : 0, points: 40, fixedPts: true, p2fix: 40,
+    questions: w.slice(0, 3).map(h => ({ hanzi: h, blockId: 'b1-06', kind: 'hz2ru', key: 'x', given: 'y', scored: true, ok, fraction: ok ? 1 : 0 })),
+  });
+  const stageOf = x => Prescribe.build(x, NOW).stages.find(y => y.blockId === 'b1-06' && y.kind !== 'grammar');
+  s.attempts.push(survey(NOW - 60 * DAY, false));
+  const old = stageOf(clone(s));
+  assert.ok(old && /белое пятно съёмки: 3 промаха/.test(old.why), 'промах съёмки не замечен: ' + (old && old.why));
+  s.attempts.push(survey(NOW - 2 * DAY, true));                  /* новая съёмка прошла чисто */
+  const now = stageOf(s);
+  assert.ok(now, 'блок пропал из программы');
+  assert.ok(!/белое пятно/.test(now.why), 'старое пятно живо после чистой съёмки: ' + now.why);
+});
+
+/* ── честность текста ── */
+t('сроки названы диапазоном и сказано, чего счёт не видит', () => {
+  for (const st of [fresh(), busy(), broken()]) {
+    const b = Prescribe.build(st, NOW);
+    assert.ok(/–/.test(b.horizon.ru), 'горизонт не диапазон: ' + b.horizon.ru);
+    assert.ok(/без перерывов/.test(b.horizon.ru), 'о пропусках не сказано: ' + b.horizon.ru);
+    assert.ok(/шаг/.test(b.horizon.ru) || /шагу/.test(b.horizon.ru) || /расчёту/.test(b.horizon.ru), 'не сказано, откуда срок: ' + b.horizon.ru);
+    for (const s of b.stages) {
+      assert.ok(!/[a-zA-Z]/.test(s.why.replace(/HSK/g, '')), 'латиница в причине: ' + s.why);
+      assert.ok(!/undefined|NaN/.test(s.ru + s.why + s.when), 'дыра в тексте: ' + s.ru + ' / ' + s.why);
+    }
+  }
+  const dep = Prescribe.build(fresh(), NOW).stages.find(s => s.deps && s.deps.length);
+  if (dep) assert.ok(/не вывод из ваших ответов/.test(dep.why), 'порядок блоков выдан за вывод из истории: ' + dep.why);
+});
+
 /* ── модуль грузится и в браузере ── */
 t('в модуле нет DOM, сети и модульного синтаксиса', () => {
   const src = readFileSync(new URL('../src/js/prescribe.js', import.meta.url), 'utf8');

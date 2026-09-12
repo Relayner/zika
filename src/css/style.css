@@ -972,3 +972,16 @@ button.err-item { display: block; width: 100%; background: transparent; border: 
 .sv-note { text-align: center; margin: 6px 0 0; }
 .sv-home .sv-home-t { font-family: var(--serif); font-size: 19px; line-height: 1.25; color: var(--bordeaux); margin: 2px 0 0; }
 .sv-home .btns { margin-top: 10px; }
+
+/* ── предписание: правки после разбора ──
+   Экран рисует вид этапа классом k-<вид>, а виды зовутся regular/express/repair/sound/grammar.
+   Правило .k-normal из прежнего блока не срабатывало ни разу — такого вида нет; здесь тот же
+   цвет отдан настоящему классу, а звучанию и грамматике даны свои. */
+.rt-stage.k-regular { border-left-color: var(--gold); }
+.rt-stage.k-sound { border-left-color: var(--jade); }
+.rt-stage.k-grammar { border-left-color: var(--bordeaux); }
+.rt-home.k-sound { border-left-color: var(--jade); }
+.rt-home.k-grammar { border-left-color: var(--bordeaux); }
+/* приписка о том, чего программа не видит: тише цели и темпа, но не мельче читаемого */
+.rt-top .rt-blind { margin-top: 10px; line-height: 1.45; }
+.rt-pace .rt-src { display: block; margin-top: 4px; line-height: 1.4; }

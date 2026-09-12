@@ -975,6 +975,19 @@ button.err-item { display: block; width: 100%; background: transparent; border: 
 .sv-home .sv-home-t { font-family: var(--serif); font-size: 19px; line-height: 1.25; color: var(--bordeaux); margin: 2px 0 0; }
 .sv-home .btns { margin-top: 10px; }
 
+/* ── предписание: правки после разбора ──
+   Экран рисует вид этапа классом k-<вид>, а виды зовутся regular/express/repair/sound/grammar.
+   Правило .k-normal из прежнего блока не срабатывало ни разу — такого вида нет; здесь тот же
+   цвет отдан настоящему классу, а звучанию и грамматике даны свои. */
+.rt-stage.k-regular { border-left-color: var(--gold); }
+.rt-stage.k-sound { border-left-color: var(--jade); }
+.rt-stage.k-grammar { border-left-color: var(--bordeaux); }
+.rt-home.k-sound { border-left-color: var(--jade); }
+.rt-home.k-grammar { border-left-color: var(--bordeaux); }
+/* приписка о том, чего программа не видит: тише цели и темпа, но не мельче читаемого */
+.rt-top .rt-blind { margin-top: 10px; line-height: 1.45; }
+.rt-pace .rt-src { display: block; margin-top: 4px; line-height: 1.4; }
+
 </style>
 <div id="app">
   <main id="view" aria-live="polite"></main>
@@ -5958,7 +5971,7 @@ window.Push = (() => {
 ;
 /* Ядро приложения: состояние, навигация, общие помощники, главная, настройки, экспорт/импорт. */
 window.App = (() => {
-  const VERSION = '20260912-1615';
+  const VERSION = '20260912-1618';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -15318,10 +15331,20 @@ window.Prescribe = (() => {
   const CMP = (x, y) => (num(x.ts) - num(y.ts)) || (sid(x) < sid(y) ? -1 : sid(x) > sid(y) ? 1 : 0);
   const attemptsOf = (s, now) => ((s && Array.isArray(s.attempts)) ? s.attempts : [])
     .filter(a => a && num(a.ts) <= now).slice().sort(CMP);
+  /* Какая книга учёта открыта В ЭТОМ состоянии. Ledger.is2/active сначала смотрят на
+     принудительную книгу (withVer) и на глобально привязанное состояние, поэтому спрашивать
+     их нельзя: ответ зависел бы от того, кто и когда вызвал bind/withVer, а не от истории. */
+  function verOf(s) {
+    const v = settingsOf(s).ver;
+    const L = window.Ledger;
+    if (L && L.VERS && L.VERS[v]) return v;
+    const d = (window.CHANNEL && window.CHANNEL.defaultVer) || 'v1';
+    return (L && L.VERS && L.VERS[d]) ? d : 'v1';
+  }
   /* повторения берём из открытой книги учёта: у тестовой методики они свои */
   function srsOf(s) {
     const st = settingsOf(s);
-    try { if (window.Ledger && Ledger.is2(s)) return (st.v2 || {}).srs || {}; } catch (e) { /* книг нет */ }
+    if (verOf(s) === 'v2') return (st.v2 || {}).srs || {};
     return st.srs || {};
   }
   const blocks = () => ((window.PROGRAM && PROGRAM.BLOCKS) || []);
@@ -15500,10 +15523,6 @@ window.Prescribe = (() => {
   /* Очки попытки берём из той книги, которая открыта В ПЕРЕДАННОМ состоянии, а не из той,
      что сейчас привязана к Ledger глобально. Иначе один и тот же журнал давал бы разные сроки
      до и после Ledger.bind — то есть ответ зависел бы от порядка загрузки, а не от истории. */
-  function verOf(s) {
-    try { if (window.Ledger && Ledger.is2) return Ledger.is2(s) ? 'v2' : 'v1'; } catch (e) { /* книг нет */ }
-    return 'v1';
-  }
   function ptsOf(a, ver) {
     try {
       if (window.Ledger && Ledger.ptsOf && Ledger.withVer) return num(Ledger.withVer(ver, () => Ledger.ptsOf(a)));
@@ -16405,7 +16424,8 @@ window.Report = (() => {
 
   /* ── попытка ── */
   /* Случаи в вопросах. Цитата есть только у промаха: удачный случай — это «конструкция
-     потребовалась и вышла», цитировать там нечего, поэтому в hanzi идёт имя узла. */
+     потребовалась и вышла», цитировать там нечего, поэтому в hanzi идёт имя узла.
+     show/guess нужны общему разбору попытки в статистике: без них он рисует пустую стрелку. */
   function questions(res, durationMs) {
     const r = res || {};
     const byNode = {};
@@ -16414,9 +16434,9 @@ window.Report = (() => {
       const key = f.trap || f.node || '';
       if (key) byNode[key] = (byNode[key] || 0) + 1;
       qs.push({
-        cardId: null, hanzi: f.quote, pinyin: '', ru: f.why || f.fix || '',
+        cardId: null, hanzi: f.quote, pinyin: '', ru: f.fix || f.why || '',
         node: f.node || null, trap: f.trap || null, show: 'sentence', guess: ['answer'],
-        answer: f.fix ? { choiceText: f.fix } : {},
+        answer: {},                         /* чужой ответ сюда не подставляем: правка разбора — не то, что человек сказал */
         fraction: 0, ok: false, ms: 0, why: f.why || '', l1: f.l1 || '', sev: f.sev || '',
       });
     }
@@ -21290,7 +21310,7 @@ window.RouteUI = (() => {
     const from = num(st.from), to = num(st.to), d = num(st.days), cost = num(st.cost);
     const src = [];
     if (cost != null) src.push('цена этапа ' + cost + ' ' + noun(cost, 'очко', 'очка', 'очков'));
-    if (p && p.perDay != null) src.push('шаг ' + p.perDay + ' в день' + (p.ru ? ' (' + p.ru + ')' : ''));
+    if (p && p.perDay != null) src.push('шаг ' + p.perDay + ' в день' + (p.measured ? '' : ', расчётный — ваш ещё не измерен'));
     let why = src.length ? 'посчитан: ' + src.join(', ') : s2(st.when);
     /* цену делим на шаг, но короче минимума этап не ставится — тогда деление не объясняет срок,
        и об этом надо сказать, иначе числа в подписи не сходятся с числом дней */
@@ -21455,12 +21475,23 @@ window.RouteUI = (() => {
   function topPanel(plan) {
     const h = plan.horizon;
     const n = (plan.stages || []).length;
-    const goal = `<div class="rt-goal">${esc(pl(n, 'этап', 'этапа', 'этапов'))}${h && h.ru ? ' — ' + esc(s2(h.ru)) : ' в горизонте'}</div>`;
+    /* горизонт подписан тем же шагом, что и строка «Темп» ниже: хвост снимаем, чтобы одна и та
+       же оговорка не стояла дважды подряд */
+    const tail = plan.pace && plan.pace.ru ? ' · ' + s2(plan.pace.ru) : '';
+    let hru = s2(h && h.ru);
+    if (tail && hru.length > tail.length && hru.slice(-tail.length) === tail) hru = hru.slice(0, -tail.length);
+    const goal = `<div class="rt-goal">${esc(pl(n, 'этап', 'этапа', 'этапов'))}${hru ? ' — ' + esc(hru) : ' в горизонте'}</div>`;
+    const empty = !((state.attempts || []).length);
     const lvl = plan.level != null
-      ? `<div class="hint">Рабочий уровень — HSK ${plan.level}. Дальше горизонта программа не загадывает: он пересобирается после каждого закрытого этапа.</div>` : '';
+      ? `<div class="hint">Рабочий уровень — HSK ${plan.level}: блоки ниже него догоняем, выше — откладываем.${empty ? ' Занятий в журнале пока нет, поэтому уровень взят начальным, а не измерен.' : ''} Дальше горизонта программа не загадывает: он пересобирается после каждого закрытого этапа.</div>` : '';
+    const cap = dayCap();
+    const over = plan.pace && plan.pace.measured && num(plan.pace.perDay) > cap
+      ? `<div class="rt-src">Это выше дневной нормы ${cap} — столько выходило в те дни, когда вы закрывали блоки. Сроки посчитаны по этому шагу, и держать его каждый день не обязательно.</div>` : '';
     const pace = plan.pace && plan.pace.perDay != null
-      ? `<div class="rt-pace">Темп: <b>${plan.pace.perDay} ${esc(noun(plan.pace.perDay, 'очко', 'очка', 'очков'))} в день</b> <span class="rt-src">— ${esc(s2(plan.pace.ru) || (plan.pace.measured ? 'по вашему шагу' : 'по расчёту'))}</span></div>` : '';
-    return `<div class="panel ornate rt-top"><div class="flabel">Цель и темп</div>${goal}${lvl}${pace}
+      ? `<div class="rt-pace">Темп: <b>${plan.pace.perDay} ${esc(noun(plan.pace.perDay, 'очко', 'очка', 'очков'))} в день</b> <span class="rt-src">— ${esc(s2(plan.pace.ru) || (plan.pace.measured ? 'по вашему шагу' : 'по расчёту'))}</span>${over}</div>` : '';
+    /* чего разбор не видит — говорим сразу, а не оставляем гадать */
+    const blind = `<div class="hint rt-src rt-blind">Программа считает только по журналу занятий. Она не видит, что вы читали, слушали или говорили вне приложения, и не знает вашего расписания — поэтому срок каждого этапа стоит диапазоном, а не датой.</div>`;
+    return `<div class="panel ornate rt-top"><div class="flabel">Цель и темп</div>${goal}${lvl}${pace}${blind}
       <div class="btns mt0"><button class="btn btn-secondary btn-block" data-go="route-diff">Что изменилось</button></div></div>`;
   }
 
@@ -21475,7 +21506,7 @@ window.RouteUI = (() => {
     const cur = p && p.stageId ? (plan.stages || []).find(s => s.id === p.stageId) : null;
     const gone = !!(p && p.stageId && !cur);
     return `<div class="panel rt-exits"><div class="flabel">Три выхода</div>
-      <div class="hint" style="margin-top:0">Выбор ставит этап первым в списке и ведёт в него завтра. На очки, цену и порядок расчёта это не влияет.</div>
+      <div class="hint" style="margin-top:0">Выбор ставит этап первым в списке и ведёт в него завтра. На очки, цену и порядок расчёта это не влияет. Выходы считаются по разным меркам и нередко сходятся на одном этапе — тогда выбор просто подтверждает его.</div>
       <div class="rt-exit-row">${btns}</div>
       ${cur || gone ? `<div class="hint rt-pinned">${cur
         ? 'Закреплён этап ' + cur.n + ' · ' + esc(cur.title) + (p.at ? ' · с ' + esc(dayOf(p.at)) : '')
@@ -21512,15 +21543,24 @@ window.RouteUI = (() => {
         <div class="hint" style="margin-top:0">Ежедневных линий программа не назвала.</div></div>`;
     }
     return `<div class="panel rt-daily"><div class="flabel">Ежедневные линии</div>
-      <div class="hint" style="margin-top:0">Идут каждый день рядом с этапом и съедают часть дневной нормы — поэтому срок этапа считается не по всем 400 очкам.</div>
+      <div class="hint" style="margin-top:0">Идут каждый день рядом с этапом и съедают часть дневной нормы (${dayCap()} очков) — поэтому срок этапа считается не по всей норме, а по остатку.</div>
       ${plan.lines.map(l => `<div class="row rt-day"><div><div class="row-t"><span class="zh">${esc(l.zh)}</span> ${esc(l.ru)}</div>
         ${l.why ? `<div class="row-s">${esc(l.why)}</div>` : ''}</div></div>`).join('')}</div>`;
   }
 
+  /* одноразовая передача из render в mount: выпускаем ровно тот расчёт, который человек увидел,
+     а не второй такой же на миллисекунду позже. Значение съедается в mount и показ не переживает,
+     поэтому это передача, а не кэш: от порядка вызовов результат не зависит */
+  let handoff = null;
+
   views['route'] = {
     render() {
+      handoff = null;
       if (!is2()) return offPanel();
-      const plan = planOf(Date.now());
+      const now = Date.now();
+      const raw = built(now);
+      handoff = { now, raw };
+      const plan = planFrom(raw);
       if (!plan) {
         return waitPanel(P()
           ? 'Открытых блоков в программе не осталось или истории пока слишком мало. Позанимайтесь несколько дней — этапы появятся сами.'
@@ -21536,48 +21576,84 @@ window.RouteUI = (() => {
     /* Выпуск программы — после показа: publish() сам решит, менять ли снимок */
     mount() {
       if (!is2()) return;
-      const now = Date.now();
-      publishIfDue(built(now), now);
+      const h = handoff; handoff = null;
+      const now = h ? h.now : Date.now();
+      publishIfDue(h ? h.raw : built(now), now);
     },
   };
 
   /* ── что изменилось ── */
   const SIGN = { '↑': 'up', '↓': 'down', '+': 'add', '−': 'out', '-': 'out', '=': 'same' };
   const SIGN_RU = { up: 'поднялось', down: 'опустилось', add: 'добавлено', out: 'убрано', same: 'без изменений' };
-  function diffOf(now) {
-    const M = P();
-    if (!M || typeof M.diff !== 'function' || typeof M.route !== 'function') return null;
-    let prev = null, next = null, rows = null;
-    try { prev = M.route(state); next = built(now); rows = M.diff(prev, next); } catch (e) { return null; }
-    if (!next) return null;
-    const list = (Array.isArray(rows) ? rows : []).map(r => {
+  /* Две разные правды, и обе нужны:
+       • что сменил последний выпуск — разница прошлого снимка и нынешнего;
+       • что накопилось после него — разница нынешнего снимка и того, что считается прямо сейчас.
+     Раньше показывали только вторую, а её сразу после выпуска нет по определению: экран отвечал
+     «ни одна строка не поменялась» в тот самый день, когда программа сменилась целиком.
+     Обе считаются заново из двух снимков — ничего производного не хранится. */
+  function rowsOf(M, a, b) {
+    let rows = null;
+    try { rows = M.diff(a, b); } catch (e) { return []; }
+    return (Array.isArray(rows) ? rows : []).map(r => {
       const sign = s2(pick(r, ['sign', 'dir'])).trim();
       return { sg: SIGN[sign] || 'same', sign: sign || '=', ru: s2(pick(r, ['ru', 'title'])), why: s2(pick(r, ['why', 'reason'])) };
     }).filter(r => r.ru);
-    return { prevAt: prev ? num(prev.at) : null, first: !prev, rows: list };
   }
+  function diffOf(now) {
+    const M = P();
+    if (!M || typeof M.diff !== 'function' || typeof M.route !== 'function') return null;
+    let cur = null, next = null;
+    try { cur = M.route(state); next = built(now); } catch (e) { return null; }
+    if (!next) return null;
+    const live = hasStages(cur);
+    const prev = (live && cur.prev && hasStages(cur.prev)) ? cur.prev : null;
+    return {
+      first: !live,
+      at: live ? num(cur.at) : null,
+      prevAt: prev ? num(prev.at) : null,
+      released: live && prev ? rowsOf(M, prev, cur) : null,
+      since: live ? rowsOf(M, cur, next) : [],
+      hyst: num(M.HYST) != null ? Math.round(num(M.HYST) * 100) : null,
+    };
+  }
+
+  const diffRows = rows => rows.map(r => `<div class="rt-diff d-${r.sg}">
+    <span class="rt-dir" title="${esc(SIGN_RU[r.sg])}">${esc(r.sign)}</span>
+    <div><div class="rt-diff-t">${esc(r.ru)}</div>${r.why ? `<div class="rt-diff-w">${esc(r.why)}</div>` : ''}</div></div>`).join('');
 
   views['route-diff'] = {
     render() {
       if (!is2()) return offPanel();
       const d = diffOf(Date.now());
+      const back = '<div class="btns"><button class="btn btn-primary btn-block" data-go="route">К программе</button></div>';
       if (!d) {
         return `${head('Что изменилось', '处方 · сравнение выпусков')}
         <div class="panel"><div class="flabel">Сравнивать пока не с чем</div>
-          <div class="hint" style="margin-top:0">Программа ещё не собрана — сравнивать нечего.</div>
-          <div class="btns mt0"><button class="btn btn-secondary btn-block" data-go="route">К программе</button></div></div>`;
+          <div class="hint" style="margin-top:0">Программа ещё не собрана — сравнивать нечего.</div></div>${back}`;
       }
-      const when = d.first
-        ? 'Прошлого выпуска не было: программа выпускается впервые.'
-        : (d.prevAt ? 'Прошлый выпуск — ' + dayOf(d.prevAt) + '.' : 'Дату прошлого выпуска программа не назвала.');
+      if (d.first) {
+        return `${head('Что изменилось', '处方 · сравнение выпусков')}
+        <div class="panel"><div class="flabel">Выпусков ещё не было</div>
+          <div class="hint" style="margin-top:0">Программа выпускается сама, когда вы открываете её экран. С первого выпуска здесь будет видно, что и почему поменялось.</div></div>${back}`;
+      }
+      const legend = 'Знак слева говорит, что случилось со строкой: ↑ выше, ↓ ниже, + появилось, − ушло, = осталось на месте.';
+      const relDate = d.at ? dayOf(d.at) : '';
+      const relHead = relDate ? 'Последний выпуск — ' + relDate + '.' : 'Дату последнего выпуска программа не назвала.';
+      const rel = d.released == null
+        ? `<div class="hint" style="margin-top:0">${esc(relHead)} Он был первым — сравнивать было не с чем.</div>`
+        : `<div class="hint" style="margin-top:0">${esc(relHead + (d.prevAt ? ' Предыдущий — ' + dayOf(d.prevAt) + '.' : '') + ' ' + legend)}</div>
+           ${d.released.length ? diffRows(d.released) : '<div class="hint">Порядок и сроки этапов выпуск не сдвинул.</div>'}`;
+      const hyst = d.hyst != null
+        ? ' Программа меняется не каждый день: пока накопленный сдвиг меньше ' + d.hyst + '%, выпуск остаётся прежним.'
+        : ' Программа меняется не каждый день: мелкие сдвиги выпуск не трогают.';
+      const since = d.since.length
+        ? diffRows(d.since)
+        : `<div class="hint">С выпуска расчёт не сдвинулся.</div>`;
       return `${head('Что изменилось', '处方 · сравнение выпусков')}
-      <div class="panel"><div class="flabel">Против прошлого выпуска</div>
-        <div class="hint" style="margin-top:0">${esc(when)} Знак слева говорит, что случилось со строкой: ↑ выше, ↓ ниже, + появилось, − ушло, = осталось на месте.</div>
-        ${d.rows.length ? d.rows.map(r => `<div class="rt-diff d-${r.sg}">
-          <span class="rt-dir" title="${esc(SIGN_RU[r.sg])}">${esc(r.sign)}</span>
-          <div><div class="rt-diff-t">${esc(r.ru)}</div>${r.why ? `<div class="rt-diff-w">${esc(r.why)}</div>` : ''}</div></div>`).join('')
-        : '<div class="hint">Ни одна строка не поменялась с прошлого выпуска.</div>'}</div>
-      <div class="btns"><button class="btn btn-primary btn-block" data-go="route">К программе</button></div>`;
+      <div class="panel"><div class="flabel">Что сменил последний выпуск</div>${rel}</div>
+      <div class="panel"><div class="flabel">Что накопилось после него</div>
+        <div class="hint" style="margin-top:0">Это ещё не выпущено: так программа выглядела бы, собери её прямо сейчас.${esc(hyst)}</div>
+        ${since}</div>${back}`;
     },
   };
 
@@ -21601,8 +21677,9 @@ window.RouteUI = (() => {
     toast('Закреплён этап ' + st.n + ' · ' + st.title);
   };
   actions['route-unpin'] = () => {
-    const b = routeBox();
-    if (!b.pinned) return;
+    /* читаем, а не создаём: routeBox() завёл бы пустой снимок, и «Что изменилось» приняло бы его за выпуск */
+    const b = (((state.settings || {}).v2 || {}).route) || null;
+    if (!b || !b.pinned) return;
     delete b.pinned;
     persist();
     render();
@@ -21686,25 +21763,29 @@ window.ReportUI = (() => {
     try { return !!S.available(); } catch (e) { return false; }
   }
   const recWhy = () => (SI() ? 'Этот браузер не даёт приложению распознавание речи.' : 'Модуль распознавания в эту сборку ещё не вошёл.');
+  /* Браузер отдаёт сетевые сбои по-английски («Failed to fetch»). В русском тексте им не место:
+     что не по-русски — то и не причина, о которой можно сказать человеку. */
+  const whyRu = e => { const t = str(e).trim(); return /[а-яё]/i.test(t) ? t : ''; };
 
-  /* ── слова: иероглифы → карточка ── */
-  let HAN = null, HAN_N = -1;
+  /* ── слова: иероглифы → карточка ──
+     Словарь собирается заново на каждый разбор текста и не кэшируется: кэш по числу
+     карточек врал бы после правки колоды с тем же их количеством. Ключи перебираются
+     отсортированными — иначе при двух карточках с одним и тем же написанием побеждала бы
+     та, что раньше легла в память, и разбивка зависела бы от порядка загрузки. */
   function hanIndex() {
     const idx = App.cardIndex || {};
-    const keys = Object.keys(idx);
-    if (HAN && HAN_N === keys.length) return HAN;
-    HAN = Object.create(null);
-    for (const id of keys) { const c = idx[id]; if (c && c.hanzi && !HAN[c.hanzi]) HAN[c.hanzi] = c; }
-    HAN_N = keys.length;
-    return HAN;
+    const out = Object.create(null);
+    for (const id of Object.keys(idx).sort()) { const c = idx[id]; if (c && c.hanzi && !out[c.hanzi]) out[c.hanzi] = c; }
+    return out;
   }
-  const byHanzi = h => hanIndex()[h] || null;
+  const byHanzi = (h, han) => (han || hanIndex())[h] || null;
 
   /* ── разбивка на куски для сверки ──
      Жадно: самое длинное слово, которое есть в словаре приложения, дальше по одному знаку.
      Пунктуация и латиница остаются кусками-связками: чипами они не становятся, но и не
      пропадают — разбору важно, где кончилась фраза. */
   function segsFrom(text) {
+    const han = hanIndex();                 /* один словарь на весь разбор: иначе это тысячи пересборок */
     const s = str(text), out = [];
     let i = 0, glue = '';
     const flush = () => { if (glue) { out.push({ t: glue, cjk: false }); glue = ''; } };
@@ -21715,7 +21796,7 @@ window.ReportUI = (() => {
       for (let n = Math.min(4, s.length - i); n >= 1; n--) {
         const part = s.slice(i, i + n);
         if (!/^[一-鿿㐀-䶿]+$/.test(part)) continue;
-        const c = byHanzi(part);
+        const c = byHanzi(part, han);
         if (c) { take = part; card = c; break; }
         if (n === 1) { take = part; card = null; }
       }
@@ -21755,12 +21836,17 @@ window.ReportUI = (() => {
     return hit ? { zh: str(hit[0]), py: str(hit[1]), ru: str(hit[2]), from: str(b.ru) } : null;
   }
 
-  /* ── попытки этого режима ── */
-  const reports = () => (state.attempts || []).filter(a => a && a.mode === 'report' && !a.aborted);
+  /* ── попытки этого режима ──
+     Журнал в память ложится как придётся, поэтому «последнее донесение за сегодня» берётся
+     из отсортированного списка: сначала по времени, при совпадении — по id. Без этого один
+     и тот же журнал давал бы разный ответ от запуска к запуску. */
+  const byTsId = (x, y) => (num(x.ts) - num(y.ts)) || (str(x.id) < str(y.id) ? -1 : str(x.id) > str(y.id) ? 1 : 0);
+  const reports = () => (state.attempts || []).filter(a => a && a.mode === 'report' && !a.aborted).slice().sort(byTsId);
   function doneToday(now = Date.now()) {
     const key = R() && R().dayKey ? R().dayKey(now) : new Date(now).toISOString().slice(0, 10);
     const k = a => (R() && R().dayKey ? R().dayKey(a.ts) : new Date(a.ts).toISOString().slice(0, 10));
-    return reports().filter(a => a.ts && k(a) === key).pop() || null;
+    const day = reports().filter(a => a.ts && k(a) === key);
+    return day.length ? day[day.length - 1] : null;
   }
   const pointsOf = a => (window.Ledger && Ledger.ptsOf ? Ledger.ptsOf(a) : num(a && a.points));
 
@@ -21793,10 +21879,15 @@ window.ReportUI = (() => {
     <div class="hint" style="margin-top:0">Донесение считается по тестовой книге учёта. Сейчас открыта текущая — переключить можно в настройках, ничего при этом не теряется.</div>
     <div class="btns mt0"><button class="btn btn-primary btn-block" data-go="settings">В настройки</button></div></div>`;
 
+  /* Одна строка про итог: без случаев «0 из 0» и «0 %» читались бы как «всё мимо» */
+  function saidOf(a) {
+    if (a.net === 'fail') return 'Разбор к нему не дошёл; очки за усилие +' + Math.round(pointsOf(a)) + '.';
+    if (!a.total) return 'Разбор прошёл, но ни одна конструкция из мишеней в записи не понадобилась — считать было нечего. Очков +' + Math.round(pointsOf(a)) + '.';
+    return 'Случаев вышло ' + a.correct + ' из ' + a.total + ', очков +' + Math.round(pointsOf(a)) + '.';
+  }
   function doneTodayPanel(a) {
-    const ok = a.net !== 'fail';
     return head('сегодня уже сделано') + `<div class="panel"><div class="flabel">Донесение за сегодня сдано</div>
-      <div class="hint" style="margin-top:0">${ok ? 'Случаев вышло ' + a.correct + ' из ' + a.total + ', очков +' + Math.round(pointsOf(a)) + '.' : 'Разбор к нему не дошёл; очки за усилие +' + Math.round(pointsOf(a)) + '.'} Между донесениями нужен день: второе за сутки мало что покажет.</div>
+      <div class="hint" style="margin-top:0">${esc(saidOf(a))} Между донесениями нужен день: второе за сутки мало что покажет.</div>
       <div class="btns mt0">
         <button class="btn btn-primary btn-block" data-go="report-result" data-params="${attr({ id: a.id })}">Посмотреть разбор</button>
         <button class="btn btn-secondary btn-block" data-action="rp-again">Всё равно сделать ещё одно</button>

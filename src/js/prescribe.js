@@ -104,10 +104,20 @@ window.Prescribe = (() => {
   const CMP = (x, y) => (num(x.ts) - num(y.ts)) || (sid(x) < sid(y) ? -1 : sid(x) > sid(y) ? 1 : 0);
   const attemptsOf = (s, now) => ((s && Array.isArray(s.attempts)) ? s.attempts : [])
     .filter(a => a && num(a.ts) <= now).slice().sort(CMP);
+  /* Какая книга учёта открыта В ЭТОМ состоянии. Ledger.is2/active сначала смотрят на
+     принудительную книгу (withVer) и на глобально привязанное состояние, поэтому спрашивать
+     их нельзя: ответ зависел бы от того, кто и когда вызвал bind/withVer, а не от истории. */
+  function verOf(s) {
+    const v = settingsOf(s).ver;
+    const L = window.Ledger;
+    if (L && L.VERS && L.VERS[v]) return v;
+    const d = (window.CHANNEL && window.CHANNEL.defaultVer) || 'v1';
+    return (L && L.VERS && L.VERS[d]) ? d : 'v1';
+  }
   /* повторения берём из открытой книги учёта: у тестовой методики они свои */
   function srsOf(s) {
     const st = settingsOf(s);
-    try { if (window.Ledger && Ledger.is2(s)) return (st.v2 || {}).srs || {}; } catch (e) { /* книг нет */ }
+    if (verOf(s) === 'v2') return (st.v2 || {}).srs || {};
     return st.srs || {};
   }
   const blocks = () => ((window.PROGRAM && PROGRAM.BLOCKS) || []);
@@ -286,10 +296,6 @@ window.Prescribe = (() => {
   /* Очки попытки берём из той книги, которая открыта В ПЕРЕДАННОМ состоянии, а не из той,
      что сейчас привязана к Ledger глобально. Иначе один и тот же журнал давал бы разные сроки
      до и после Ledger.bind — то есть ответ зависел бы от порядка загрузки, а не от истории. */
-  function verOf(s) {
-    try { if (window.Ledger && Ledger.is2) return Ledger.is2(s) ? 'v2' : 'v1'; } catch (e) { /* книг нет */ }
-    return 'v1';
-  }
   function ptsOf(a, ver) {
     try {
       if (window.Ledger && Ledger.ptsOf && Ledger.withVer) return num(Ledger.withVer(ver, () => Ledger.ptsOf(a)));

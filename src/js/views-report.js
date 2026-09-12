@@ -50,25 +50,29 @@ window.ReportUI = (() => {
     try { return !!S.available(); } catch (e) { return false; }
   }
   const recWhy = () => (SI() ? 'Этот браузер не даёт приложению распознавание речи.' : 'Модуль распознавания в эту сборку ещё не вошёл.');
+  /* Браузер отдаёт сетевые сбои по-английски («Failed to fetch»). В русском тексте им не место:
+     что не по-русски — то и не причина, о которой можно сказать человеку. */
+  const whyRu = e => { const t = str(e).trim(); return /[а-яё]/i.test(t) ? t : ''; };
 
-  /* ── слова: иероглифы → карточка ── */
-  let HAN = null, HAN_N = -1;
+  /* ── слова: иероглифы → карточка ──
+     Словарь собирается заново на каждый разбор текста и не кэшируется: кэш по числу
+     карточек врал бы после правки колоды с тем же их количеством. Ключи перебираются
+     отсортированными — иначе при двух карточках с одним и тем же написанием побеждала бы
+     та, что раньше легла в память, и разбивка зависела бы от порядка загрузки. */
   function hanIndex() {
     const idx = App.cardIndex || {};
-    const keys = Object.keys(idx);
-    if (HAN && HAN_N === keys.length) return HAN;
-    HAN = Object.create(null);
-    for (const id of keys) { const c = idx[id]; if (c && c.hanzi && !HAN[c.hanzi]) HAN[c.hanzi] = c; }
-    HAN_N = keys.length;
-    return HAN;
+    const out = Object.create(null);
+    for (const id of Object.keys(idx).sort()) { const c = idx[id]; if (c && c.hanzi && !out[c.hanzi]) out[c.hanzi] = c; }
+    return out;
   }
-  const byHanzi = h => hanIndex()[h] || null;
+  const byHanzi = (h, han) => (han || hanIndex())[h] || null;
 
   /* ── разбивка на куски для сверки ──
      Жадно: самое длинное слово, которое есть в словаре приложения, дальше по одному знаку.
      Пунктуация и латиница остаются кусками-связками: чипами они не становятся, но и не
      пропадают — разбору важно, где кончилась фраза. */
   function segsFrom(text) {
+    const han = hanIndex();                 /* один словарь на весь разбор: иначе это тысячи пересборок */
     const s = str(text), out = [];
     let i = 0, glue = '';
     const flush = () => { if (glue) { out.push({ t: glue, cjk: false }); glue = ''; } };
@@ -79,7 +83,7 @@ window.ReportUI = (() => {
       for (let n = Math.min(4, s.length - i); n >= 1; n--) {
         const part = s.slice(i, i + n);
         if (!/^[一-鿿㐀-䶿]+$/.test(part)) continue;
-        const c = byHanzi(part);
+        const c = byHanzi(part, han);
         if (c) { take = part; card = c; break; }
         if (n === 1) { take = part; card = null; }
       }
@@ -119,12 +123,17 @@ window.ReportUI = (() => {
     return hit ? { zh: str(hit[0]), py: str(hit[1]), ru: str(hit[2]), from: str(b.ru) } : null;
   }
 
-  /* ── попытки этого режима ── */
-  const reports = () => (state.attempts || []).filter(a => a && a.mode === 'report' && !a.aborted);
+  /* ── попытки этого режима ──
+     Журнал в память ложится как придётся, поэтому «последнее донесение за сегодня» берётся
+     из отсортированного списка: сначала по времени, при совпадении — по id. Без этого один
+     и тот же журнал давал бы разный ответ от запуска к запуску. */
+  const byTsId = (x, y) => (num(x.ts) - num(y.ts)) || (str(x.id) < str(y.id) ? -1 : str(x.id) > str(y.id) ? 1 : 0);
+  const reports = () => (state.attempts || []).filter(a => a && a.mode === 'report' && !a.aborted).slice().sort(byTsId);
   function doneToday(now = Date.now()) {
     const key = R() && R().dayKey ? R().dayKey(now) : new Date(now).toISOString().slice(0, 10);
     const k = a => (R() && R().dayKey ? R().dayKey(a.ts) : new Date(a.ts).toISOString().slice(0, 10));
-    return reports().filter(a => a.ts && k(a) === key).pop() || null;
+    const day = reports().filter(a => a.ts && k(a) === key);
+    return day.length ? day[day.length - 1] : null;
   }
   const pointsOf = a => (window.Ledger && Ledger.ptsOf ? Ledger.ptsOf(a) : num(a && a.points));
 
@@ -157,10 +166,15 @@ window.ReportUI = (() => {
     <div class="hint" style="margin-top:0">Донесение считается по тестовой книге учёта. Сейчас открыта текущая — переключить можно в настройках, ничего при этом не теряется.</div>
     <div class="btns mt0"><button class="btn btn-primary btn-block" data-go="settings">В настройки</button></div></div>`;
 
+  /* Одна строка про итог: без случаев «0 из 0» и «0 %» читались бы как «всё мимо» */
+  function saidOf(a) {
+    if (a.net === 'fail') return 'Разбор к нему не дошёл; очки за усилие +' + Math.round(pointsOf(a)) + '.';
+    if (!a.total) return 'Разбор прошёл, но ни одна конструкция из мишеней в записи не понадобилась — считать было нечего. Очков +' + Math.round(pointsOf(a)) + '.';
+    return 'Случаев вышло ' + a.correct + ' из ' + a.total + ', очков +' + Math.round(pointsOf(a)) + '.';
+  }
   function doneTodayPanel(a) {
-    const ok = a.net !== 'fail';
     return head('сегодня уже сделано') + `<div class="panel"><div class="flabel">Донесение за сегодня сдано</div>
-      <div class="hint" style="margin-top:0">${ok ? 'Случаев вышло ' + a.correct + ' из ' + a.total + ', очков +' + Math.round(pointsOf(a)) + '.' : 'Разбор к нему не дошёл; очки за усилие +' + Math.round(pointsOf(a)) + '.'} Между донесениями нужен день: второе за сутки мало что покажет.</div>
+      <div class="hint" style="margin-top:0">${esc(saidOf(a))} Между донесениями нужен день: второе за сутки мало что покажет.</div>
       <div class="btns mt0">
         <button class="btn btn-primary btn-block" data-go="report-result" data-params="${attr({ id: a.id })}">Посмотреть разбор</button>
         <button class="btn btn-secondary btn-block" data-action="rp-again">Всё равно сделать ещё одно</button>
