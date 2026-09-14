@@ -100,7 +100,7 @@
     if (kind === 'tone') {
       /* поровну на каждый тон — иначе четвёртый забивает остальные */
       for (let t = 1; t <= 4; t++) pick(prefer(all.filter(s => s.tone === t), 6), 3).forEach(s => qs.push({ kind, say: s.h, prompt: 'Какой тон вы слышите?',
-        opts: ['1 ˉ ровный', '2 ˊ восходящий', '3 ˇ ныряющий', '4 ˋ падающий'], correct: s.tone - 1, note: note(s) }));
+        opts: ['1 ˉ ровный', '2 ˊ восходящий', '3 ˇ ныряющий', '4 ˋ падающий'], correct: s.tone - 1, note: note(s), word: { h: s.h, py: s.py, ru: s.ru } }));
     } else if (kind === 'pair') {
       const pairs = P.minimalPairs();
       const easy = pairs.filter(p => p.lvl <= 2);
@@ -188,11 +188,30 @@
       render();
       const nx = dr.qs[dr.i];
       if (nx.say) setTimeout(() => Speech.say(nx.say), 250);
-    }, 1500);
+    }, ok ? 1200 : 2800);   /* на ошибке дольше: успеть увидеть верный вариант и прочитать разбор */
   };
   actions['phon-repeat'] = () => { if (dr && dr.qs[dr.i].say) Speech.say(dr.qs[dr.i].say); };
   actions['phon-quit'] = () => { dr = null; nav('phon', {}, { replace: true }); };
 
+  /* Разбор ответа. В тоновом задании — какой тон был и какой выбран, а не один перевод слова;
+     в остальных — что было выбрано, если мимо. */
+  const ORD = ['первый', 'второй', 'третий', 'четвёртый'];
+  const toneName = n => { const t = P.TONES[n - 1]; return t ? ORD[n - 1] + ' тон ' + t.zh + ', ' + t.t.toLowerCase() : ''; };
+  function feedback(q) {
+    const head = q.ok ? '对 верно' : '错 мимо';
+    if (q.kind === 'tone' && q.word) {
+      const w = q.word, right = q.correct + 1;
+      let out = `${head} · <span class="zh">${esc(w.h)}</span> ${esc(w.py)} — ${esc(toneName(right))}`;
+      if (!q.ok && q.given != null) {
+        const t = P.TONES[right - 1];
+        out += `<div class="ph-fb-sub">Вы выбрали ${esc(toneName(q.given + 1))}.${t && t.d ? ' ' + esc(t.d) : ''}</div>`;
+      }
+      return out + `<div class="ph-fb-sub muted">${esc(w.ru)}</div>`;
+    }
+    let out = `${head} · ${esc(q.note || '')}`;
+    if (!q.ok && q.given != null && q.opts[q.given] != null) out += `<div class="ph-fb-sub">Вы выбрали ${esc(q.opts[q.given])}.</div>`;
+    return out;
+  }
   views['phon-run'] = {
     render() {
       if (!dr) return '<div class="empty">Дрилл не запущен</div>';
@@ -203,10 +222,10 @@
         : `<div class="panel ornate qcard"><div class="qlabel">Запись пиньинем</div><div class="ph-q">${esc(q.prompt)}</div></div>`;
       const opts = `<div class="opts">${q.opts.map((o, i) => {
         let cls = 'opt opt-txt';
-        if (dr.shown) { if (i === q.correct) cls += ' ok'; else if (i === q.given) cls += ' bad'; }
+        if (dr.shown) { if (i === q.correct) cls += ' correct'; else if (i === q.given) cls += ' wrong'; }
         return `<button class="${cls}" data-action="phon-answer" data-idx="${i}" ${dr.shown ? 'disabled' : ''} data-nosound><span class="${/[一-鿿]/.test(o) ? 'opt-hanzi' : 'ph-opt'}">${esc(o)}</span></button>`;
       }).join('')}</div>`;
-      const fb = dr.shown ? `<div class="panel ph-fb ${q.ok ? 'ok' : 'bad'}">${q.ok ? '对 верно' : '错 мимо'} · ${esc(q.note || '')}</div>` : '';
+      const fb = dr.shown ? `<div class="panel ph-fb ${q.ok ? 'ok' : 'bad'}">${feedback(q)}</div>` : '';
       return head + prompt + opts + fb;
     },
     mount() { if (dr && !dr.said) { dr.said = true; const q = dr.qs[dr.i]; if (q.say) setTimeout(() => Speech.say(q.say), 350); } },
